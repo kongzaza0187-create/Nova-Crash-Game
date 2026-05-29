@@ -1,0 +1,6 @@
+{
+  "name": "SKY RUSH",
+  "description": "An incredibly realistic, interactive, and highly polished simulation of the popular Aviator crash game. Features dual-panel betting, auto-cashout multipliers, real-time multiplayer bots, session profit stats, and real-time audio cues.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
