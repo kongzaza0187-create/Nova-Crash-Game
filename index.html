@@ -4,6 +4,39 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>My Google AI Studio App</title>
+    <script>
+      // Silently disable right-click context menu
+      document.addEventListener('contextmenu', function(event) {
+        event.preventDefault();
+        event.stopPropagation();
+      }, true);
+
+      // Silently disable developer shortcut keys
+      document.addEventListener('keydown', function(event) {
+        // F12 key
+        if (event.key === 'F12' || event.keyCode === 123) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+
+        // Ctrl+Shift+I, Ctrl+Shift+J, Ctrl+Shift+C
+        if (event.ctrlKey && event.shiftKey && (
+          event.key === 'I' || event.key === 'i' || 
+          event.key === 'J' || event.key === 'j' || 
+          event.key === 'C' || event.key === 'c' || 
+          event.keyCode === 73 || event.keyCode === 74 || event.keyCode === 67
+        )) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+
+        // Ctrl+U (View Source)
+        if (event.ctrlKey && (event.key === 'U' || event.key === 'u' || event.keyCode === 85)) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
+      }, true);
+    </script>
   </head>
   <body>
     <div id="root"></div>

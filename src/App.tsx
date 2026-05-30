@@ -248,11 +248,13 @@ export default function App() {
         // Apply findings to state
         setFailedChecks(validationFailures);
         
-        // Trigger smooth fade out transition
-        setIsFadeOut(true);
+        // Wait 0.5s (500ms) then fade out splash smoothly and reveal the game
         setTimeout(() => {
-          setIsSplashActive(false);
-        }, 1000); // 1000ms duration for fade animations
+          setIsFadeOut(true);
+          setTimeout(() => {
+            setIsSplashActive(false);
+          }, 800); // 800ms duration for fade animations
+        }, 500);
       }
     }, 30); // 30ms interval ticks * 100 ticks = 3000ms total animation lifecycle
 
@@ -1218,39 +1220,52 @@ export default function App() {
       {/* 3-Second Loading / Splash Screen Overlay */}
       {isSplashActive && (
         <div 
-          className={`fixed inset-0 bg-slate-950 z-[9999] flex flex-col items-center justify-between transition-opacity duration-1000 ${
+          className={`fixed inset-0 bg-[#0a0a1a] z-[9999] flex flex-row transition-opacity duration-800 ${
             isFadeOut ? "opacity-0 pointer-events-none" : "opacity-100"
           }`}
           id="game_splash_screen"
         >
-          {/* Spacer to push image down */}
-          <div className="h-4" />
-
-          {/* Centered Image (original resolution, contain, centred horizontal and vertical) */}
-          <div className="w-full flex-1 flex items-center justify-center p-4">
+          {/* LEFT COLUMN (80% width on wider screens, 85% on mobile ≤ 600px) */}
+          <div className="w-[80%] max-[600px]:w-[85%] h-screen bg-[#0a0a1a] flex items-center justify-center shrink-0 overflow-hidden relative">
             <img 
-              src="https://i.postimg.cc/Wb1tGJTc/1780074796287.webp" 
-              alt="Sky Rush Cover" 
-              className="max-w-full max-h-[70vh] object-contain select-none"
+              src="https://i.postimg.cc/RZMGKtYM/1780092343682css.webp" 
+              alt="Sky Rush Cover Side" 
+              className="w-full h-full object-contain select-none block"
               referrerPolicy="no-referrer"
               id="splash_cover_image"
             />
           </div>
 
-          {/* Loading bar at the bottom with real-time percentage */}
-          <div className="w-full max-w-sm md:max-w-md px-6 pb-16 flex flex-col gap-3 items-center">
-            <div className="flex items-center justify-between w-full text-[10px] font-mono font-black uppercase tracking-widest text-slate-400">
-              <span className="animate-pulse">Loading Flight Systems...</span>
-              <span className="text-pink-550 font-extrabold">{splashProgress}%</span>
-            </div>
-            
-            {/* Rounded progress bar with purple/pink glowing neon gradient */}
-            <div className="w-full h-3.5 bg-slate-900 border border-slate-800 rounded-full overflow-hidden p-0.5 shadow-inner">
+          {/* RIGHT COLUMN (20% width on wider screens, 15% on mobile ≤ 600px) */}
+          <div className="w-[20%] max-[600px]:w-[15%] h-screen bg-[#0a0a1a] flex flex-col justify-center items-center py-8 px-2 shrink-0 relative gap-5 select-none">
+            {/* 1. "LOADING" text */}
+            <span className="text-white text-[10px] min-[601px]:text-xs font-mono font-bold tracking-[2px] uppercase select-none">
+              LOADING
+            </span>
+
+            {/* 2. Progress bar — VERTICAL orientation (Fills bottom-to-top) */}
+            <div className="relative w-[10px] h-[200px] bg-slate-950 border border-slate-900 rounded-full overflow-hidden p-[1px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)] flex flex-col justify-end">
               <div 
-                className="h-full rounded-full bg-gradient-to-r from-purple-600 via-fuchsia-500 to-pink-500 shadow-lg shadow-pink-500/50 transition-all duration-75"
-                style={{ width: `${splashProgress}%` }}
+                className="w-full rounded-full bg-gradient-to-t from-[#ff2d78] to-[#7b2fff] transition-all duration-75"
+                style={{ 
+                  height: `${splashProgress}%`,
+                  boxShadow: "0 0 10px #ff2d78"
+                }}
               />
             </div>
+
+            {/* 3. Percentage number below the bar */}
+            <div className="text-white font-bold font-mono text-[11px] min-[601px]:text-xs tracking-wider">
+              {splashProgress}%
+            </div>
+
+            {/* 4. Status text (small, gray) */}
+            <span className="text-slate-500 font-mono text-[9px] min-[601px]:text-[10px] uppercase tracking-wide text-center max-w-full px-1">
+              {splashProgress <= 30 && "Initializing..."}
+              {splashProgress > 30 && splashProgress <= 60 && "Loading..."}
+              {splashProgress > 60 && splashProgress <= 90 && "Preparing..."}
+              {splashProgress > 90 && "Ready!"}
+            </span>
           </div>
         </div>
       )}

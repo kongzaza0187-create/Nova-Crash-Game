@@ -688,13 +688,47 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.textBaseline = "middle";
 
         if (state === "FLYING") {
-          // Large glowing green multiplier
-          ctx.fillStyle = "#ffffff";
+          let multiplierColor = "#ffffff";
+          let scale = 1.0;
+          let glowColor = "rgba(0,0,0,0.8)";
+          let glowBlur = 8;
+
+          if (multiplier >= 1.0 && multiplier < 2.0) {
+            multiplierColor = "#32CD32";
+          } else if (multiplier >= 2.0 && multiplier < 3.0) {
+            multiplierColor = "#00CED1";
+          } else if (multiplier >= 3.0 && multiplier < 4.0) {
+            multiplierColor = "#FFD700";
+          } else if (multiplier >= 4.0 && multiplier < 6.0) {
+            multiplierColor = "#FFA500";
+          } else if (multiplier >= 6.0 && multiplier < 7.0) {
+            multiplierColor = "#FF4500";
+          } else if (multiplier >= 7.0 && multiplier < 8.0) {
+            multiplierColor = "#FF0000";
+          } else if (multiplier >= 8.0 && multiplier < 9.0) {
+            multiplierColor = "#FF00FF";
+          } else if (multiplier >= 9.0 && multiplier < 10.0) {
+            multiplierColor = "#8A2BE2";
+          } else if (multiplier >= 10.0) {
+            multiplierColor = "#FFFFFF";
+            const pulse = (Math.sin((Date.now() / 500) * Math.PI * 2) + 1) / 2;
+            scale = 1.0 + pulse * 0.05;
+            glowColor = "#FFFFFF";
+            glowBlur = 15;
+          }
+
+          ctx.save();
+          ctx.translate(hudX, hudY);
+          ctx.scale(scale, scale);
+
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillStyle = multiplierColor;
           ctx.font = "bold 64px 'Orbitron', sans-serif";
-          ctx.shadowColor = "rgba(0,0,0,0.8)";
-          ctx.shadowBlur = 8;
-          ctx.fillText(`${multiplier.toFixed(2)}x`, hudX, hudY);
-          ctx.shadowBlur = 0; // reset
+          ctx.shadowColor = glowColor;
+          ctx.shadowBlur = glowBlur;
+          ctx.fillText(`${multiplier.toFixed(2)}x`, 0, 0);
+          ctx.restore();
         } else if (state === "FLEW_AWAY") {
           // Large RED Flew Away status
           ctx.fillStyle = "#f43f5e";
