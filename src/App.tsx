@@ -980,6 +980,20 @@ export default function App() {
               />
             </div>
 
+            {/* Custom Promo/Banner Image Container */}
+            <div 
+              className="w-full bg-[#0a0a1a] rounded-[12px] border border-[rgba(255,255,255,0.1)] p-[10px] mt-[10px] overflow-hidden"
+              id="bet_panel_promo_image_container"
+            >
+              <img 
+                src="https://i.postimg.cc/hGhfZN15/file-00000000bba47208bb451deb352ca2f2.webp" 
+                alt="Sky Rush Promotion Banner" 
+                className="w-full h-auto object-contain rounded-[8px] block"
+                referrerPolicy="no-referrer"
+                id="bet_panel_promo_image"
+              />
+            </div>
+
           </div>
 
         </div>
