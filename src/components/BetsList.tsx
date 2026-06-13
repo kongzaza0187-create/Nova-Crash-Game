@@ -10,6 +10,7 @@ interface BetsListProps {
     multiplier?: number;
     winAmount?: number;
     timestamp: string;
+    cashbackAmount?: number;
   }>;
   roundState: RoundState;
   multiplier: number;
@@ -206,13 +207,20 @@ export const BetsList: React.FC<BetsListProps> = ({
                 myHistory.map((item) => (
                   <div
                     key={item.id}
-                    className="flex justify-between items-center bg-slate-900/20 border border-slate-900 p-2 rounded-lg text-xs"
+                    className="flex justify-between items-start bg-slate-900/20 border border-slate-900 p-2 rounded-lg text-xs"
                     id={`my_history_item_${item.id}`}
                   >
                     {/* Timestamp & Stake info */}
                     <div className="flex flex-col">
                       <span className="text-[10px] text-slate-500 font-mono tracking-wider">{item.timestamp}</span>
-                      <span className="font-bold text-slate-300">{item.amount.toLocaleString()} THB</span>
+                      <span className="font-bold text-slate-300">
+                        {item.amount.toLocaleString()} THB{!item.multiplier && " — LOSS"}
+                      </span>
+                      {item.cashbackAmount !== undefined && item.cashbackAmount > 0 && (
+                        <span className="text-[11px] font-semibold font-mono text-[#32CD32] mt-1">
+                          CASHBACK +{item.cashbackAmount.toLocaleString()} THB
+                        </span>
+                      )}
                     </div>
 
                     {/* Result details */}

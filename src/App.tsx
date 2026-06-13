@@ -108,6 +108,7 @@ export default function App() {
     multiplier?: number;
     winAmount?: number;
     timestamp: string;
+    cashbackAmount?: number;
   }>>([]);
 
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
@@ -122,6 +123,13 @@ export default function App() {
   const [consecutiveUserDoubles, setConsecutiveUserDoubles] = useState<number>(0);
   const [lastCombinedBet, setLastCombinedBet] = useState<number>(0);
   const [lastRoundResultWasLoss, setLastRoundResultWasLoss] = useState<boolean>(false);
+
+  // Cashback system state in React
+  const [cashbackPopup, setCashbackPopup] = useState<{
+    show: boolean;
+    amount: number;
+  }>({ show: false, amount: 0 });
+  const cashbackPopupTimeoutRef = useRef<any>(null);
 
   // SECURE ADMINISTRATOR PORTAL STATES
   const [isAdminModalOpen, setIsAdminModalOpen] = useState<boolean>(false);
@@ -719,6 +727,31 @@ export default function App() {
       }
       setLastRoundResultWasLoss(userLostThisRound);
 
+      // Cashback calculations
+      let totalCashbackThisRound = 0;
+      let leftCashback = 0;
+      let rightCashback = 0;
+
+      if (betLeft.isPlaced && !betLeft.hasCashedOut) {
+        leftCashback = parseFloat((betLeft.amount * 0.10).toFixed(2));
+        totalCashbackThisRound += leftCashback;
+      }
+      if (betRight.isPlaced && !betRight.hasCashedOut) {
+        rightCashback = parseFloat((betRight.amount * 0.10).toFixed(2));
+        totalCashbackThisRound += rightCashback;
+      }
+
+      if (totalCashbackThisRound > 0) {
+        setBalance((prev) => parseFloat((prev + totalCashbackThisRound).toFixed(2)));
+        setCashbackPopup({ show: true, amount: totalCashbackThisRound });
+        if (cashbackPopupTimeoutRef.current) {
+          clearTimeout(cashbackPopupTimeoutRef.current);
+        }
+        cashbackPopupTimeoutRef.current = setTimeout(() => {
+          setCashbackPopup((prev) => ({ ...prev, show: false }));
+        }, 3000);
+      }
+
       // Handle un-cashed out personal bets (they loss/bust)
       if (betLeft.isPlaced && !betLeft.hasCashedOut) {
         setUserStats((prev) => ({
@@ -732,6 +765,7 @@ export default function App() {
             id: `my_bet_${Date.now()}_l_col`,
             amount: betLeft.amount,
             timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+            cashbackAmount: leftCashback,
           },
           ...prev,
         ]);
@@ -748,6 +782,7 @@ export default function App() {
             id: `my_bet_${Date.now()}_r_col`,
             amount: betRight.amount,
             timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+            cashbackAmount: rightCashback,
           },
           ...prev,
         ]);
@@ -900,6 +935,29 @@ export default function App() {
           <span>Credits Refilled to 9,999,999 THB!</span>
         </div>
       )}
+
+      {/* Cashback Popup Toast (bottom-right corner) */}
+      <div 
+        className={`fixed bottom-6 right-6 z-50 bg-[#0e0e1a] border-2 border-[#32CD32] text-white px-5 py-4 rounded-xl shadow-2xl flex flex-col gap-1.5 transition-all duration-300 transform ${
+          cashbackPopup.show 
+            ? "opacity-100 translate-y-0 scale-100" 
+            : "opacity-0 translate-y-4 scale-95 pointer-events-none"
+        }`}
+        id="cashback_popup_notification"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-base">💰</span>
+          <span className="font-bold tracking-wider text-xs uppercase text-slate-100">
+            CASHBACK RECEIVED
+          </span>
+        </div>
+        <div className="text-[14px] font-black text-[#32CD32] font-mono leading-tight">
+          +{cashbackPopup.amount.toLocaleString(undefined, { minimumFractionDigits: 1 })} THB
+        </div>
+        <div className="text-[10px] text-slate-400 font-medium">
+          added to your balance
+        </div>
+      </div>
 
       {/* Main Content Layout */}
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 flex flex-col gap-4 min-h-0">
