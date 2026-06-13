@@ -29,6 +29,9 @@ export const BetPanel: React.FC<BetPanelProps> = ({
   const [selectedTab, setSelectedTab] = useState<"MANUAL" | "AUTO">("MANUAL");
   const [betAmount, setBetAmount] = useState<number>(100);
   
+  // Rule check: Lock starts the instant the round state is FLYING
+  const isLocked = roundState === "FLYING";
+  
   // Auto configs
   const [isAutoBet, setIsAutoBet] = useState<boolean>(bet.isAutoBet);
   const [isAutoCashOut, setIsAutoCashOut] = useState<boolean>(bet.isAutoCashOut);
@@ -41,18 +44,26 @@ export const BetPanel: React.FC<BetPanelProps> = ({
     setAutoCashOutVal(bet.autoCashOutMultiplier);
   }, [bet]);
 
-  // Handle amount modifications safely
-  const adjustAmount = (amt: number) => {
+  // Handle amount doubling (plus button) and halving (minus button)
+  const handleDoubleAmount = () => {
     audioManager.playClick();
     setBetAmount((prev) => {
-      const next = Math.max(10, prev + amt);
-      return next > userBalance ? userBalance : next;
+      const next = prev * 2;
+      return next > 1000000 ? 1000000 : next;
+    });
+  };
+
+  const handleHalveAmount = () => {
+    audioManager.playClick();
+    setBetAmount((prev) => {
+      const next = Math.floor(prev / 2);
+      return next < 100 ? 100 : next;
     });
   };
 
   const setFixedAmount = (amt: number) => {
     audioManager.playClick();
-    setBetAmount(Math.min(userBalance, amt));
+    setBetAmount(Math.min(1000000, amt));
   };
 
   // Safe decimal parsing for auto Cash Out
@@ -96,8 +107,8 @@ export const BetPanel: React.FC<BetPanelProps> = ({
           label: "BET",
           sub: `${betAmount.toLocaleString()} THB`,
           bgColor: "bg-emerald-600 hover:bg-emerald-500",
-          action: () => onPlaceBet(betAmount),
-          disabled: userBalance < betAmount || betAmount <= 0,
+          action: () => onPlaceBet(Math.max(100, Math.min(1000000, betAmount))),
+          disabled: userBalance < betAmount || betAmount < 100,
         };
       }
     } else if (roundState === "FLYING") {
@@ -129,12 +140,21 @@ export const BetPanel: React.FC<BetPanelProps> = ({
             disabled: true,
           };
         } else {
+          if (isLocked) {
+            return {
+              label: "WAITING...",
+              sub: `${betAmount.toLocaleString()} THB`,
+              bgColor: "bg-slate-800 text-slate-500",
+              action: () => {},
+              disabled: true,
+            };
+          }
           return {
             label: "BET ON NEXT ROUND",
             sub: `${betAmount.toLocaleString()} THB`,
             bgColor: "bg-emerald-700/50 hover:bg-emerald-700/80 text-emerald-100",
-            action: () => onPlaceBet(betAmount),
-            disabled: userBalance < betAmount || betAmount <= 0,
+            action: () => onPlaceBet(Math.max(100, Math.min(1000000, betAmount))),
+            disabled: userBalance < betAmount || betAmount < 100,
           };
         }
       }
@@ -154,7 +174,9 @@ export const BetPanel: React.FC<BetPanelProps> = ({
 
   return (
     <div
-      className="flex-1 bg-slate-950/70 border border-slate-800 p-4 rounded-xl flex flex-col gap-3 min-w-[280px]"
+      className={`flex-1 bg-slate-950/70 border border-slate-800 p-4 rounded-xl flex flex-col gap-3 min-w-[280px] transition-opacity duration-300 ${
+        isLocked ? "opacity-50" : ""
+      }`}
       id={`bet_panel_${id}`}
     >
       {/* Tabs */}
@@ -198,25 +220,39 @@ export const BetPanel: React.FC<BetPanelProps> = ({
           </div>
           <div className="flex items-center justify-between">
             <button
-              onClick={() => adjustAmount(-10)}
-              className="p-1 hover:bg-slate-850 rounded text-slate-300 transition"
+              onClick={handleHalveAmount}
+              disabled={isLocked}
+              className="p-1 hover:bg-slate-850 rounded text-slate-300 transition disabled:opacity-40 disabled:cursor-not-allowed"
               id={`minus_amount_${id}`}
             >
               <Minus size={16} />
             </button>
             <input
               type="number"
-              value={betAmount}
+              value={betAmount === 0 ? "" : betAmount}
+              readOnly={isLocked}
+              disabled={isLocked}
               onChange={(e) => {
+                if (isLocked) return;
                 const val = parseInt(e.target.value);
-                setBetAmount(isNaN(val) ? 10 : Math.max(10, Math.min(userBalance, val)));
+                if (isNaN(val)) {
+                  setBetAmount(0);
+                } else {
+                  setBetAmount(Math.min(1000000, val));
+                }
               }}
-              className="w-full text-center bg-transparent border-none text-white text-base font-bold focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              onBlur={() => {
+                if (betAmount < 100) {
+                  setBetAmount(100);
+                }
+              }}
+              className="w-full text-center bg-transparent border-none text-white text-base font-bold focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-70"
               id={`bet_input_${id}`}
             />
             <button
-              onClick={() => adjustAmount(10)}
-              className="p-1 hover:bg-slate-850 rounded text-slate-300 transition"
+              onClick={handleDoubleAmount}
+              disabled={isLocked}
+              className="p-1 hover:bg-slate-850 rounded text-slate-300 transition disabled:opacity-40 disabled:cursor-not-allowed"
               id={`plus_amount_${id}`}
             >
               <Plus size={16} />
@@ -228,8 +264,9 @@ export const BetPanel: React.FC<BetPanelProps> = ({
             {[100, 200, 500, 1000].map((val) => (
               <button
                 key={val}
+                disabled={isLocked}
                 onClick={() => setFixedAmount(val)}
-                className={`text-[9.5px] font-bold py-0.5 rounded transition ${
+                className={`text-[9.5px] font-bold py-0.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed ${
                   betAmount === val
                     ? "bg-rose-900/30 text-rose-400 border border-rose-500/20"
                     : "bg-slate-850 text-slate-400 hover:text-white"
