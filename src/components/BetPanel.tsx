@@ -37,11 +37,20 @@ export const BetPanel: React.FC<BetPanelProps> = ({
   const [isAutoCashOut, setIsAutoCashOut] = useState<boolean>(bet.isAutoCashOut);
   const [autoCashOutVal, setAutoCashOutVal] = useState<number>(bet.autoCashOutMultiplier);
 
+  // Celebratory overlay state when cashing out with > 6.0x
+  const [showCelebration, setShowCelebration] = useState<boolean>(false);
+
   // Keep state synced with prop when autos are modified externally
   useEffect(() => {
     setIsAutoBet(bet.isAutoBet);
     setIsAutoCashOut(bet.isAutoCashOut);
     setAutoCashOutVal(bet.autoCashOutMultiplier);
+
+    if (bet.hasCashedOut && bet.cashedOutMultiplier && bet.cashedOutMultiplier > 6.0) {
+      setShowCelebration(true);
+    } else {
+      setShowCelebration(false);
+    }
   }, [bet]);
 
   // Handle amount doubling (plus button) and halving (minus button)
@@ -174,8 +183,12 @@ export const BetPanel: React.FC<BetPanelProps> = ({
 
   return (
     <div
-      className={`flex-1 bg-slate-950/70 border border-slate-800 p-4 rounded-xl flex flex-col gap-3 min-w-[280px] transition-opacity duration-300 ${
-        isLocked ? "opacity-50" : ""
+      className={`relative flex-1 bg-slate-950/70 border p-4 rounded-xl flex flex-col gap-3 min-w-[280px] transition-all duration-300 ${
+        showCelebration 
+          ? "border-amber-500/50 celebrate-glow" 
+          : isLocked 
+            ? "border-slate-800 opacity-50" 
+            : "border-slate-800"
       }`}
       id={`bet_panel_${id}`}
     >
@@ -351,6 +364,105 @@ export const BetPanel: React.FC<BetPanelProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {showCelebration && (
+        <>
+          <style dangerouslySetInnerHTML={{__html: `
+            @keyframes gold-pulse {
+              0%, 100% {
+                box-shadow: 0 0 15px rgba(251, 191, 36, 0.4), inset 0 0 10px rgba(251, 191, 36, 0.2);
+                border-color: rgba(251, 191, 36, 0.6);
+              }
+              50% {
+                box-shadow: 0 0 35px rgba(251, 191, 36, 0.95), inset 0 0 25px rgba(251, 191, 36, 0.5);
+                border-color: rgba(253, 224, 71, 1);
+              }
+            }
+            @keyframes p-float-1 {
+              0% { transform: translateY(110%) translateX(0px) rotate(0deg); opacity: 0; }
+              15% { opacity: 1; }
+              90% { opacity: 1; }
+              100% { transform: translateY(-110%) translateX(-30px) rotate(360deg); opacity: 0; }
+            }
+            @keyframes p-float-2 {
+              0% { transform: translateY(110%) translateX(0px) rotate(0deg); opacity: 0; }
+              10% { opacity: 1; }
+              85% { opacity: 1; }
+              100% { transform: translateY(-110%) translateX(40px) rotate(-360deg); opacity: 0; }
+            }
+            @keyframes p-float-3 {
+              0% { transform: translateY(110%) translateX(0px) rotate(0deg); opacity: 0; }
+              20% { opacity: 1; }
+              80% { opacity: 1; }
+              100% { transform: translateY(-110%) translateX(-15px) rotate(180deg); opacity: 0; }
+            }
+            @keyframes win-text-pulse {
+              0%, 100% { transform: scale(1); filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.6)); }
+              50% { transform: scale(1.05); filter: drop-shadow(0 0 18px rgba(251, 191, 36, 1)); }
+            }
+            @keyframes ribbon-sweep {
+              0% { background-position: 0% 50%; }
+              50% { background-position: 100% 50%; }
+              100% { background-position: 0% 50%; }
+            }
+            .celebrate-glow {
+              animation: gold-pulse 1.8s infinite ease-in-out !important;
+            }
+            .particle-1 { animation: p-float-1 3.0s infinite linear; }
+            .particle-2 { animation: p-float-2 2.6s infinite linear; }
+            .particle-3 { animation: p-float-3 3.4s infinite linear; }
+          `}} />
+          
+          <div 
+            onClick={() => setShowCelebration(false)}
+            className="absolute inset-0 cursor-pointer pointer-events-auto rounded-xl overflow-hidden z-20 flex flex-col items-center justify-center p-4 bg-slate-950/90 text-center select-none"
+            title="Click to dismiss overlay"
+          >
+            {/* Background radial glow */}
+            <div className="absolute inset-0 bg-radial-gradient from-amber-500/20 via-transparent to-transparent opacity-85 animate-pulse pointer-events-none" />
+            
+            {/* Celebration Badge Area */}
+            <div className="relative border-2 border-amber-500/80 bg-slate-900/95 rounded-xl p-3.5 w-full max-w-[240px] shadow-2xl animate-[win-text-pulse_2.2s_infinite_ease-in-out] flex flex-col items-center justify-center z-10 pointer-events-none">
+              <div className="text-[10px] text-amber-400 font-extrabold uppercase tracking-widest flex items-center gap-1">
+                <span>★</span> <span>EPIC WIN</span> <span>★</span>
+              </div>
+              <div className="text-2xl font-black text-transparent bg-clip-text bg-gradient-to-r from-yellow-300 via-amber-400 to-yellow-300 bg-[size:200%_auto] animate-[ribbon-sweep_3s_infinite_linear] font-display mt-0.5">
+                {bet.cashedOutMultiplier ? bet.cashedOutMultiplier.toFixed(2) : "6.00"}+x
+              </div>
+              <div className="text-sm font-extrabold text-emerald-400 mt-1">
+                +{bet.winAmount ? bet.winAmount.toFixed(1) : "0.0"} THB
+              </div>
+              <div className="text-[9px] text-slate-500 mt-1 uppercase tracking-widest font-mono">
+                Click Panel to Close
+              </div>
+            </div>
+
+            {/* Confetti / Glitter Particles */}
+            <div className="absolute inset-0 pointer-events-none">
+              {[
+                { left: "10%", delay: "0s", color: "bg-yellow-400", size: "w-2.5 h-2.5", p: "particle-1" },
+                { left: "25%", delay: "0.4s", color: "bg-amber-400", size: "w-2 h-2", p: "particle-2" },
+                { left: "40%", delay: "0.8s", color: "bg-yellow-300", size: "w-1.5 h-3", p: "particle-3" },
+                { left: "55%", delay: "1.2s", color: "bg-red-500", size: "w-2.5 h-2", p: "particle-1" },
+                { left: "70%", delay: "0.2s", color: "bg-amber-500", size: "w-2 h-3", p: "particle-2" },
+                { left: "85%", delay: "0.7s", color: "bg-yellow-400", size: "w-3 h-1.5", p: "particle-3" },
+                { left: "15%", delay: "1.5s", color: "bg-emerald-400", size: "w-1.5 h-2.5", p: "particle-2" },
+                { left: "45%", delay: "1.9s", color: "bg-yellow-500", size: "w-2.5 h-2.5", p: "particle-1" },
+                { left: "75%", delay: "2.3s", color: "bg-cyan-400", size: "w-2 h-2", p: "particle-3" },
+              ].map((particle, idx) => (
+                <div
+                  key={idx}
+                  className={`absolute bottom-0 rounded-full ${particle.size} ${particle.color} ${particle.p} opacity-0`}
+                  style={{
+                    left: particle.left,
+                    animationDelay: particle.delay,
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

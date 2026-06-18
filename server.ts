@@ -606,6 +606,29 @@ let superJackpotRoundsInCurrent23: number = Math.floor(Math.random() * 23) + 1; 
 let lastCrashPointWasLow = false; // Prevent consecutive instant crashes to reduce player cost speed
 const cashoutHistory: number[] = [1.35, 1.50, 1.25, 1.45, 1.60, 1.85, 1.40, 1.55, 1.30, 1.70]; // Seed initial realistic figures
 
+// Custom Math, Cooldown, and Trapping variables
+function generateGroupDRoundIn50(): number {
+  return Math.floor(Math.random() * 50) + 1; // 1 to 50 index
+}
+let groupDRoundInCurrent50 = generateGroupDRoundIn50();
+let cooldownRoundsRemaining = 0;
+const playerSuccessfulCashouts: number[] = [1.45, 1.50, 1.35, 1.60]; // Seed with standard values
+let trapRoundsRemaining = 0;
+let favoriteCashoutPoint = 1.50; // Analyzed preference threshold
+let lastCrashPointForCooldownTrigger = 1.00;
+
+// Special 49x Feature States:
+// - sessionEntryBalance tracks the starting/refill baseline of the player's balance.
+// - Whenever balance is lost by 40% or more, they trigger a rocket flight to exactly 49.00x!
+// - Once triggered, a randomized cooldown of 33 to 38 rounds is set before it can activate again.
+let sessionEntryBalance = 1040; 
+let roundsSinceLast49x = 999; // Initialize to high number so it triggers immediately on the first drop
+let specialCooldownThreshold = Math.floor(Math.random() * 6) + 33; // Random cooldown from 33 to 38 rounds
+let lastResetDateBangkok = "";
+
+
+
+
 // ==========================================
 // EXPRESS SERVER & ENDPOINTS
 // ==========================================
@@ -647,10 +670,12 @@ async function runSecurityFullstackServer() {
   app.post("/api/security/ai/cashout-metric", (req, res) => {
     const { multiplierCashed } = req.body;
     if (multiplierCashed && typeof multiplierCashed === "number") {
-      cashoutHistory.push(parseFloat(multiplierCashed.toFixed(2)));
+      const val = parseFloat(multiplierCashed.toFixed(2));
+      cashoutHistory.push(val);
       if (cashoutHistory.length > 500) {
         cashoutHistory.shift(); // Evict oldest metric
       }
+      playerSuccessfulCashouts.push(val);
     }
     return res.json({ success: true });
   });
@@ -700,83 +725,196 @@ async function runSecurityFullstackServer() {
     backendRoundCounter += 1;
     const currentModuloIndex = ((backendRoundCounter - 1) % 100) + 1; // 1 to 100 index
 
-    // Safety restart of jackpot schedule at next 100 round milestone
-    if (currentModuloIndex === 1 && backendRoundCounter > 1) {
-      jackpotRoundsInCurrent100 = generateJackpotIndexes();
+    // Thailand Time Zone (Asia/Bangkok) 00:01 Midnight reset check
+    try {
+      const options = { timeZone: 'Asia/Bangkok', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' } as const;
+      const formatter = new Intl.DateTimeFormat('en-US', options);
+      const parts = formatter.formatToParts(new Date());
+      const partMap = Object.fromEntries(parts.map(p => [p.type, p.value]));
+      
+      const bkkHour = parseInt(partMap.hour, 10);
+      const bkkMinute = parseInt(partMap.minute, 10);
+      const bkkDateString = `${partMap.year}-${partMap.month}-${partMap.day}`; // "YYYY-MM-DD"
+      
+      // Check if we are past 00:01 Bangkok time of the current day (past midnight 1 minute)
+      const isPastMidnightOne = (bkkHour > 0 && bkkHour !== 24) || (bkkHour === 0 && bkkMinute >= 1) || (bkkHour === 24 && bkkMinute >= 1);
+      
+      if (isPastMidnightOne && lastResetDateBangkok !== bkkDateString) {
+        roundsSinceLast49x = 999;
+        lastResetDateBangkok = bkkDateString;
+        console.log(`[BANGKOK MIDNIGHT 00:01 RESET] Cooldown reset to 999. Cooldown will immediately elapse on the next loss! Time: ${bkkHour}:${bkkMinute} on ${bkkDateString}`);
+      }
+    } catch (err) {
+      console.error("[BANGKOK RESET CHECK ERROR] Fail to check or format Thailand time:", err);
     }
-
-    let isJackpotRound = false;
-    if (jackpotRoundsInCurrent100.includes(currentModuloIndex)) {
-      isJackpotRound = true;
-    }
-
-    const currentModuloIndex23 = ((backendRoundCounter - 1) % 23) + 1; // 1 to 23 index
-
-    // Regenerate super jackpot index for the new 23-round block
-    if (currentModuloIndex23 === 1 && backendRoundCounter > 1) {
-      superJackpotRoundsInCurrent23 = Math.floor(Math.random() * 23) + 1;
-    }
-
-    const isSuperJackpotRound = (currentModuloIndex23 === superJackpotRoundsInCurrent23);
 
     const currentBalance = (req.body && typeof req.body.currentBalance === "number") ? req.body.currentBalance : 1040;
     
+    // Automatically update session entry balance if we see a reset or refill or initial start
+    if (currentBalance > sessionEntryBalance || backendRoundCounter === 1) {
+      sessionEntryBalance = currentBalance;
+      console.log(`[SPECIAL TRIGGER] Session starting/entry balance calibrated/updated to: ${sessionEntryBalance} THB`);
+    }
+
+    // Increment rounds since last 49x
+    roundsSinceLast49x += 1;
+
     // Near Capital Trap Constraint (Triggered when user balance climbs back up close to 1040, between [850, 1038] THB)
     const isInNearCapitalRange = (currentBalance >= 850 && currentBalance <= 1038);
-    // Probabilistic trigger: 55% chance to activate strict trap, 45% chance to play standard high/mid-RTP rules
     const isNearCapitalTrap = isInNearCapitalRange && (Math.random() < 0.55);
 
     // Securely randomize crash points mimicking house-authorized profiles
     let targetCrashPoint = 1.00;
+    let isSpecial49xRound = false;
 
-    if (isNearCapitalTrap) {
-      // Strict Retention Traps: Enforce early crash [1.01x - 1.15x] to trigger losses when approaching capital, looping them back down
-      targetCrashPoint = parseFloat((1.01 + Math.random() * 0.14).toFixed(2));
-      console.log(`[GAME ENGINE] [TRAP TRIGGERED] Round: ${backendRoundCounter} | User Balance: ${currentBalance} THB | Nearing Capital 1040 THB! Forcing Early Crash.`);
-    } else if (isSuperJackpotRound) {
-      // Super Jackpot Rule: Exactly 1 time in every 23 rounds, RNG schedules super premium outcome [24.00x - 30.00x]
-      targetCrashPoint = parseFloat((24.00 + Math.random() * (30.00 - 24.00)).toFixed(2));
-    } else if (isJackpotRound) {
-      // Rule: Exactly 2 times in every 100 rounds, RNG schedules premium outcomes [14.00x - 20.00x]
-      targetCrashPoint = parseFloat((14.00 + Math.random() * (20.00 - 14.00)).toFixed(2));
-    } else {
-      // Standard distribution: Strict 40% House Edge / 60% RTP split
+    // Standard Rtp Distribution helper
+    const getStandardDistributionCrashPoint = (): number => {
+      const modulo50Index = ((backendRoundCounter - 1) % 50) + 1;
+      
+      // Safety restart / randomization of Group D target index at next 50 round milestone
+      if (modulo50Index === 1) {
+        groupDRoundInCurrent50 = generateGroupDRoundIn50();
+      }
+
+      if (modulo50Index === groupDRoundInCurrent50) {
+        // Deterministic Group D (10.01x - 13.00x): Exactly 1 crash in every 50 rounds
+        const val = parseFloat((10.01 + Math.random() * (13.00 - 10.01)).toFixed(2));
+        console.log(`[GAME ENGINE] [GROUP D ELECTED] Round: ${backendRoundCounter} | Mod50: ${modulo50Index}/50 | Triggered 10.01x-13.00x round: ${val}x`);
+        return val;
+      }
+
+      // Roll 40% House Edge / 60% RTP
       const mainRoll = Math.random();
       if (mainRoll < 0.40) {
         // House Edge Phase (Strict 40%): low-capped crash points [1.01x - 1.15x]
-        targetCrashPoint = parseFloat((1.01 + Math.random() * 0.14).toFixed(2));
+        return parseFloat((1.01 + Math.random() * 0.14).toFixed(2));
       } else {
-        // RTP Phase (Strict 60%): players get solid chances to earn back and win
-        const rtpSubRoll = Math.random();
-        if (rtpSubRoll < 0.23) {
-          // 23% Chance Boost Rule: Bypasses AI predictive restrictions to soar cleanly to [3.50x - 5.00x] using RNG
-          targetCrashPoint = parseFloat((3.50 + Math.random() * (5.00 - 3.50)).toFixed(2));
-        } else {
-          // Standard win-back and flight distribution (77% of RTP phase)
-          // Randomly distribute across small-to-high standard multipliers to ensure organic feel
-          const distributionRoll = Math.random();
-          if (distributionRoll < 0.40) {
-            // Small comeback (40% of standard): [1.20x - 1.65x]
-            targetCrashPoint = parseFloat((1.20 + Math.random() * (1.65 - 1.20)).toFixed(2));
-          } else if (distributionRoll < 0.80) {
-            // Medium comeback (40% of standard): [1.70x - 2.50x]
-            targetCrashPoint = parseFloat((1.70 + Math.random() * (2.50 - 1.70)).toFixed(2));
+        // RTP Phase (Strict 60%)
+        const rtpRoll = Math.random();
+        // Since Group D occupies exactly 1 of the 30 RTP rounds (~3.3% of the RTP phase),
+        // we distribute the remaining 29 RTP rounds (~96.7% of RTP phase) among Groups A, B, and C
+        // matching the requested ratio 40:25:20
+        if (rtpRoll < 0.471) {
+          // Group A (40% relative chance of RTP Phase): [1.40x - 3.00x]
+          // Sub-split to guarantee a beautiful uniform spread across three distinct sub-brackets
+          // and eliminate any low-end clustering near 1.50x, while maintaining profitable house edges.
+          const groupASubRoll = Math.random();
+          if (groupASubRoll < 0.33) {
+            // Lower bracket: [1.40x - 1.95x]
+            return parseFloat((1.40 + Math.random() * 0.55).toFixed(2));
+          } else if (groupASubRoll < 0.66) {
+            // Mid bracket: [2.00x - 2.45x]
+            return parseFloat((2.00 + Math.random() * 0.45).toFixed(2));
           } else {
-            // Strong comeback (20% of standard): [2.55x - 3.40x]
-            targetCrashPoint = parseFloat((2.55 + Math.random() * (3.40 - 2.55)).toFixed(2));
+            // High bracket: [2.50x - 3.00x]
+            return parseFloat((2.50 + Math.random() * 0.50).toFixed(2));
           }
+        } else if (rtpRoll < 0.765) {
+          // Group B (25% relative chance of RTP Phase): [3.50x - 6.50x]
+          return parseFloat((3.50 + Math.random() * (6.50 - 3.50)).toFixed(2));
+        } else {
+          // Group C (20% relative chance of RTP Phase): [6.51x - 10.00x]
+          return parseFloat((6.51 + Math.random() * (10.00 - 6.51)).toFixed(2));
         }
       }
+    };
+
+    // Trigger AI Data Analysis on Round 50
+    if (backendRoundCounter === 50) {
+      if (playerSuccessfulCashouts.length > 0) {
+        const sum = playerSuccessfulCashouts.reduce((s, v) => s + v, 0);
+        favoriteCashoutPoint = parseFloat((sum / playerSuccessfulCashouts.length).toFixed(2));
+      } else {
+        favoriteCashoutPoint = 1.50; // default backup
+      }
+      trapRoundsRemaining = 11;
+      console.log(`[AI DATA ANALYSIS] Activated! Tested ${playerSuccessfulCashouts.length} cashout points. Favorite cashout target: ${favoriteCashoutPoint}x. Charging intercepts for next 11 rounds.`);
     }
+
+    // Check if Special 49x feature triggers: when loss >= 10% and cooldown timer has elapsed
+    const lossAmount = sessionEntryBalance - currentBalance;
+    const lossPercent = sessionEntryBalance > 0 ? (lossAmount / sessionEntryBalance) : 0;
+    const hasLostOver10Percent = (lossPercent >= 0.10);
+
+    if (hasLostOver10Percent && roundsSinceLast49x >= specialCooldownThreshold) {
+      // Apply 97% occurrence rate roll
+      const triggers97Percent = Math.random() < 0.97;
+      if (triggers97Percent) {
+        isSpecial49xRound = true;
+        roundsSinceLast49x = 0; // Reset cooldown count
+        specialCooldownThreshold = Math.floor(Math.random() * 6) + 33; // Randomize next cooldown target between [33, 38]
+        console.log(`[SPECIAL FEATURE CHECK] INSTANT TRIGGER SUCCESS! Loss of ${lossAmount} THB (${(lossPercent * 100).toFixed(1)}%). 49X APPLIED (97% chance roll succeeded) - Cooldown reset to: ${specialCooldownThreshold} rounds.`);
+      } else {
+        roundsSinceLast49x = 0; // Reset cooldown anyway to preserve cycle rhythm
+        specialCooldownThreshold = Math.floor(Math.random() * 6) + 33; // Randomize next cycle
+        console.log(`[SPECIAL FEATURE CHECK] Player lost >= 10% (${(lossPercent * 100).toFixed(1)}%) and cooldown elapsed, but 97% occurrence rate roll MISSED (3% bad luck). Cycle reset to: ${specialCooldownThreshold} rounds.`);
+      }
+    } else if (hasLostOver10Percent) {
+      console.log(`[SPECIAL FEATURE CHECK] Player lost >= 10% (${(lossPercent * 100).toFixed(1)}%), but 49x is on COOLDOWN. Cooldown state: ${roundsSinceLast49x}/${specialCooldownThreshold} rounds.`);
+    }
+
+    // Branching decisions for target crash point
+    if (isSpecial49xRound) {
+      // Special Rule: Force aircraft to rocket up to exactly 49.00x multiplier immediately!
+      targetCrashPoint = 49.00;
+      console.log(`[SPECIAL FEATURE ACTIVE] 🚀 Rocket boosted to fly to exactly ${targetCrashPoint}x! Let players get a massive recovery!`);
+    } else if (backendRoundCounter === 1) {
+      // Rule: First Game Force [1.08x - 1.10x] 100% chance
+      targetCrashPoint = parseFloat((1.08 + Math.random() * (1.10 - 1.08)).toFixed(2));
+      console.log(`[GAME ENGINE] Round 1 Force-Crash Profile: ${targetCrashPoint}x`);
+    } else if (cooldownRoundsRemaining > 0) {
+      // Rule: Cooldown Phase (3-6 rounds) following any crash > 6.50x
+      cooldownRoundsRemaining -= 1;
+      const skewRoll = Math.random();
+      if (skewRoll < 0.80) {
+        // 80% chance of 1.06x - 1.20x (Heavily biased/skewed as requested)
+        targetCrashPoint = parseFloat((1.06 + Math.random() * (1.20 - 1.06)).toFixed(2));
+      } else {
+        // 20% chance of 1.21x - 2.00x (Full bound is 1.06 - 2.00x)
+        targetCrashPoint = parseFloat((1.21 + Math.random() * (2.00 - 1.21)).toFixed(2));
+      }
+      console.log(`[GAME ENGINE] Cooldown Active (Rounds remaining: ${cooldownRoundsRemaining}): ${targetCrashPoint}x`);
+    } else if (isNearCapitalTrap) {
+      // Rule: Near Capital Trap [1.01x - 1.15x] (55% chance when balance in bounds [850, 1038])
+      targetCrashPoint = parseFloat((1.01 + Math.random() * 0.14).toFixed(2));
+      console.log(`[GAME ENGINE] Near Capital Trap Triggered: ${targetCrashPoint}x`);
+    } else if (trapRoundsRemaining > 0) {
+      // Rule: 11-round AI Trap (Alternating pattern)
+      const isTrapRoundActive = (trapRoundsRemaining % 2 !== 0);
+      trapRoundsRemaining -= 1;
+
+      if (isTrapRoundActive) {
+        const interceptOffset = 0.05 + Math.random() * 0.15; // 0.05 to 0.20 below
+        targetCrashPoint = parseFloat(Math.max(1.03, favoriteCashoutPoint - interceptOffset).toFixed(2));
+        console.log(`[GAME ENGINE] AI Preempt Trap: Exploding at ${targetCrashPoint}x (Intercept user favourite: ${favoriteCashoutPoint}x)`);
+      } else {
+        targetCrashPoint = getStandardDistributionCrashPoint();
+        console.log(`[GAME ENGINE] AI Trap Alternation Off-Round Standard Multiplier: ${targetCrashPoint}x`);
+      }
+    } else {
+      // Rule: Standard RTP/House Edge Distribution
+      targetCrashPoint = getStandardDistributionCrashPoint();
+      console.log(`[GAME ENGINE] Standard Gameplay Multiplier: ${targetCrashPoint}x`);
+    }
+
+    // Universal Cooldown arming if crash point exceeds 6.50x (including jackpot, superjackpot, or 49x)
+    if (targetCrashPoint > 6.50) {
+      cooldownRoundsRemaining = Math.floor(Math.random() * 4) + 3; // Choose 3, 4, 5, or 6
+      console.log(`[GAME ENGINE] Multiplier > 6.50x detected! Armed Cooldown for next ${cooldownRoundsRemaining} games.`);
+    }
+
+    const isJackpotRound = (targetCrashPoint >= 6.51 && targetCrashPoint <= 10.00);
+    const isSuperJackpotRound = (targetCrashPoint >= 10.01 && targetCrashPoint <= 13.00);
 
     // Set variable for next round protection
     lastCrashPointWasLow = (targetCrashPoint < 1.18);
 
-    // Format boundaries (clamping adjusted up to 35.00x for super jackpot rounds)
-    targetCrashPoint = parseFloat(Math.max(1.01, Math.min(35.00, targetCrashPoint)).toFixed(2));
+    // Format boundaries: Cap standard at 13.00, or allow up to 49.00 for special rounds
+    const maxClamp = isSpecial49xRound ? 49.00 : 13.00;
+    targetCrashPoint = parseFloat(Math.max(1.01, Math.min(maxClamp, targetCrashPoint)).toFixed(2));
 
     // Console log monitoring
-    console.log(`[GAME ENGINE] Round: ${backendRoundCounter} | Mod100: ${currentModuloIndex}/100 | Mod23: ${currentModuloIndex23}/23 (Target: ${superJackpotRoundsInCurrent23}) | Target Multiplier: ${targetCrashPoint}x${isNearCapitalTrap ? ' (TRAP ACTIVE)' : ''}${isSuperJackpotRound && !isNearCapitalTrap ? ' (SUPER JACKPOT)' : ''}${isJackpotRound && !isNearCapitalTrap ? ' (JACKPOT)' : ''}`);
+    console.log(`[GAME ENGINE] Round: ${backendRoundCounter} | Target Multiplier: ${targetCrashPoint}x${isNearCapitalTrap ? ' (TRAP ACTIVE)' : ''}${isSuperJackpotRound ? ' (SUPER JACKPOT)' : ''}${isJackpotRound ? ' (JACKPOT)' : ''}${isSpecial49xRound ? ' (SPECIAL 49X ACTIVE)' : ''}`);
 
     const secureRoundCommit = integrityEngine.makeNewRound();
     // Inject backend calculated math outcomes as supreme oracle override
@@ -789,6 +927,7 @@ async function runSecurityFullstackServer() {
       crashPointOverride: targetCrashPoint, // Pass backend computed crash point to frontend
       isJackpotRound,
       isSuperJackpotRound,
+      isSpecial49xRound,
       currentCycleRoundNum: currentModuloIndex,
       isNearCapitalTrap,
       hint: "Valid server hash generated. Salt precommitted."
