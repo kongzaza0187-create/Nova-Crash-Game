@@ -896,35 +896,30 @@ async function runSecurityFullstackServer() {
       // Roll 40% House Edge / 60% RTP
       const mainRoll = Math.random();
       if (mainRoll < 0.40) {
-        // House Edge Phase (Strict 40%): low-capped crash points [1.01x - 1.15x]
-        return parseFloat((1.01 + Math.random() * 0.14).toFixed(2));
+        // House Edge Phase (Strict 40%): low-capped crash points [1.01x - 1.25x]
+        return parseFloat((1.01 + Math.random() * 0.24).toFixed(2));
       } else {
-        // RTP Phase (Strict 60%)
+        // RTP Phase (Strict 60%): Nicely distributed from 1.35x up to 3.50x primarily, and occasionally higher
         const rtpRoll = Math.random();
-        // Since Group D occupies exactly 1 of the 30 RTP rounds (~3.3% of the RTP phase),
-        // we distribute the remaining 29 RTP rounds (~96.7% of RTP phase) among Groups A, B, and C
-        // matching the requested ratio 40:25:20
-        if (rtpRoll < 0.471) {
-          // Group A (40% relative chance of RTP Phase): [1.40x - 3.00x]
-          // Sub-split to guarantee a beautiful uniform spread across three distinct sub-brackets
-          // and eliminate any low-end clustering near 1.50x, while maintaining profitable house edges.
+        if (rtpRoll < 0.65) {
+          // Group A (65% relative chance of RTP Phase): Beautifully spread across [1.35x - 3.50x]
           const groupASubRoll = Math.random();
           if (groupASubRoll < 0.33) {
-            // Lower bracket: [1.40x - 1.95x]
-            return parseFloat((1.40 + Math.random() * 0.55).toFixed(2));
+            // Lower bracket: [1.35x - 2.00x]
+            return parseFloat((1.35 + Math.random() * 0.65).toFixed(2));
           } else if (groupASubRoll < 0.66) {
-            // Mid bracket: [2.00x - 2.45x]
-            return parseFloat((2.00 + Math.random() * 0.45).toFixed(2));
+            // Mid bracket: [2.01x - 2.75x]
+            return parseFloat((2.01 + Math.random() * 0.74).toFixed(2));
           } else {
-            // High bracket: [2.50x - 3.00x]
-            return parseFloat((2.50 + Math.random() * 0.50).toFixed(2));
+            // High bracket: [2.76x - 3.50x]
+            return parseFloat((2.76 + Math.random() * 0.74).toFixed(2));
           }
-        } else if (rtpRoll < 0.765) {
-          // Group B (25% relative chance of RTP Phase): [3.50x - 6.50x]
-          return parseFloat((3.50 + Math.random() * (6.50 - 3.50)).toFixed(2));
+        } else if (rtpRoll < 0.85) {
+          // Group B (20% relative chance of RTP Phase): [3.51x - 7.50x]
+          return parseFloat((3.51 + Math.random() * (7.50 - 3.51)).toFixed(2));
         } else {
-          // Group C (20% relative chance of RTP Phase): [6.51x - 10.00x]
-          return parseFloat((6.51 + Math.random() * (10.00 - 6.51)).toFixed(2));
+          // Group C (15% relative chance of RTP Phase): [7.51x - 12.00x]
+          return parseFloat((7.51 + Math.random() * (12.00 - 7.51)).toFixed(2));
         }
       }
     };
@@ -991,18 +986,30 @@ async function runSecurityFullstackServer() {
       }
       console.log(`[GAME ENGINE] Cooldown Active (Rounds remaining: ${cooldownRoundsRemaining}): ${targetCrashPoint}x`);
     } else if (isNearCapitalTrap) {
-      // Rule: Near Capital Trap [1.01x - 1.15x] (55% chance when balance in bounds [850, 1038])
-      targetCrashPoint = parseFloat((1.01 + Math.random() * 0.14).toFixed(2));
-      console.log(`[GAME ENGINE] Near Capital Trap Triggered: ${targetCrashPoint}x`);
+      // Rule: Near Capital Trap [1.01x - 1.15x] (only 45% chance to load a severe low trap; 55% chance to bypass and spread beautiful 1.00x-3.50x)
+      const trapRoll = Math.random();
+      if (trapRoll < 0.45) {
+        targetCrashPoint = parseFloat((1.01 + Math.random() * 0.14).toFixed(2));
+        console.log(`[GAME ENGINE] Near Capital Trap Triggered (45% Trap Chance SUCCESS): ${targetCrashPoint}x`);
+      } else {
+        targetCrashPoint = parseFloat((1.00 + Math.random() * 2.50).toFixed(2));
+        console.log(`[GAME ENGINE] Near Capital Trap BYPASSED: Standard spread RNG 1.00x-3.50x active: ${targetCrashPoint}x`);
+      }
     } else if (trapRoundsRemaining > 0) {
       // Rule: 11-round AI Trap (Alternating pattern)
       const isTrapRoundActive = (trapRoundsRemaining % 2 !== 0);
       trapRoundsRemaining -= 1;
 
       if (isTrapRoundActive) {
-        const interceptOffset = 0.05 + Math.random() * 0.15; // 0.05 to 0.20 below
-        targetCrashPoint = parseFloat(Math.max(1.03, favoriteCashoutPoint - interceptOffset).toFixed(2));
-        console.log(`[GAME ENGINE] AI Preempt Trap: Exploding at ${targetCrashPoint}x (Intercept user favourite: ${favoriteCashoutPoint}x)`);
+        const trapRoll = Math.random();
+        if (trapRoll < 0.45) { // 45% chance to trap front-explosion
+          const interceptOffset = 0.05 + Math.random() * 0.15; // 0.05 to 0.20 below
+          targetCrashPoint = parseFloat(Math.max(1.03, favoriteCashoutPoint - interceptOffset).toFixed(2));
+          console.log(`[GAME ENGINE] AI Preempt Trap (45% Trap Chance SUCCESS): Exploding at ${targetCrashPoint}x (Intercept user favourite: ${favoriteCashoutPoint}x)`);
+        } else { // 55% chance to bypass and spread beautiful 1.00x-3.50x
+          targetCrashPoint = parseFloat((1.00 + Math.random() * 2.50).toFixed(2));
+          console.log(`[GAME ENGINE] AI Preempt Trap BYPASSED: Standard spread RNG 1.00x-3.50x active: ${targetCrashPoint}x`);
+        }
       } else {
         targetCrashPoint = getStandardDistributionCrashPoint();
         console.log(`[GAME ENGINE] AI Trap Alternation Off-Round Standard Multiplier: ${targetCrashPoint}x`);

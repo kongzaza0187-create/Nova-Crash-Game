@@ -26,20 +26,10 @@ export class SkyRushEngine {
   }
 
   /**
-   * 1. Asymmetric 3-Tiered Fuel Tax Engine (F_tax) in THB
-   * Tier 1: Bet < 1,000 THB -> 2.5% fuel tax fee
-   * Tier 2: Bet >= 1,000 and < 10,000 THB -> 3.0% fuel tax fee
-   * Tier 3: Bet >= 10,000 THB -> 4.0% fuel tax fee (exploits Whales)
+   * 1. 3.5% flat commission fee for all bet amounts from 30 THB to 1,000,000 THB.
    */
   public processAsymmetricTax(bet: BetSlip): number {
-    let taxRate = 0.025; // Tier 1 (2.5%)
-
-    if (bet.betAmountTHB >= 10000) {
-      taxRate = 0.04; // Tier 3 (4.0%)
-    } else if (bet.betAmountTHB >= 1000) {
-      taxRate = 0.03; // Tier 2 (3.0%)
-    }
-
+    const taxRate = 0.035; // Flat 3.5% commission fee
     const fuelTaxAmount = bet.betAmountTHB * taxRate;
     const roundedTax = Math.floor(fuelTaxAmount * 100) / 100; // Truncate fractional sub-Satang
     

@@ -135,6 +135,7 @@ export default function App() {
   const [sessionRoundCounter, setSessionRoundCounter] = useState<number>(0);
   const [fakeTargetRound, setFakeTargetRound] = useState<number>(19);
   const [recalibrationCount, setRecalibrationCount] = useState<number>(0);
+  const [aiAccuracy, setAiAccuracy] = useState<number>(() => parseFloat((69 + Math.random() * 6).toFixed(1)));
   const [backendAiInsights, setBackendAiInsights] = useState<{
     totalAnalyzed: number;
     averageCashoutPoint: number;
@@ -344,6 +345,7 @@ export default function App() {
           if (typeof data.recalibrationCount === "number") {
             setRecalibrationCount(data.recalibrationCount);
           }
+          setAiAccuracy(parseFloat((69 + Math.random() * 6).toFixed(1)));
           setIsAiCalculating(true);
           setAiPrediction(null);
           setTimeout(() => {
@@ -1144,7 +1146,7 @@ export default function App() {
               <span className="font-bold text-purple-200">AI Super Predictor:</span>
             </div>
             <span className="md:hidden text-[8px] bg-purple-500/10 text-purple-300 border border-purple-500/20 rounded px-1.5 py-0.5 font-bold shrink-0">
-              98.7% Acc
+              {aiAccuracy}% Acc
             </span>
           </div>
           
@@ -1191,7 +1193,7 @@ export default function App() {
                 </span>
               )}
               <span className="hidden md:inline-block text-[8px] bg-purple-500/10 text-purple-300 border border-purple-500/20 rounded px-1.5 py-0.5 font-bold shrink-0">
-                98.7% Acc
+                {aiAccuracy}% Acc
               </span>
             </div>
           )}
@@ -1400,11 +1402,11 @@ export default function App() {
                     </div>
 
                     <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex flex-col gap-1">
-                      <span className="text-[9px] text-slate-400 uppercase tracking-widest font-black">Cumulative Fuel Tax</span>
+                      <span className="text-[9px] text-slate-400 uppercase tracking-widest font-black">Commission Fee (3.5%)</span>
                       <span className="text-sm font-black text-rose-50">
                         {accumulatedFuelTax.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-400">THB</span>
                       </span>
-                      <span className="text-[8px] text-slate-500 mt-1 leading-none font-sans">Tiered fees committed at t = 0s</span>
+                      <span className="text-[8px] text-slate-500 mt-1 leading-none font-sans">Flat 3.5% fee committed at t = 0s</span>
                     </div>
 
                     <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex flex-col gap-1">
