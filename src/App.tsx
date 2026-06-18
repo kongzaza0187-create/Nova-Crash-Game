@@ -115,7 +115,7 @@ export default function App() {
   const [isMuted, setIsMuted] = useState<boolean>(false);
 
   // ACTUARIAL GAME ECONOMY ARCHITECTURE STATES & METRICS
-  const [engineMode, setEngineMode] = useState<"NORMAL" | "RECOVERY" | "MARTINGALE_OVERRIDE">("NORMAL");
+  const [engineMode, setEngineMode] = useState<string>("NORMAL");
   const [accumulatedFuelTax, setAccumulatedFuelTax] = useState<number>(0);
   const [accumulatedFractionSweep, setAccumulatedFractionSweep] = useState<number>(0);
   const [targetMarginBreachedManual, setTargetMarginBreachedManual] = useState<boolean>(false);
@@ -123,6 +123,25 @@ export default function App() {
   const [consecutiveUserDoubles, setConsecutiveUserDoubles] = useState<number>(0);
   const [lastCombinedBet, setLastCombinedBet] = useState<number>(0);
   const [lastRoundResultWasLoss, setLastRoundResultWasLoss] = useState<boolean>(false);
+
+  // REAL-TIME BACKEND INTEGRATION STATES & REFS
+  const [currentRoundIsJackpot, setCurrentRoundIsJackpot] = useState<boolean>(false);
+  const [cycleRoundNum, setCycleRoundNum] = useState<number>(1);
+  const [backendAiInsights, setBackendAiInsights] = useState<{
+    totalAnalyzed: number;
+    averageCashoutPoint: number;
+    predictedPeakRiskPoint: number;
+    targetRtpPercent: number;
+    houseEdgePercent: number;
+    jackpotCyclesCount: string;
+    jackpotsScheduledThisCycle: number[];
+  } | null>(null);
+
+  const nextRoundDataRef = useRef<{
+    crashPoint: number;
+    isJackpotRound: boolean;
+    currentCycleRoundNum: number;
+  } | null>(null);
 
   // Cashback system state in React
   const [cashbackPopup, setCashbackPopup] = useState<{
@@ -170,6 +189,18 @@ export default function App() {
   useEffect(() => {
     multiplierRef.current = multiplier;
   }, [multiplier]);
+
+  // AUTOMATIC PREDICTIVE CYCLE PRE-FETCH ON WAITING TRANSITION OR CLIENT STARTUP
+  useEffect(() => {
+    if (roundState === "WAITING") {
+      preFetchNextRoundFromBackend();
+    }
+  }, [roundState]);
+
+  // Initial insights fetch at app load
+  useEffect(() => {
+    fetchAiInsightsFromBackend();
+  }, []);
 
   // Splash and pre-game background hardware evaluation cycle (3 seconds duration)
   useEffect(() => {
@@ -271,6 +302,55 @@ export default function App() {
     };
   }, []);
 
+  // REAL-TIME BACKEND INTEGRATION METHODS
+  const preFetchNextRoundFromBackend = async () => {
+    try {
+      const response = await fetch("/api/security/round/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" }
+      });
+      if (response.ok) {
+        const data = await response.json();
+        if (data && typeof data.crashPointOverride === "number") {
+          nextRoundDataRef.current = {
+            crashPoint: data.crashPointOverride,
+            isJackpotRound: data.isJackpotRound || false,
+            currentCycleRoundNum: data.currentCycleRoundNum || 1
+          };
+          fetchAiInsightsFromBackend();
+          return;
+        }
+      }
+    } catch (err) {
+      console.warn("Backend pre commitment offline, falling back to local client seed engine.");
+    }
+    nextRoundDataRef.current = null; // Fallback to local
+  };
+
+  const fetchAiInsightsFromBackend = async () => {
+    try {
+      const response = await fetch("/api/security/ai/insights");
+      if (response.ok) {
+        const data = await response.json();
+        setBackendAiInsights(data);
+      }
+    } catch (err) {
+      console.error("Failed to fetch backend AI insights", err);
+    }
+  };
+
+  const logPlayerCashoutToBackend = async (multiplier: number) => {
+    try {
+      await fetch("/api/security/ai/cashout-metric", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ multiplierCashed: multiplier })
+      });
+    } catch (err) {
+      // Fail silently for offline robustness
+    }
+  };
+
   // Audio mute sync
   const toggleMute = () => {
     const nextMuted = audioManager.toggleMute();
@@ -285,6 +365,19 @@ export default function App() {
 
   // Pre-calculations for generating random crash targets under Server-Authoritative Math specs
   const generateNewCrashPoint = (isAbuseDirect: boolean) => {
+    // If we have securely generated a crash target from the backend, inject it as the master source of truth
+    if (nextRoundDataRef.current && typeof nextRoundDataRef.current.crashPoint === "number") {
+      const backendVal = nextRoundDataRef.current.crashPoint;
+      setCurrentRoundIsJackpot(nextRoundDataRef.current.isJackpotRound);
+      setCycleRoundNum(nextRoundDataRef.current.currentCycleRoundNum);
+      
+      // Clear for the next round
+      nextRoundDataRef.current = null;
+      setEngineMode(isAbuseDirect ? "MARTINGALE_OVERRIDE" : "SERVER_ORACLE_AI");
+      return backendVal;
+    }
+
+    // Otherwise, execute the classic local state system fallback
     let totalRealLiabilityTHB = 0;
     if (betLeft.isPlaced) totalRealLiabilityTHB += betLeft.amount;
     if (betRight.isPlaced) totalRealLiabilityTHB += betRight.amount;
@@ -303,6 +396,7 @@ export default function App() {
       activeEntitiesCount
     );
 
+    setCurrentRoundIsJackpot(false);
     setEngineMode(result.mode);
     return result.multiplier;
   };
@@ -423,6 +517,8 @@ export default function App() {
       winAmount: payout,
     }));
 
+    logPlayerCashoutToBackend(curMultiplier);
+
     // Log stats
     setUserStats((prev) => ({
       ...prev,
@@ -465,6 +561,8 @@ export default function App() {
       cashedOutMultiplier: curMultiplier,
       winAmount: payout,
     }));
+
+    logPlayerCashoutToBackend(curMultiplier);
 
     // Log stats
     setUserStats((prev) => ({
@@ -632,6 +730,8 @@ export default function App() {
               winAmount: payout,
             }));
 
+            logPlayerCashoutToBackend(betLeft.autoCashOutMultiplier);
+
             // Stats
             setUserStats((prev) => ({
               ...prev,
@@ -672,6 +772,8 @@ export default function App() {
               cashedOutMultiplier: betRight.autoCashOutMultiplier,
               winAmount: payout,
             }));
+
+            logPlayerCashoutToBackend(betRight.autoCashOutMultiplier);
 
             // Stats
             setUserStats((prev) => ({
@@ -985,6 +1087,8 @@ export default function App() {
             ))}
           </div>
         </div>
+
+
 
         {/* Dashboard Panels Split */}
         <div className="flex-1 flex flex-col lg:flex-row gap-4 min-h-0">

