@@ -58,6 +58,7 @@ const AVATAR_COLORS = [
 const AVATAR_SEEDS = ["A", "B", "K", "Y", "P", "S", "M", "T", "G", "R", "W", "X", "Z", "H", "F"];
 
 export default function App() {
+  const sessionIdRef = useRef<string>(Math.random().toString(36).substring(2, 15));
   const [roundState, setRoundState] = useState<RoundState>("WAITING");
   const [multiplier, setMultiplier] = useState<number>(1.00);
   const [countdown, setCountdown] = useState<number>(5.0);
@@ -127,6 +128,13 @@ export default function App() {
   // REAL-TIME BACKEND INTEGRATION STATES & REFS
   const [currentRoundIsJackpot, setCurrentRoundIsJackpot] = useState<boolean>(false);
   const [cycleRoundNum, setCycleRoundNum] = useState<number>(1);
+  const [globalRoundNum, setGlobalRoundNum] = useState<number>(0);
+  const [nextSpecialRoundNum, setNextSpecialRoundNum] = useState<number>(33);
+  const [aiPrediction, setAiPrediction] = useState<number | null>(null);
+  const [isAiCalculating, setIsAiCalculating] = useState<boolean>(false);
+  const [sessionRoundCounter, setSessionRoundCounter] = useState<number>(0);
+  const [fakeTargetRound, setFakeTargetRound] = useState<number>(19);
+  const [recalibrationCount, setRecalibrationCount] = useState<number>(0);
   const [backendAiInsights, setBackendAiInsights] = useState<{
     totalAnalyzed: number;
     averageCashoutPoint: number;
@@ -308,7 +316,10 @@ export default function App() {
       const response = await fetch("/api/security/round/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentBalance: balance })
+        body: JSON.stringify({ 
+          currentBalance: balance,
+          sessionId: sessionIdRef.current 
+        })
       });
       if (response.ok) {
         const data = await response.json();
@@ -318,6 +329,31 @@ export default function App() {
             isJackpotRound: data.isJackpotRound || false,
             currentCycleRoundNum: data.currentCycleRoundNum || 1
           };
+          if (typeof data.globalRoundNum === "number") {
+            setGlobalRoundNum(data.globalRoundNum);
+          }
+          if (typeof data.nextSpecialRoundNum === "number") {
+            setNextSpecialRoundNum(data.nextSpecialRoundNum);
+          }
+          if (typeof data.sessionRoundCounter === "number") {
+            setSessionRoundCounter(data.sessionRoundCounter);
+          }
+          if (typeof data.fakeTargetRound === "number") {
+            setFakeTargetRound(data.fakeTargetRound);
+          }
+          if (typeof data.recalibrationCount === "number") {
+            setRecalibrationCount(data.recalibrationCount);
+          }
+          setIsAiCalculating(true);
+          setAiPrediction(null);
+          setTimeout(() => {
+            if (typeof data.aiPrediction === "number") {
+              setAiPrediction(data.aiPrediction);
+            } else {
+              setAiPrediction(parseFloat((Math.random() * (12.0 - 1.2) + 1.2).toFixed(2)));
+            }
+            setIsAiCalculating(false);
+          }, 1800);
           fetchAiInsightsFromBackend();
           return;
         }
@@ -1066,11 +1102,11 @@ export default function App() {
       <main className="flex-1 max-w-7xl mx-auto w-full p-4 flex flex-col gap-4 min-h-0">
         
         {/* Horizontal scrollbar of past round coefficient payouts */}
-        <div className="flex items-center gap-2 overflow-x-auto py-1 px-1 select-none scrollbar-none" id="history_bar">
+        <div className="flex items-center gap-2 overflow-x-auto py-2.5 px-3.5 bg-slate-950/40 border border-slate-900/60 rounded-xl select-none scrollbar-none w-full" id="history_bar">
           <div className="text-[9.5px] text-slate-500 font-bold uppercase tracking-wider shrink-0 flex items-center gap-1 font-mono">
             <TrendingUp size={11} className="text-slate-500" /> History:
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             {history.map((item, idx) => (
               <span
                 key={item.id}
@@ -1087,6 +1123,67 @@ export default function App() {
               </span>
             ))}
           </div>
+        </div>
+
+        {/* Real-time Deceptive AI Prediction Module (Jackpot Deception Engine) */}
+        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-purple-950/20 border border-purple-500/15 rounded-xl p-3 text-[10px] font-mono select-none w-full" id="ai_jackpot_deception_hud" title="AI high-precision Super Jackpot RNG analysis.">
+          <div className="flex items-center justify-between gap-2 md:justify-start">
+            <div className="flex items-center gap-1.5 text-slate-300">
+              <Sparkles size={12} className="text-purple-400 animate-pulse shrink-0" />
+              <span className="font-bold text-purple-200">AI Super Predictor:</span>
+            </div>
+            <span className="md:hidden text-[8px] bg-purple-500/10 text-purple-300 border border-purple-500/20 rounded px-1.5 py-0.5 font-bold shrink-0">
+              98.7% Acc
+            </span>
+          </div>
+          
+          <div className="hidden md:block h-4 w-px bg-slate-800" />
+
+          <div className="flex-1 flex flex-row items-center justify-start gap-4 md:gap-6 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400">ตาเซสชันสถิติ:</span>
+              <span className="text-slate-200 font-mono font-bold bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
+                {sessionRoundCounter > 0 ? sessionRoundCounter : 1}
+              </span>
+            </div>
+
+            <div className="h-3.5 w-px bg-slate-850" />
+
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400">โมเดลทำนาย 49.00x ในรอบที่:</span>
+              <span className="text-yellow-400 font-black tracking-tight animate-pulse bg-yellow-950/40 px-1.5 py-0.5 rounded border border-yellow-500/20">
+                {fakeTargetRound}
+              </span>
+            </div>
+          </div>
+
+          <div className="hidden md:block h-4 w-px bg-slate-800" />
+
+          {isAiCalculating ? (
+            <div className="flex items-center gap-1.5 justify-end mt-1 md:mt-0">
+              <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-ping shrink-0" />
+              <span className="text-yellow-400 font-bold">ปรับปรุงโมเดลวิเคราะห์เบี่ยงเบนถัดไป...</span>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between md:justify-end gap-3 mt-1 md:mt-0">
+              {fakeTargetRound - sessionRoundCounter <= 2 && fakeTargetRound - sessionRoundCounter > 0 ? (
+                <span className="text-rose-400 font-black uppercase tracking-wider animate-bounce bg-rose-950/45 px-2 py-0.5 rounded border border-rose-500/30">
+                  🔥 คำแนะนำ: จัดหนัก ALL-IN! โอกาส 49.00x ชนะสูงสุง!
+                </span>
+              ) : recalibrationCount > 0 && sessionRoundCounter === 1 ? (
+                <span className="text-cyan-400 font-semibold italic">
+                  🔄 ปรับจูนเสถียรแล้ว เปลี่ยนฐานสมมุติฐานถัดไปสำเร็จ...
+                </span>
+              ) : (
+                <span className="text-emerald-400 font-medium">
+                  🟢 แนวโน้ม: สถิติรางวัลใหญ่อยู่ในเฟสคลื่นสะสมกำลัง
+                </span>
+              )}
+              <span className="hidden md:inline-block text-[8px] bg-purple-500/10 text-purple-300 border border-purple-500/20 rounded px-1.5 py-0.5 font-bold shrink-0">
+                98.7% Acc
+              </span>
+            </div>
+          )}
         </div>
 
 

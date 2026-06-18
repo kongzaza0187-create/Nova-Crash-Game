@@ -66,7 +66,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
     audioManager.playClick();
     setBetAmount((prev) => {
       const next = Math.floor(prev / 2);
-      return next < 100 ? 100 : next;
+      return next < 30 ? 30 : next;
     });
   };
 
@@ -116,8 +116,8 @@ export const BetPanel: React.FC<BetPanelProps> = ({
           label: "BET",
           sub: `${betAmount.toLocaleString()} THB`,
           bgColor: "bg-emerald-600 hover:bg-emerald-500",
-          action: () => onPlaceBet(Math.max(100, Math.min(1000000, betAmount))),
-          disabled: userBalance < betAmount || betAmount < 100,
+          action: () => onPlaceBet(Math.max(30, Math.min(1000000, betAmount))),
+          disabled: userBalance < betAmount || betAmount < 30,
         };
       }
     } else if (roundState === "FLYING") {
@@ -162,8 +162,8 @@ export const BetPanel: React.FC<BetPanelProps> = ({
             label: "BET ON NEXT ROUND",
             sub: `${betAmount.toLocaleString()} THB`,
             bgColor: "bg-emerald-700/50 hover:bg-emerald-700/80 text-emerald-100",
-            action: () => onPlaceBet(Math.max(100, Math.min(1000000, betAmount))),
-            disabled: userBalance < betAmount || betAmount < 100,
+            action: () => onPlaceBet(Math.max(30, Math.min(1000000, betAmount))),
+            disabled: userBalance < betAmount || betAmount < 30,
           };
         }
       }
@@ -225,9 +225,9 @@ export const BetPanel: React.FC<BetPanelProps> = ({
       </div>
 
       {/* Main Betting Area */}
-      <div className="flex gap-3 h-24 items-center">
+      <div className="flex gap-3 min-h-[110px] h-auto items-stretch">
         {/* Stake Counter input */}
-        <div className="flex-1 flex flex-col justify-between h-full bg-slate-900 rounded-lg p-2.5 min-w-[130px]">
+        <div className="flex-1 flex flex-col justify-between bg-slate-900 rounded-lg p-2.5 min-w-[130px] gap-2">
           <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">
             Amount THB
           </div>
@@ -255,8 +255,8 @@ export const BetPanel: React.FC<BetPanelProps> = ({
                 }
               }}
               onBlur={() => {
-                if (betAmount < 100) {
-                  setBetAmount(100);
+                if (betAmount < 30) {
+                  setBetAmount(30);
                 }
               }}
               className="w-full text-center bg-transparent border-none text-white text-base font-bold focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-70"
@@ -274,19 +274,19 @@ export const BetPanel: React.FC<BetPanelProps> = ({
 
           {/* Quick numbers */}
           <div className="grid grid-cols-4 gap-1">
-            {[100, 200, 500, 1000].map((val) => (
+            {[30, 50, 100, 200, 500, 1000, 5000, 10000].map((val) => (
               <button
                 key={val}
                 disabled={isLocked}
                 onClick={() => setFixedAmount(val)}
-                className={`text-[9.5px] font-bold py-0.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed ${
+                className={`text-[9px] font-bold py-0.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed ${
                   betAmount === val
-                    ? "bg-rose-900/30 text-rose-400 border border-rose-500/20"
+                    ? "bg-rose-900/40 text-rose-400 border border-rose-500/30"
                     : "bg-slate-850 text-slate-400 hover:text-white"
                 }`}
                 id={`preset_btn_${id}_${val}`}
               >
-                {val}
+                {val >= 1000 ? `${(val / 1000).toFixed(0)}k` : val}
               </button>
             ))}
           </div>
@@ -296,13 +296,13 @@ export const BetPanel: React.FC<BetPanelProps> = ({
         <button
           onClick={btn.action}
           disabled={btn.disabled}
-          className={`flex-1 h-full rounded-xl flex flex-col items-center justify-center transition select-none ${
+          className={`w-28 md:w-36 rounded-xl flex flex-col items-center justify-center transition select-none ${
             btn.bgColor
           } ${btn.disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer active:scale-95 shadow-md shadow-emerald-950/20"}`}
           id={`bet_action_btn_${id}`}
         >
-          <div className="text-sm font-black tracking-wide leading-tight">{btn.label}</div>
-          {btn.sub && <div className="text-xs opacity-90 mt-0.5 font-mono">{btn.sub}</div>}
+          <div className="text-xs md:text-sm font-black tracking-wide leading-tight text-center px-1">{btn.label}</div>
+          {btn.sub && <div className="text-[10px] md:text-xs opacity-90 mt-1 font-mono text-center px-1">{btn.sub}</div>}
         </button>
       </div>
 

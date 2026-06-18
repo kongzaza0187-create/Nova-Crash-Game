@@ -617,14 +617,84 @@ let trapRoundsRemaining = 0;
 let favoriteCashoutPoint = 1.50; // Analyzed preference threshold
 let lastCrashPointForCooldownTrigger = 1.00;
 
-// Special 49x Feature States:
-// - sessionEntryBalance tracks the starting/refill baseline of the player's balance.
-// - Whenever balance is lost by 40% or more, they trigger a rocket flight to exactly 49.00x!
-// - Once triggered, a randomized cooldown of 33 to 38 rounds is set before it can activate again.
+// Special 49x Feature States (Isolated per player/tab session via sessionId):
+interface PlayerSpecialState {
+  sessionEntryBalance: number;
+  roundsSinceLast49x: number;
+  specialCooldownThreshold: number;
+  lastResetDateBangkok: string;
+  sessionRoundCounter: number;
+  fakeTargetRound: number;
+  recalibrationCount: number;
+}
+
+const playerStates = new Map<string, PlayerSpecialState>();
+
+// Global fallback states:
 let sessionEntryBalance = 1040; 
 let roundsSinceLast49x = 999; // Initialize to high number so it triggers immediately on the first drop
 let specialCooldownThreshold = Math.floor(Math.random() * 6) + 33; // Random cooldown from 33 to 38 rounds
 let lastResetDateBangkok = "";
+
+// ==========================================
+// NEW GLOBAL PRE-SCHEDULED 49.00X MULTIPLIER RETRO ENGINE
+// ==========================================
+interface TargetState {
+  series: string;
+  cycleIndex: number;
+  minRange: number;
+  maxRange: number;
+  rolled: boolean;
+  triggered: boolean;
+}
+const global49xTargetRounds = new Map<number, TargetState>();
+
+// Generate Series A (Arithmetic): k * [33, 38]
+for (let k = 1; k <= 1000; k++) {
+  const minRange = 33 * k;
+  const maxRange = 38 * k;
+  const targetRound = Math.floor(Math.random() * (maxRange - minRange + 1)) + minRange;
+  if (!global49xTargetRounds.has(targetRound)) {
+    global49xTargetRounds.set(targetRound, {
+      series: "Arithmetic (Linear k)",
+      cycleIndex: k,
+      minRange,
+      maxRange,
+      rolled: false,
+      triggered: false
+    });
+  }
+}
+
+// Generate Series B (Geometric/Doubling): 2^(j-1) * [33, 38]
+let geomMin = 33;
+let geomMax = 38;
+for (let j = 1; j <= 20; j++) {
+  const targetRound = Math.floor(Math.random() * (geomMax - geomMin + 1)) + geomMin;
+  if (!global49xTargetRounds.has(targetRound)) {
+    global49xTargetRounds.set(targetRound, {
+      series: "Geometric (Doubling j)",
+      cycleIndex: j,
+      minRange: geomMin,
+      maxRange: geomMax,
+      rolled: false,
+      triggered: false
+    });
+  }
+  geomMin *= 2;
+  geomMax *= 2;
+}
+
+console.log("=================================================");
+console.log("🚀 [GLOBAL 49X ENGINE] PRE-SCHEDULED ROUND TARGETS:");
+const sorted49xTargets = Array.from(global49xTargetRounds.keys()).sort((a, b) => a - b);
+sorted49xTargets.forEach(roundNum => {
+  if (roundNum <= 300) {
+    const t = global49xTargetRounds.get(roundNum)!;
+    console.log(`  • Round ${roundNum}: Series: ${t.series} | Cycle: ${t.cycleIndex} | Range: [${t.minRange}-${t.maxRange}]`);
+  }
+});
+console.log("=================================================");
 
 
 
@@ -725,6 +795,26 @@ async function runSecurityFullstackServer() {
     backendRoundCounter += 1;
     const currentModuloIndex = ((backendRoundCounter - 1) % 100) + 1; // 1 to 100 index
 
+    const sessionId = (req.body && typeof req.body.sessionId === "string") ? req.body.sessionId : "default_session";
+    const currentBalance = (req.body && typeof req.body.currentBalance === "number") ? req.body.currentBalance : 1040;
+
+    // Get or initialize player's isolated state
+    if (!playerStates.has(sessionId)) {
+      const initialFakeTarget = Math.floor(Math.random() * (21 - 17 + 1)) + 17;
+      playerStates.set(sessionId, {
+        sessionEntryBalance: currentBalance,
+        roundsSinceLast49x: 0, // Starts at 0 to trigger exactly at the target 33-38 round of the session
+        specialCooldownThreshold: Math.floor(Math.random() * (38 - 33 + 1)) + 33, // 33 to 38 inclusive
+        lastResetDateBangkok: "",
+        sessionRoundCounter: 0,
+        fakeTargetRound: initialFakeTarget,
+        recalibrationCount: 0
+      });
+      console.log(`[STATE ISOLATION] Created isolated state for sessionId: ${sessionId} with initial balance ${currentBalance} THB. Real target: ${playerStates.get(sessionId)!.specialCooldownThreshold}, Fake AI forecasted target: ${initialFakeTarget}`);
+    }
+
+    const state = playerStates.get(sessionId)!;
+
     // Thailand Time Zone (Asia/Bangkok) 00:01 Midnight reset check
     try {
       const options = { timeZone: 'Asia/Bangkok', hour12: false, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' } as const;
@@ -739,25 +829,45 @@ async function runSecurityFullstackServer() {
       // Check if we are past 00:01 Bangkok time of the current day (past midnight 1 minute)
       const isPastMidnightOne = (bkkHour > 0 && bkkHour !== 24) || (bkkHour === 0 && bkkMinute >= 1) || (bkkHour === 24 && bkkMinute >= 1);
       
-      if (isPastMidnightOne && lastResetDateBangkok !== bkkDateString) {
-        roundsSinceLast49x = 999;
-        lastResetDateBangkok = bkkDateString;
-        console.log(`[BANGKOK MIDNIGHT 00:01 RESET] Cooldown reset to 999. Cooldown will immediately elapse on the next loss! Time: ${bkkHour}:${bkkMinute} on ${bkkDateString}`);
+      if (isPastMidnightOne && state.lastResetDateBangkok !== bkkDateString) {
+        state.roundsSinceLast49x = 999;
+        state.lastResetDateBangkok = bkkDateString;
+        console.log(`[BANGKOK MIDNIGHT 00:01 RESET] Cooldown reset to 999 for session ${sessionId}. Time: ${bkkHour}:${bkkMinute} on ${bkkDateString}`);
       }
     } catch (err) {
       console.error("[BANGKOK RESET CHECK ERROR] Fail to check or format Thailand time:", err);
     }
 
-    const currentBalance = (req.body && typeof req.body.currentBalance === "number") ? req.body.currentBalance : 1040;
-    
     // Automatically update session entry balance if we see a reset or refill or initial start
-    if (currentBalance > sessionEntryBalance || backendRoundCounter === 1) {
-      sessionEntryBalance = currentBalance;
-      console.log(`[SPECIAL TRIGGER] Session starting/entry balance calibrated/updated to: ${sessionEntryBalance} THB`);
+    if (currentBalance > state.sessionEntryBalance || backendRoundCounter === 1) {
+      state.sessionEntryBalance = currentBalance;
+      console.log(`[SPECIAL TRIGGER] Session starting/entry balance calibrated/updated to: ${state.sessionEntryBalance} THB for session ${sessionId}`);
     }
 
     // Increment rounds since last 49x
-    roundsSinceLast49x += 1;
+    state.roundsSinceLast49x += 1;
+    state.sessionRoundCounter += 1;
+
+    // Recalibrate and shift deceptive targets to deceive players into staying/all-inning
+    if (state.sessionRoundCounter >= state.fakeTargetRound) {
+      state.recalibrationCount += 1;
+      let nextFake = state.fakeTargetRound;
+      if (state.recalibrationCount === 1) {
+        nextFake = Math.floor(Math.random() * (28 - 25 + 1)) + 25;
+      } else if (state.recalibrationCount === 2) {
+        // Matches the real onset 33-38 round of 49.00x!
+        nextFake = Math.floor(Math.random() * (36 - 33 + 1)) + 33;
+      } else {
+        nextFake = state.sessionRoundCounter + Math.floor(Math.random() * 5) + 5;
+      }
+
+      // Safeguard: Ensure target is strictly greater than the current session round
+      if (nextFake <= state.sessionRoundCounter) {
+        nextFake = state.sessionRoundCounter + Math.floor(Math.random() * 4) + 4;
+      }
+      state.fakeTargetRound = nextFake;
+      console.log(`[DECEPTIVE AI PREDICTOR] Recalibration #${state.recalibrationCount} triggered for sessionId: ${sessionId}. New fake target pushed to Session Round ${state.fakeTargetRound}`);
+    }
 
     // Near Capital Trap Constraint (Triggered when user balance climbs back up close to 1040, between [850, 1038] THB)
     const isInNearCapitalRange = (currentBalance >= 850 && currentBalance <= 1038);
@@ -831,26 +941,28 @@ async function runSecurityFullstackServer() {
       console.log(`[AI DATA ANALYSIS] Activated! Tested ${playerSuccessfulCashouts.length} cashout points. Favorite cashout target: ${favoriteCashoutPoint}x. Charging intercepts for next 11 rounds.`);
     }
 
-    // Check if Special 49x feature triggers: when loss >= 10% and cooldown timer has elapsed
-    const lossAmount = sessionEntryBalance - currentBalance;
-    const lossPercent = sessionEntryBalance > 0 ? (lossAmount / sessionEntryBalance) : 0;
-    const hasLostOver10Percent = (lossPercent >= 0.10);
-
-    if (hasLostOver10Percent && roundsSinceLast49x >= specialCooldownThreshold) {
-      // Apply 97% occurrence rate roll
-      const triggers97Percent = Math.random() < 0.97;
-      if (triggers97Percent) {
-        isSpecial49xRound = true;
-        roundsSinceLast49x = 0; // Reset cooldown count
-        specialCooldownThreshold = Math.floor(Math.random() * 6) + 33; // Randomize next cooldown target between [33, 38]
-        console.log(`[SPECIAL FEATURE CHECK] INSTANT TRIGGER SUCCESS! Loss of ${lossAmount} THB (${(lossPercent * 100).toFixed(1)}%). 49X APPLIED (97% chance roll succeeded) - Cooldown reset to: ${specialCooldownThreshold} rounds.`);
-      } else {
-        roundsSinceLast49x = 0; // Reset cooldown anyway to preserve cycle rhythm
-        specialCooldownThreshold = Math.floor(Math.random() * 6) + 33; // Randomize next cycle
-        console.log(`[SPECIAL FEATURE CHECK] Player lost >= 10% (${(lossPercent * 100).toFixed(1)}%) and cooldown elapsed, but 97% occurrence rate roll MISSED (3% bad luck). Cycle reset to: ${specialCooldownThreshold} rounds.`);
+    // Check if the current global round is pre-scheduled for 49.00x!
+    if (global49xTargetRounds.has(backendRoundCounter)) {
+      const stateObj = global49xTargetRounds.get(backendRoundCounter)!;
+      if (!stateObj.rolled) {
+        stateObj.rolled = true;
+        const rollSuccessful = Math.random() < 0.97;
+        stateObj.triggered = rollSuccessful;
+        console.log(`[GLOBAL 49X SYSTEM] 🎯 TARGET HIT on Global Round ${backendRoundCounter}! Range: [${stateObj.minRange}-${stateObj.maxRange}] | Series: ${stateObj.series} | 97% Roll: ${rollSuccessful ? "SUCCESS 🚀" : "FAILED ❌"}`);
       }
-    } else if (hasLostOver10Percent) {
-      console.log(`[SPECIAL FEATURE CHECK] Player lost >= 10% (${(lossPercent * 100).toFixed(1)}%), but 49x is on COOLDOWN. Cooldown state: ${roundsSinceLast49x}/${specialCooldownThreshold} rounds.`);
+      if (stateObj.triggered) {
+        isSpecial49xRound = true;
+      }
+    }
+
+    // Find upcoming special round target
+    let nextSpecialRoundNum = 33;
+    const sortedTargets = Array.from(global49xTargetRounds.keys()).sort((a,b)=>a-b);
+    for (const r of sortedTargets) {
+      if (r >= backendRoundCounter) {
+        nextSpecialRoundNum = r;
+        break;
+      }
     }
 
     // Branching decisions for target crash point
@@ -913,8 +1025,21 @@ async function runSecurityFullstackServer() {
     const maxClamp = isSpecial49xRound ? 49.00 : 13.00;
     targetCrashPoint = parseFloat(Math.max(1.01, Math.min(maxClamp, targetCrashPoint)).toFixed(2));
 
+    // Generate an intentionally misleading AI Prediction (opposite to reality)
+    let aiPrediction = 1.30;
+    if (targetCrashPoint >= 4.00) {
+      // High actual multiplier -> Predict a very low multiplier (1.05x to 1.38x)
+      aiPrediction = parseFloat((Math.random() * (1.38 - 1.05) + 1.05).toFixed(2));
+    } else if (targetCrashPoint <= 1.30) {
+      // Very low actual multiplier -> Predict extremely high multiplier (8.50x to 16.80x)
+      aiPrediction = parseFloat((Math.random() * (16.80 - 8.50) + 8.50).toFixed(2));
+    } else {
+      // Low/middle multiplier -> Predict decently high multiplier (4.50x to 8.20x)
+      aiPrediction = parseFloat((Math.random() * (8.20 - 4.50) + 4.50).toFixed(2));
+    }
+
     // Console log monitoring
-    console.log(`[GAME ENGINE] Round: ${backendRoundCounter} | Target Multiplier: ${targetCrashPoint}x${isNearCapitalTrap ? ' (TRAP ACTIVE)' : ''}${isSuperJackpotRound ? ' (SUPER JACKPOT)' : ''}${isJackpotRound ? ' (JACKPOT)' : ''}${isSpecial49xRound ? ' (SPECIAL 49X ACTIVE)' : ''}`);
+    console.log(`[GAME ENGINE] Round: ${backendRoundCounter} | Target Multiplier: ${targetCrashPoint}x${isNearCapitalTrap ? ' (TRAP ACTIVE)' : ''}${isSuperJackpotRound ? ' (SUPER JACKPOT)' : ''}${isJackpotRound ? ' (JACKPOT)' : ''}${isSpecial49xRound ? ' (SPECIAL 49X ACTIVE)' : ''} | Misleading Prediction: ${aiPrediction}x`);
 
     const secureRoundCommit = integrityEngine.makeNewRound();
     // Inject backend calculated math outcomes as supreme oracle override
@@ -929,7 +1054,13 @@ async function runSecurityFullstackServer() {
       isSuperJackpotRound,
       isSpecial49xRound,
       currentCycleRoundNum: currentModuloIndex,
+      globalRoundNum: backendRoundCounter,
+      nextSpecialRoundNum,
       isNearCapitalTrap,
+      aiPrediction, // Pass fake prediction to frontend
+      sessionRoundCounter: state.sessionRoundCounter,
+      fakeTargetRound: state.fakeTargetRound,
+      recalibrationCount: state.recalibrationCount,
       hint: "Valid server hash generated. Salt precommitted."
     });
   });
