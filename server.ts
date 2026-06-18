@@ -747,7 +747,10 @@ async function runSecurityFullstackServer() {
       } else {
         // RTP Phase: 60% probability of standard fly. Preemptively explode before average player exit point to protect cash flow
         const randomSwing = Math.random();
-        if (randomSwing < 0.70) {
+        if (randomSwing < 0.10) {
+          // 10% extra chance for standard rounds to soar to between 3.50x and 5.00x via RNG
+          targetCrashPoint = parseFloat((3.50 + Math.random() * (5.00 - 3.50)).toFixed(2));
+        } else if (randomSwing < 0.70) {
           // Normal flying up to predictions limit
           targetCrashPoint = parseFloat((1.10 + Math.random() * (predictedEarlyCrashMultiplier - 1.10)).toFixed(2));
         } else {
