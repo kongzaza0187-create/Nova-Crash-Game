@@ -728,34 +728,36 @@ async function runSecurityFullstackServer() {
       // Rule: Exactly 2 times in every 100 rounds, RNG schedules premium outcomes [14.00x - 20.00x]
       targetCrashPoint = parseFloat((14.00 + Math.random() * (20.00 - 14.00)).toFixed(2));
     } else {
-      // Primary Rule: 60% RTP and 40% House Edge.
-      // To satisfy 60% RTP, the house should absorb 40% of standard round investments.
-      // Additionally, AI triggers a preemptive crash right before the predicted peak cashout point of the players.
-      const currentAverage = cashoutHistory.length > 0 
-        ? cashoutHistory.reduce((s, v) => s + v, 0) / cashoutHistory.length 
-        : 1.50;
-      
-      const predictedEarlyCrashMultiplier = parseFloat(Math.max(1.02, currentAverage - 0.05).toFixed(2));
-
-      // Standard RTP Distribution Math (RTP = 60%, House Edge = 40%)
-      // 40% of games are hard-capped immediately into instant-loss or severe early limits [1.00x - 1.20x]
-      // 60% of games are allowed to fly organically, limited by the AI preemptive crash limit to defend margins
-      const rtpRoll = Math.random();
-      if (rtpRoll < 0.40) {
-        // House Edge phase: 40% probability of low crash points [1.00x - 1.15x]
-        targetCrashPoint = parseFloat((1.00 + Math.random() * 0.15).toFixed(2));
+      // 23% Chance Boost Rule: Bypasses AI predictive early crash analysis completely to fly up to [3.50x - 5.00x]
+      if (Math.random() < 0.23) {
+        targetCrashPoint = parseFloat((3.50 + Math.random() * (5.00 - 3.50)).toFixed(2));
       } else {
-        // RTP Phase: 60% probability of standard fly. Preemptively explode before average player exit point to protect cash flow
-        const randomSwing = Math.random();
-        if (randomSwing < 0.10) {
-          // 10% extra chance for standard rounds to soar to between 3.50x and 5.00x via RNG
-          targetCrashPoint = parseFloat((3.50 + Math.random() * (5.00 - 3.50)).toFixed(2));
-        } else if (randomSwing < 0.70) {
-          // Normal flying up to predictions limit
-          targetCrashPoint = parseFloat((1.10 + Math.random() * (predictedEarlyCrashMultiplier - 1.10)).toFixed(2));
+        // Primary Rule: 60% RTP and 40% House Edge.
+        // To satisfy 60% RTP, the house should absorb 40% of standard round investments.
+        // Additionally, AI triggers a preemptive crash right before the predicted peak cashout point of the players.
+        const currentAverage = cashoutHistory.length > 0 
+          ? cashoutHistory.reduce((s, v) => s + v, 0) / cashoutHistory.length 
+          : 1.50;
+        
+        const predictedEarlyCrashMultiplier = parseFloat(Math.max(1.02, currentAverage - 0.05).toFixed(2));
+
+        // Standard RTP Distribution Math (RTP = 60%, House Edge = 40%)
+        // 40% of games are hard-capped immediately into instant-loss or severe early limits [1.00x - 1.20x]
+        // 60% of games are allowed to fly organically, limited by the AI preemptive crash limit to defend margins
+        const rtpRoll = Math.random();
+        if (rtpRoll < 0.40) {
+          // House Edge phase: 40% probability of low crash points [1.00x - 1.15x]
+          targetCrashPoint = parseFloat((1.00 + Math.random() * 0.15).toFixed(2));
         } else {
-          // Extra volatility offset to keep it realistic
-          targetCrashPoint = parseFloat((1.15 + Math.random() * 2.5).toFixed(2));
+          // RTP Phase: 60% probability of standard fly. Preemptively explode before average player exit point to protect cash flow
+          const randomSwing = Math.random();
+          if (randomSwing < 0.70) {
+            // Normal flying up to predictions limit
+            targetCrashPoint = parseFloat((1.10 + Math.random() * (predictedEarlyCrashMultiplier - 1.10)).toFixed(2));
+          } else {
+            // Extra volatility offset to keep it realistic
+            targetCrashPoint = parseFloat((1.15 + Math.random() * 2.5).toFixed(2));
+          }
         }
       }
     }
