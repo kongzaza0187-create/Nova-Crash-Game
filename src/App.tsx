@@ -64,7 +64,7 @@ export default function App() {
   const maxCountdown = 5.0;
 
   // Wallet
-  const [balance, setBalance] = useState<number>(9999999);
+  const [balance, setBalance] = useState<number>(1040);
   const [showRefillNotify, setShowRefillNotify] = useState<boolean>(false);
 
   // Stats
@@ -434,7 +434,7 @@ export default function App() {
   // Reset demo credits
   const refillCredits = () => {
     audioManager.playCashOut();
-    setBalance(9999999);
+    setBalance(1040);
     setShowRefillNotify(true);
     setTimeout(() => setShowRefillNotify(false), 3000);
   };
