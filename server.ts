@@ -602,6 +602,7 @@ function generateJackpotIndexes(): number[] {
 }
 
 let jackpotRoundsInCurrent100: number[] = generateJackpotIndexes();
+let superJackpotRoundsInCurrent23: number = Math.floor(Math.random() * 23) + 1; // Exactly 1 round in every 23-round block (1 to 23 index)
 const cashoutHistory: number[] = [1.35, 1.50, 1.25, 1.45, 1.60, 1.85, 1.40, 1.55, 1.30, 1.70]; // Seed initial realistic figures
 
 // ==========================================
@@ -663,7 +664,9 @@ async function runSecurityFullstackServer() {
         targetRtpPercent: 60,
         houseEdgePercent: 40,
         jackpotCyclesCount: `${backendRoundCounter % 100}/100`,
-        jackpotsScheduledThisCycle: jackpotRoundsInCurrent100
+        jackpotsScheduledThisCycle: jackpotRoundsInCurrent100,
+        superJackpotCyclesCount: `${backendRoundCounter % 23}/23`,
+        superJackpotScheduledTarget: superJackpotRoundsInCurrent23
       });
     }
 
@@ -685,7 +688,9 @@ async function runSecurityFullstackServer() {
       targetRtpPercent: 60,
       houseEdgePercent: 40,
       jackpotCyclesCount: `${backendRoundCounter % 100}/100`,
-      jackpotsScheduledThisCycle: jackpotRoundsInCurrent100
+      jackpotsScheduledThisCycle: jackpotRoundsInCurrent100,
+      superJackpotCyclesCount: `${backendRoundCounter % 23}/23`,
+      superJackpotScheduledTarget: superJackpotRoundsInCurrent23
     });
   });
 
@@ -704,10 +709,22 @@ async function runSecurityFullstackServer() {
       isJackpotRound = true;
     }
 
+    const currentModuloIndex23 = ((backendRoundCounter - 1) % 23) + 1; // 1 to 23 index
+
+    // Regenerate super jackpot index for the new 23-round block
+    if (currentModuloIndex23 === 1 && backendRoundCounter > 1) {
+      superJackpotRoundsInCurrent23 = Math.floor(Math.random() * 23) + 1;
+    }
+
+    const isSuperJackpotRound = (currentModuloIndex23 === superJackpotRoundsInCurrent23);
+
     // Securely randomize crash points mimicking house-authorized profiles
     let targetCrashPoint = 1.00;
 
-    if (isJackpotRound) {
+    if (isSuperJackpotRound) {
+      // Super Jackpot Rule: Exactly 1 time in every 23 rounds, RNG schedules super premium outcome [24.00x - 30.00x]
+      targetCrashPoint = parseFloat((24.00 + Math.random() * (30.00 - 24.00)).toFixed(2));
+    } else if (isJackpotRound) {
       // Rule: Exactly 2 times in every 100 rounds, RNG schedules premium outcomes [14.00x - 20.00x]
       targetCrashPoint = parseFloat((14.00 + Math.random() * (20.00 - 14.00)).toFixed(2));
     } else {
@@ -740,8 +757,11 @@ async function runSecurityFullstackServer() {
       }
     }
 
-    // Format boundaries
-    targetCrashPoint = parseFloat(Math.max(1.01, Math.min(20.00, targetCrashPoint)).toFixed(2));
+    // Format boundaries (clamping adjusted up to 35.00x for super jackpot rounds)
+    targetCrashPoint = parseFloat(Math.max(1.01, Math.min(35.00, targetCrashPoint)).toFixed(2));
+
+    // Console log monitoring
+    console.log(`[GAME ENGINE] Round: ${backendRoundCounter} | Mod100: ${currentModuloIndex}/100 | Mod23: ${currentModuloIndex23}/23 (Target: ${superJackpotRoundsInCurrent23}) | Target Multiplier: ${targetCrashPoint}x${isSuperJackpotRound ? ' (SUPER JACKPOT)' : ''}${isJackpotRound ? ' (JACKPOT)' : ''}`);
 
     const secureRoundCommit = integrityEngine.makeNewRound();
     // Inject backend calculated math outcomes as supreme oracle override
@@ -753,6 +773,7 @@ async function runSecurityFullstackServer() {
       active: true,
       crashPointOverride: targetCrashPoint, // Pass backend computed crash point to frontend
       isJackpotRound,
+      isSuperJackpotRound,
       currentCycleRoundNum: currentModuloIndex,
       hint: "Valid server hash generated. Salt precommitted."
     });
