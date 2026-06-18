@@ -65,7 +65,7 @@ export default function App() {
   const maxCountdown = 5.0;
 
   // Wallet
-  const [balance, setBalance] = useState<number>(1040);
+  const [balance, setBalance] = useState<number>(104000);
   const [showRefillNotify, setShowRefillNotify] = useState<boolean>(false);
 
   // Stats
@@ -283,7 +283,7 @@ export default function App() {
           validationFailures.push("Secure Seed Generator Missing");
         } else {
           try {
-            const testResultPt = generateNewCrashPoint(false);
+            const testResultPt = generateNewCrashPoint(false, true);
             if (typeof testResultPt !== "number" || isNaN(testResultPt) || testResultPt < 1.00) {
               validationFailures.push("Seed Math Constraint Infringements");
             }
@@ -401,9 +401,9 @@ export default function App() {
   };
 
   // Pre-calculations for generating random crash targets under Server-Authoritative Math specs
-  const generateNewCrashPoint = (isAbuseDirect: boolean) => {
+  const generateNewCrashPoint = (isAbuseDirect: boolean, isMock?: boolean) => {
     // If we have securely generated a crash target from the backend, inject it as the master source of truth
-    if (nextRoundDataRef.current && typeof nextRoundDataRef.current.crashPoint === "number") {
+    if (!isMock && nextRoundDataRef.current && typeof nextRoundDataRef.current.crashPoint === "number") {
       const backendVal = nextRoundDataRef.current.crashPoint;
       setCurrentRoundIsJackpot(nextRoundDataRef.current.isJackpotRound);
       setCycleRoundNum(nextRoundDataRef.current.currentCycleRoundNum);
@@ -471,7 +471,7 @@ export default function App() {
   // Reset demo credits
   const refillCredits = () => {
     audioManager.playCashOut();
-    setBalance(1040);
+    setBalance(104000);
     setShowRefillNotify(true);
     setTimeout(() => setShowRefillNotify(false), 3000);
   };
@@ -704,6 +704,7 @@ export default function App() {
             crashMultiplierRef.current = crashTgt;
             setRoundState("FLYING");
             audioManager.startEngine();
+            audioManager.playJetTakeoff();
             return 0;
           }
           return parseFloat((prev - 0.1).toFixed(1));
@@ -961,7 +962,7 @@ export default function App() {
     >
       {/* Top Banner Header */}
       <header className="bg-slate-950/80 border-b border-slate-900/60 p-4 sticky top-0 z-10 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto flex items-center justify-between">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row gap-3 sm:gap-4 items-center justify-between">
           
           {/* Logo Name & Icon */}
           <div className="flex items-center gap-3">
@@ -1024,25 +1025,35 @@ export default function App() {
             </button>
 
             {/* Demo wallet credit container */}
-            <div className="flex items-center bg-slate-900 border border-slate-850 py-1 px-3 rounded-xl gap-2.5">
-              <div className="text-rose-400 p-0.5">
-                <Wallet size={16} />
+            <div className="relative flex items-center bg-gradient-to-r from-amber-950/20 via-slate-900 to-emerald-950/15 border border-amber-500/30 hover:border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.12)] py-1.5 px-3.5 sm:px-4 rounded-xl gap-2.5 sm:gap-3 transition-all duration-300 group select-none" id="vip_wallet_glowing_hud">
+              <span className="absolute inset-0 bg-gradient-to-r from-amber-500/5 to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl pointer-events-none" />
+              
+              <div className="relative flex items-center justify-center bg-amber-500/10 p-1.5 rounded-lg text-amber-400 group-hover:scale-105 transition-transform duration-300 shadow-[0_0_10px_rgba(245,158,11,0.15)] shrink-0">
+                <Wallet size={16} className="animate-pulse" />
               </div>
-              <div className="flex flex-col items-end leading-tight">
-                <span className="text-[9px] text-slate-500 uppercase tracking-widest font-mono">Balance</span>
-                <span className="text-xs font-black text-rose-50 font-mono tracking-tight">
-                  {balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-[10.5px] text-slate-400">THB</span>
+              
+              <div className="flex flex-col items-end leading-tight shrink-0">
+                <span className="text-[7.5px] sm:text-[8px] text-amber-500/90 font-black tracking-widest font-mono flex items-center gap-1 uppercase">
+                  <span className="w-1 h-1 rounded-full bg-emerald-400 animate-ping inline-block" /> Balance
+                </span>
+                <span className="text-xs sm:text-sm md:text-base font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-200 to-emerald-300 font-mono tracking-tight drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">
+                  {balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-[10px] text-slate-400 font-normal">THB</span>
                 </span>
               </div>
               
-              {/* Quick refill action button */}
+              <div className="hidden sm:block h-6 w-px bg-slate-800" />
+
+              {/* Quick refill action button with gold badges */}
               <button
                 onClick={refillCredits}
-                className="p-1 hover:bg-slate-850 rounded-lg text-slate-400 hover:text-rose-400 transition"
-                title="Refill Credits / เติมเครดิต"
+                className="p-1 px-1.5 bg-slate-950 hover:bg-amber-950/40 rounded border border-slate-900 hover:border-amber-500/30 transition-all duration-300 shrink-0"
+                title="Refill Credits to 104,000 / เติมเครดิตเป็น 104,000 THB"
                 id="refill_credits_btn"
               >
-                <RotateCcw size={13} />
+                <div className="flex items-center gap-1 text-[8.5px] font-bold font-mono">
+                  <RotateCcw size={9} className="transition-transform group-hover:rotate-180 duration-500 text-amber-500" />
+                  <span className="text-amber-500 tracking-tight">REFILL</span>
+                </div>
               </button>
             </div>
             

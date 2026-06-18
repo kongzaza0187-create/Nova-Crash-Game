@@ -300,6 +300,88 @@ class AudioManager {
     }
   }
 
+  // SOUND 2.1 : Premium Jet Takeoff / Afterburner exhaust boom with compressor whining
+  public playJetTakeoff() {
+    this.init();
+    if (!this.ctx || this.isMuted) return;
+    if (this.ctx.state === "suspended") {
+      this.ctx.resume();
+    }
+
+    try {
+      const now = this.ctx.currentTime;
+
+      // 1. High Velocity Noise Block simulating massive gas expansion
+      const bufferSize = this.ctx.sampleRate * 2.2; 
+      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) {
+        data[i] = Math.random() * 2 - 1;
+      }
+      const noise = this.ctx.createBufferSource();
+      noise.buffer = buffer;
+
+      const noiseFilter = this.ctx.createBiquadFilter();
+      noiseFilter.type = "bandpass";
+      noiseFilter.frequency.setValueAtTime(280, now);
+      noiseFilter.frequency.exponentialRampToValueAtTime(1500, now + 1.1);
+      noiseFilter.Q.setValueAtTime(2.5, now);
+
+      const noiseGain = this.ctx.createGain();
+      noiseGain.gain.setValueAtTime(0.01, now);
+      noiseGain.gain.exponentialRampToValueAtTime(0.50, now + 0.3); // Quick massive fuel ignition!
+      noiseGain.gain.exponentialRampToValueAtTime(0.14, now + 1.4); // Sustain
+      noiseGain.gain.linearRampToValueAtTime(0.001, now + 2.1); // Smooth decay
+
+      noise.connect(noiseFilter);
+      noiseFilter.connect(noiseGain);
+      noiseGain.connect(this.ctx.destination);
+      noise.start(now);
+
+      // 2. High frequency turbine whining compressor
+      const osc = this.ctx.createOscillator();
+      const oscGain = this.ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(750, now);
+      osc.frequency.exponentialRampToValueAtTime(2200, now + 1.1);
+
+      oscGain.gain.setValueAtTime(0.001, now);
+      oscGain.gain.exponentialRampToValueAtTime(0.20, now + 0.35); // Dramatic turbine wind up
+      oscGain.gain.exponentialRampToValueAtTime(0.04, now + 1.3);
+      oscGain.gain.linearRampToValueAtTime(0.001, now + 1.9);
+
+      osc.connect(oscGain);
+      oscGain.connect(this.ctx.destination);
+      osc.start(now);
+      osc.stop(now + 2.0);
+
+      // 3. Low frequency sub-woofer rumbling afterburner thruster
+      const lowOsc = this.ctx.createOscillator();
+      const lowGain = this.ctx.createGain();
+      lowOsc.type = "sawtooth";
+      lowOsc.frequency.setValueAtTime(55, now);
+      lowOsc.frequency.linearRampToValueAtTime(100, now + 1.4);
+
+      const lowFilter = this.ctx.createBiquadFilter();
+      lowFilter.type = "lowpass";
+      lowFilter.frequency.setValueAtTime(110, now);
+
+      lowGain.gain.setValueAtTime(0.001, now);
+      lowGain.gain.exponentialRampToValueAtTime(0.40, now + 0.25);
+      lowGain.gain.exponentialRampToValueAtTime(0.06, now + 1.4);
+      lowGain.gain.linearRampToValueAtTime(0.001, now + 1.9);
+
+      lowOsc.connect(lowFilter);
+      lowFilter.connect(lowGain);
+      lowGain.connect(this.ctx.destination);
+      lowOsc.start(now);
+      lowOsc.stop(now + 2.0);
+
+    } catch (e) {
+      console.warn("Could not play jet takeoff turbine audio:", e);
+    }
+  }
+
   public updateEngine(multiplier: number) {
     if (!this.ctx || this.isMuted || !this.engineOsc || !this.engineGain) return;
 
