@@ -722,8 +722,15 @@ export default function App() {
         const elapsed = (Date.now() - startTime) / 1000;
         timeElapsedRef.current = elapsed;
 
-        // Smooth growth curve: starts flat and speeds up
-        const curMultiplier = 1.00 + 0.05 * Math.pow(elapsed, 1.45);
+        // Smooth growth curve: starts flat for the first 3 seconds, then accelerates progressively so high targets (e.g. 49x, 99x) are reached within a reasonable, exciting time.
+        let curMultiplier = 1.00;
+        if (elapsed <= 3) {
+          curMultiplier = 1.00 + 0.05 * Math.pow(elapsed, 1.45);
+        } else {
+          const baseMultiplier = 1.00 + 0.05 * Math.pow(3, 1.45); // ~1.25x
+          const extraTime = elapsed - 3;
+          curMultiplier = baseMultiplier * Math.pow(1.35, extraTime);
+        }
         
         // Critical block: Crash Point reached
         if (curMultiplier >= crashMultiplierRef.current) {

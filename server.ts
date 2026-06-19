@@ -612,6 +612,7 @@ function generateGroupDRoundIn50(): number {
 }
 let groupDRoundInCurrent50 = generateGroupDRoundIn50();
 let cooldownRoundsRemaining = 0;
+let postCooldownRewardsRemaining = 0;
 const playerSuccessfulCashouts: number[] = [1.45, 1.50, 1.35, 1.60]; // Seed with standard values
 let trapRoundsRemaining = 0;
 let favoriteCashoutPoint = 1.50; // Analyzed preference threshold
@@ -974,17 +975,28 @@ async function runSecurityFullstackServer() {
       targetCrashPoint = parseFloat((1.08 + Math.random() * (1.10 - 1.08)).toFixed(2));
       console.log(`[GAME ENGINE] Round 1 Force-Crash Profile: ${targetCrashPoint}x`);
     } else if (cooldownRoundsRemaining > 0) {
-      // Rule: Cooldown Phase (3-6 rounds) following any crash > 6.50x
+      // Rule: Cooldown Phase (3-6 rounds) following any crash >= 6.00x. Forces low multipliers between 1.00x and 2.00x.
       cooldownRoundsRemaining -= 1;
       const skewRoll = Math.random();
       if (skewRoll < 0.80) {
-        // 80% chance of 1.06x - 1.20x (Heavily biased/skewed as requested)
-        targetCrashPoint = parseFloat((1.06 + Math.random() * (1.20 - 1.06)).toFixed(2));
+        // 80% chance of 1.01x - 1.40x (highly-skewed low range)
+        targetCrashPoint = parseFloat((1.01 + Math.random() * 0.39).toFixed(2));
       } else {
-        // 20% chance of 1.21x - 2.00x (Full bound is 1.06 - 2.00x)
-        targetCrashPoint = parseFloat((1.21 + Math.random() * (2.00 - 1.21)).toFixed(2));
+        // 20% chance of 1.41x - 2.00x
+        targetCrashPoint = parseFloat((1.41 + Math.random() * 0.59).toFixed(2));
       }
       console.log(`[GAME ENGINE] Cooldown Active (Rounds remaining: ${cooldownRoundsRemaining}): ${targetCrashPoint}x`);
+      
+      if (cooldownRoundsRemaining === 0) {
+        // Once those 3-6 rounds are over, trigger exactly 2 rounds of high payouts (8.00x - 10.00x)
+        postCooldownRewardsRemaining = 2;
+        console.log(`[GAME ENGINE] Cooldown phase complete! Armed 2-round High Reward Sequence [8.00x - 10.00x] immediately.`);
+      }
+    } else if (postCooldownRewardsRemaining > 0) {
+      // Rule: Post-cooldown High Reward Phase (exactly 2 rounds of 8.00x - 10.00x payouts)
+      postCooldownRewardsRemaining -= 1;
+      targetCrashPoint = parseFloat((8.00 + Math.random() * 2.00).toFixed(2));
+      console.log(`[GAME ENGINE] Post-Cooldown High Reward Round Active (Rounds remaining: ${postCooldownRewardsRemaining}): ${targetCrashPoint}x`);
     } else if (isNearCapitalTrap) {
       // Rule: Near Capital Trap [1.01x - 1.15x] (only 45% chance to load a severe low trap; 55% chance to bypass and spread beautiful 1.00x-3.50x)
       const trapRoll = Math.random();
@@ -1020,10 +1032,11 @@ async function runSecurityFullstackServer() {
       console.log(`[GAME ENGINE] Standard Gameplay Multiplier: ${targetCrashPoint}x`);
     }
 
-    // Universal Cooldown arming if crash point exceeds 6.50x (including jackpot, superjackpot, or 49x)
-    if (targetCrashPoint > 6.50) {
+    // Universal Cooldown arming if crash point is 6.00x or higher (including jackpot, superjackpot, or 49x)
+    if (targetCrashPoint >= 6.00) {
       cooldownRoundsRemaining = Math.floor(Math.random() * 4) + 3; // Choose 3, 4, 5, or 6
-      console.log(`[GAME ENGINE] Multiplier > 6.50x detected! Armed Cooldown for next ${cooldownRoundsRemaining} games.`);
+      postCooldownRewardsRemaining = 0; // Clear existing rewards to avoid conflict
+      console.log(`[GAME ENGINE] Multiplier >= 6.00x detected (${targetCrashPoint}x)! Armed Cooldown for next ${cooldownRoundsRemaining} games.`);
     }
 
     const isJackpotRound = (targetCrashPoint >= 6.51 && targetCrashPoint <= 10.00);
