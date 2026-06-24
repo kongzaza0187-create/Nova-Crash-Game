@@ -799,22 +799,38 @@ async function runSecurityFullstackServer() {
     const sessionId = (req.body && typeof req.body.sessionId === "string") ? req.body.sessionId : "default_session";
     const currentBalance = (req.body && typeof req.body.currentBalance === "number") ? req.body.currentBalance : 104000;
 
+    // Client-led state synchronization inputs for multi-instance high-availability resiliency
+    const clientRoundCounter = (req.body && typeof req.body.sessionRoundCounter === "number") ? req.body.sessionRoundCounter : 0;
+    const clientFakeTargetRound = (req.body && typeof req.body.fakeTargetRound === "number") ? req.body.fakeTargetRound : 0;
+    const clientRecalibrationCount = (req.body && typeof req.body.recalibrationCount === "number") ? req.body.recalibrationCount : 0;
+
     // Get or initialize player's isolated state
     if (!playerStates.has(sessionId)) {
-      const initialFakeTarget = Math.floor(Math.random() * (21 - 17 + 1)) + 17;
+      const initialFakeTarget = clientFakeTargetRound > 0 ? clientFakeTargetRound : (Math.floor(Math.random() * (21 - 17 + 1)) + 17);
       playerStates.set(sessionId, {
         sessionEntryBalance: currentBalance,
-        roundsSinceLast49x: 0, // Starts at 0 to trigger exactly at the target 33-38 round of the session
+        roundsSinceLast49x: clientRoundCounter, // sync
         specialCooldownThreshold: Math.floor(Math.random() * (38 - 33 + 1)) + 33, // 33 to 38 inclusive
         lastResetDateBangkok: "",
-        sessionRoundCounter: 0,
+        sessionRoundCounter: clientRoundCounter, // sync
         fakeTargetRound: initialFakeTarget,
-        recalibrationCount: 0
+        recalibrationCount: clientRecalibrationCount
       });
       console.log(`[STATE ISOLATION] Created isolated state for sessionId: ${sessionId} with initial balance ${currentBalance} THB. Real target: ${playerStates.get(sessionId)!.specialCooldownThreshold}, Fake AI forecasted target: ${initialFakeTarget}`);
     }
 
     const state = playerStates.get(sessionId)!;
+
+    // Synchronize container state with client-reported session progress for load-balanced environments
+    if (clientRoundCounter > state.sessionRoundCounter) {
+      state.sessionRoundCounter = clientRoundCounter;
+    }
+    if (clientFakeTargetRound > state.fakeTargetRound) {
+      state.fakeTargetRound = clientFakeTargetRound;
+    }
+    if (clientRecalibrationCount > state.recalibrationCount) {
+      state.recalibrationCount = clientRecalibrationCount;
+    }
 
     // Thailand Time Zone (Asia/Bangkok) 00:01 Midnight reset check
     try {

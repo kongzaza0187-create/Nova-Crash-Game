@@ -58,7 +58,18 @@ const AVATAR_COLORS = [
 const AVATAR_SEEDS = ["A", "B", "K", "Y", "P", "S", "M", "T", "G", "R", "W", "X", "Z", "H", "F"];
 
 export default function App() {
-  const sessionIdRef = useRef<string>(Math.random().toString(36).substring(2, 15));
+  const sessionIdRef = useRef<string>(
+    (() => {
+      let stored = typeof window !== "undefined" ? localStorage.getItem("skyrush_session_id") : null;
+      if (!stored) {
+        stored = "session_" + Math.random().toString(36).substring(2, 15);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("skyrush_session_id", stored);
+        }
+      }
+      return stored;
+    })()
+  );
   const [roundState, setRoundState] = useState<RoundState>("WAITING");
   const [multiplier, setMultiplier] = useState<number>(1.00);
   const [countdown, setCountdown] = useState<number>(5.0);
@@ -132,9 +143,36 @@ export default function App() {
   const [nextSpecialRoundNum, setNextSpecialRoundNum] = useState<number>(33);
   const [aiPrediction, setAiPrediction] = useState<number | null>(null);
   const [isAiCalculating, setIsAiCalculating] = useState<boolean>(false);
-  const [sessionRoundCounter, setSessionRoundCounter] = useState<number>(0);
-  const [fakeTargetRound, setFakeTargetRound] = useState<number>(19);
-  const [recalibrationCount, setRecalibrationCount] = useState<number>(0);
+  const [sessionRoundCounter, setSessionRoundCounter] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("skyrush_session_round_counter");
+      if (stored) {
+        const parsed = parseInt(stored, 10);
+        if (!isNaN(parsed) && parsed > 0) return parsed;
+      }
+    }
+    return 0;
+  });
+  const [fakeTargetRound, setFakeTargetRound] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("skyrush_fake_target_round");
+      if (stored) {
+        const parsed = parseInt(stored, 10);
+        if (!isNaN(parsed) && parsed > 0) return parsed;
+      }
+    }
+    return 19;
+  });
+  const [recalibrationCount, setRecalibrationCount] = useState<number>(() => {
+    if (typeof window !== "undefined") {
+      const stored = localStorage.getItem("skyrush_recalibration_count");
+      if (stored) {
+        const parsed = parseInt(stored, 10);
+        if (!isNaN(parsed)) return parsed;
+      }
+    }
+    return 0;
+  });
   const [aiAccuracy, setAiAccuracy] = useState<number>(() => parseFloat((69 + Math.random() * 6).toFixed(1)));
   const [backendAiInsights, setBackendAiInsights] = useState<{
     totalAnalyzed: number;
@@ -202,6 +240,14 @@ export default function App() {
   // AUTOMATIC PREDICTIVE CYCLE PRE-FETCH ON WAITING TRANSITION OR CLIENT STARTUP
   useEffect(() => {
     if (roundState === "WAITING") {
+      // Local fallback increment so that the round counter always increases instantly and reliably
+      setSessionRoundCounter((prev) => {
+        const nextVal = prev > 0 ? prev + 1 : 1;
+        if (typeof window !== "undefined") {
+          localStorage.setItem("skyrush_session_round_counter", String(nextVal));
+        }
+        return nextVal;
+      });
       preFetchNextRoundFromBackend();
     }
   }, [roundState]);
@@ -319,7 +365,10 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
           currentBalance: balance,
-          sessionId: sessionIdRef.current 
+          sessionId: sessionIdRef.current,
+          sessionRoundCounter: sessionRoundCounter,
+          fakeTargetRound: fakeTargetRound,
+          recalibrationCount: recalibrationCount
         })
       });
       if (response.ok) {
@@ -338,12 +387,21 @@ export default function App() {
           }
           if (typeof data.sessionRoundCounter === "number") {
             setSessionRoundCounter(data.sessionRoundCounter);
+            if (typeof window !== "undefined") {
+              localStorage.setItem("skyrush_session_round_counter", String(data.sessionRoundCounter));
+            }
           }
           if (typeof data.fakeTargetRound === "number") {
             setFakeTargetRound(data.fakeTargetRound);
+            if (typeof window !== "undefined") {
+              localStorage.setItem("skyrush_fake_target_round", String(data.fakeTargetRound));
+            }
           }
           if (typeof data.recalibrationCount === "number") {
             setRecalibrationCount(data.recalibrationCount);
+            if (typeof window !== "undefined") {
+              localStorage.setItem("skyrush_recalibration_count", String(data.recalibrationCount));
+            }
           }
           setAiAccuracy(parseFloat((69 + Math.random() * 6).toFixed(1)));
           setIsAiCalculating(true);
@@ -1056,7 +1114,7 @@ export default function App() {
               <button
                 onClick={refillCredits}
                 className="p-1 px-1.5 bg-slate-950 hover:bg-amber-950/40 rounded border border-slate-900 hover:border-amber-500/30 transition-all duration-300 shrink-0"
-                title="Refill Credits to 104,000 / เติมเครดิตเป็น 104,000 THB"
+                title="Refill Credits to 104,000 THB"
                 id="refill_credits_btn"
               >
                 <div className="flex items-center gap-1 text-[8.5px] font-bold font-mono">
@@ -1161,7 +1219,7 @@ export default function App() {
 
           <div className="flex-1 flex flex-row items-center justify-start gap-4 md:gap-6 flex-wrap">
             <div className="flex items-center gap-1.5">
-              <span className="text-slate-400">ตาเซสชันสถิติ:</span>
+              <span className="text-slate-400">Session Rounds:</span>
               <span className="text-slate-200 font-mono font-bold bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
                 {sessionRoundCounter > 0 ? sessionRoundCounter : 1}
               </span>
@@ -1170,7 +1228,7 @@ export default function App() {
             <div className="h-3.5 w-px bg-slate-850" />
 
             <div className="flex items-center gap-1.5">
-              <span className="text-slate-400">โมเดลทำนาย 49.00x ในรอบที่:</span>
+              <span className="text-slate-400">AI Predicts 49.00x Round:</span>
               <span className="text-yellow-400 font-black tracking-tight animate-pulse bg-yellow-950/40 px-1.5 py-0.5 rounded border border-yellow-500/20">
                 {fakeTargetRound}
               </span>
@@ -1182,21 +1240,21 @@ export default function App() {
           {isAiCalculating ? (
             <div className="flex items-center gap-1.5 justify-end mt-1 md:mt-0">
               <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-ping shrink-0" />
-              <span className="text-yellow-400 font-bold">ปรับปรุงโมเดลวิเคราะห์เบี่ยงเบนถัดไป...</span>
+              <span className="text-yellow-400 font-bold">Recalibrating predictive model...</span>
             </div>
           ) : (
             <div className="flex items-center justify-between md:justify-end gap-3 mt-1 md:mt-0">
               {fakeTargetRound - sessionRoundCounter <= 2 && fakeTargetRound - sessionRoundCounter > 0 ? (
                 <span className="text-rose-400 font-black uppercase tracking-wider animate-bounce bg-rose-950/45 px-2 py-0.5 rounded border border-rose-500/30">
-                  🔥 คำแนะนำ: จัดหนัก ALL-IN! โอกาส 49.00x ชนะสูงสุง!
+                  🔥 ALERT: High 49.00x probability! Prepare to ALL-IN!
                 </span>
               ) : recalibrationCount > 0 && sessionRoundCounter === 1 ? (
                 <span className="text-cyan-400 font-semibold italic">
-                  🔄 ปรับจูนเสถียรแล้ว เปลี่ยนฐานสมมุติฐานถัดไปสำเร็จ...
+                  🔄 Fine-tuning successful. Calibrated next base target.
                 </span>
               ) : (
                 <span className="text-emerald-400 font-medium">
-                  🟢 แนวโน้ม: สถิติรางวัลใหญ่อยู่ในเฟสคลื่นสะสมกำลัง
+                  🟢 TREND: Large payouts in accumulation wave.
                 </span>
               )}
               <span className="hidden md:inline-block text-[8px] bg-purple-500/10 text-purple-300 border border-purple-500/20 rounded px-1.5 py-0.5 font-bold shrink-0">
