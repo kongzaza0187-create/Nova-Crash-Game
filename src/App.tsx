@@ -550,7 +550,8 @@ export default function App() {
   };
 
   // Placing individual bets with Asymmetric 3-Tiered non-refundable fuel tax fee
-  const placeBetLeft = (amount: number) => {
+  const placeBetLeft = (rawAmount: number) => {
+    const amount = Math.min(30000, Math.max(30, rawAmount));
     const tax = getTaxForWager(amount);
     const totalCost = amount + tax;
     if (balance >= totalCost) {
@@ -563,7 +564,8 @@ export default function App() {
     }
   };
 
-  const placeBetRight = (amount: number) => {
+  const placeBetRight = (rawAmount: number) => {
+    const amount = Math.min(30000, Math.max(30, rawAmount));
     const tax = getTaxForWager(amount);
     const totalCost = amount + tax;
     if (balance >= totalCost) {

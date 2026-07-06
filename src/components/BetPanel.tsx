@@ -58,7 +58,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
     audioManager.playClick();
     setBetAmount((prev) => {
       const next = prev * 2;
-      return next > 1000000 ? 1000000 : next;
+      return next > 30000 ? 30000 : next;
     });
   };
 
@@ -72,7 +72,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
 
   const setFixedAmount = (amt: number) => {
     audioManager.playClick();
-    setBetAmount(Math.min(1000000, amt));
+    setBetAmount(Math.min(30000, amt));
   };
 
   // Safe decimal parsing for auto Cash Out
@@ -116,7 +116,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
           label: "BET",
           sub: `${betAmount.toLocaleString()} THB`,
           bgColor: "bg-emerald-600 hover:bg-emerald-500",
-          action: () => onPlaceBet(Math.max(30, Math.min(1000000, betAmount))),
+          action: () => onPlaceBet(Math.max(30, Math.min(30000, betAmount))),
           disabled: userBalance < betAmount || betAmount < 30,
         };
       }
@@ -162,7 +162,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
             label: "BET ON NEXT ROUND",
             sub: `${betAmount.toLocaleString()} THB`,
             bgColor: "bg-emerald-700/50 hover:bg-emerald-700/80 text-emerald-100",
-            action: () => onPlaceBet(Math.max(30, Math.min(1000000, betAmount))),
+            action: () => onPlaceBet(Math.max(30, Math.min(30000, betAmount))),
             disabled: userBalance < betAmount || betAmount < 30,
           };
         }
@@ -251,7 +251,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
                 if (isNaN(val)) {
                   setBetAmount(0);
                 } else {
-                  setBetAmount(Math.min(1000000, val));
+                  setBetAmount(Math.min(30000, val));
                 }
               }}
               onBlur={() => {
@@ -274,7 +274,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
 
           {/* Quick numbers */}
           <div className="grid grid-cols-4 gap-1">
-            {[30, 50, 100, 200, 500, 1000, 5000, 10000].map((val) => (
+            {[30, 50, 100, 500, 1000, 5000, 10000, 30000].map((val) => (
               <button
                 key={val}
                 disabled={isLocked}
