@@ -76,7 +76,7 @@ export default function App() {
   const maxCountdown = 5.0;
 
   // Wallet
-  const [balance, setBalance] = useState<number>(104000);
+  const [balance, setBalance] = useState<number>(1060000);
   const [showRefillNotify, setShowRefillNotify] = useState<boolean>(false);
 
   // Stats
@@ -531,7 +531,7 @@ export default function App() {
   // Reset demo credits
   const refillCredits = () => {
     audioManager.playCashOut();
-    setBalance(104000);
+    setBalance(1060000);
     setShowRefillNotify(true);
     setTimeout(() => setShowRefillNotify(false), 3000);
   };
@@ -1116,7 +1116,7 @@ export default function App() {
               <button
                 onClick={refillCredits}
                 className="p-1 px-1.5 bg-slate-950 hover:bg-amber-950/40 rounded border border-slate-900 hover:border-amber-500/30 transition-all duration-300 shrink-0"
-                title="Refill Credits to 104,000 THB"
+                title="Refill Credits to 1,060,000 THB"
                 id="refill_credits_btn"
               >
                 <div className="flex items-center gap-1 text-[8.5px] font-bold font-mono">
