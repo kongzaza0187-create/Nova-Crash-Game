@@ -632,7 +632,7 @@ interface PlayerSpecialState {
 const playerStates = new Map<string, PlayerSpecialState>();
 
 // Global fallback states:
-let sessionEntryBalance = 1060000; 
+let sessionEntryBalance = 110000; 
 let roundsSinceLast49x = 999; // Initialize to high number so it triggers immediately on the first drop
 let specialCooldownThreshold = Math.floor(Math.random() * 6) + 33; // Random cooldown from 33 to 38 rounds
 let lastResetDateBangkok = "";
@@ -797,7 +797,7 @@ async function runSecurityFullstackServer() {
     const currentModuloIndex = ((backendRoundCounter - 1) % 100) + 1; // 1 to 100 index
 
     const sessionId = (req.body && typeof req.body.sessionId === "string") ? req.body.sessionId : "default_session";
-    const currentBalance = (req.body && typeof req.body.currentBalance === "number") ? req.body.currentBalance : 1060000;
+    const currentBalance = (req.body && typeof req.body.currentBalance === "number") ? req.body.currentBalance : 110000;
 
     // Client-led state synchronization inputs for multi-instance high-availability resiliency
     const clientRoundCounter = (req.body && typeof req.body.sessionRoundCounter === "number") ? req.body.sessionRoundCounter : 0;
@@ -886,8 +886,8 @@ async function runSecurityFullstackServer() {
       console.log(`[DECEPTIVE AI PREDICTOR] Recalibration #${state.recalibrationCount} triggered for sessionId: ${sessionId}. New fake target pushed to Session Round ${state.fakeTargetRound}`);
     }
 
-    // Near Capital Trap Constraint (Triggered when user balance climbs back up close to 1,060,000, between [850000, 1058000] THB)
-    const isInNearCapitalRange = (currentBalance >= 850000 && currentBalance <= 1058000);
+    // Near Capital Trap Constraint (Triggered when user balance climbs back up close to 110,000, between [85000, 109800] THB)
+    const isInNearCapitalRange = (currentBalance >= 85000 && currentBalance <= 109800);
     const isNearCapitalTrap = isInNearCapitalRange && (Math.random() < 0.55);
 
     // Securely randomize crash points mimicking house-authorized profiles
