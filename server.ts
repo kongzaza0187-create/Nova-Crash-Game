@@ -971,24 +971,27 @@ async function runSecurityFullstackServer() {
         // House Edge Phase (Strict 40%): low-capped crash points [1.01x - 1.25x]
         return parseFloat((1.01 + Math.random() * 0.24).toFixed(2));
       } else {
-        // RTP Phase (Strict 60%): Nicely distributed from 1.35x up to 3.50x primarily, and occasionally higher
+        // RTP Phase (Strict 60%): Nicely distributed from 1.35x up to 4.99x primarily, and occasionally higher
         const rtpRoll = Math.random();
         if (rtpRoll < 0.65) {
-          // Group A (65% relative chance of RTP Phase): Beautifully spread across [1.35x - 3.50x]
+          // Group A (65% relative chance of RTP Phase): Beautifully spread across [1.35x - 4.99x]
           const groupASubRoll = Math.random();
-          if (groupASubRoll < 0.33) {
-            // Lower bracket: [1.35x - 2.00x]
-            return parseFloat((1.35 + Math.random() * 0.65).toFixed(2));
-          } else if (groupASubRoll < 0.66) {
-            // Mid bracket: [2.01x - 2.75x]
-            return parseFloat((2.01 + Math.random() * 0.74).toFixed(2));
+          if (groupASubRoll < 0.25) {
+            // Lower bracket: [1.35x - 1.99x]
+            return parseFloat((1.35 + Math.random() * 0.64).toFixed(2));
+          } else if (groupASubRoll < 0.55) {
+            // Mid bracket (2.xx): [2.00x - 2.99x]
+            return parseFloat((2.00 + Math.random() * 0.99).toFixed(2));
+          } else if (groupASubRoll < 0.80) {
+            // High bracket (3.xx): [3.00x - 3.99x]
+            return parseFloat((3.00 + Math.random() * 0.99).toFixed(2));
           } else {
-            // High bracket: [2.76x - 3.50x]
-            return parseFloat((2.76 + Math.random() * 0.74).toFixed(2));
+            // Peak bracket (4.xx): [4.00x - 4.99x]
+            return parseFloat((4.00 + Math.random() * 0.99).toFixed(2));
           }
         } else if (rtpRoll < 0.85) {
-          // Group B (20% relative chance of RTP Phase): [3.51x - 7.50x]
-          return parseFloat((3.51 + Math.random() * (7.50 - 3.51)).toFixed(2));
+          // Group B (20% relative chance of RTP Phase): [5.00x - 7.50x]
+          return parseFloat((5.00 + Math.random() * (7.50 - 5.00)).toFixed(2));
         } else {
           // Group C (15% relative chance of RTP Phase): [7.51x - 12.00x]
           return parseFloat((7.51 + Math.random() * (12.00 - 7.51)).toFixed(2));
@@ -1084,8 +1087,8 @@ async function runSecurityFullstackServer() {
         targetCrashPoint = parseFloat((1.01 + Math.random() * 0.14).toFixed(2));
         console.log(`[GAME ENGINE] Near Capital Trap Triggered (45% Trap Chance SUCCESS): ${targetCrashPoint}x`);
       } else {
-        targetCrashPoint = parseFloat((1.00 + Math.random() * 2.50).toFixed(2));
-        console.log(`[GAME ENGINE] Near Capital Trap BYPASSED: Standard spread RNG 1.00x-3.50x active: ${targetCrashPoint}x`);
+        targetCrashPoint = parseFloat((1.10 + Math.random() * 3.40).toFixed(2));
+        console.log(`[GAME ENGINE] Near Capital Trap BYPASSED: Standard spread RNG 1.10x-4.50x active: ${targetCrashPoint}x`);
       }
     } else if (trapRoundsRemaining > 0) {
       // Rule: 11-round AI Trap (Alternating pattern)
@@ -1098,9 +1101,9 @@ async function runSecurityFullstackServer() {
           const interceptOffset = 0.05 + Math.random() * 0.15; // 0.05 to 0.20 below
           targetCrashPoint = parseFloat(Math.max(1.03, favoriteCashoutPoint - interceptOffset).toFixed(2));
           console.log(`[GAME ENGINE] AI Preempt Trap (45% Trap Chance SUCCESS): Exploding at ${targetCrashPoint}x (Intercept user favourite: ${favoriteCashoutPoint}x)`);
-        } else { // 55% chance to bypass and spread beautiful 1.00x-3.50x
-          targetCrashPoint = parseFloat((1.00 + Math.random() * 2.50).toFixed(2));
-          console.log(`[GAME ENGINE] AI Preempt Trap BYPASSED: Standard spread RNG 1.00x-3.50x active: ${targetCrashPoint}x`);
+        } else { // 55% chance to bypass and spread beautiful 1.10x-4.50x
+          targetCrashPoint = parseFloat((1.10 + Math.random() * 3.40).toFixed(2));
+          console.log(`[GAME ENGINE] AI Preempt Trap BYPASSED: Standard spread RNG 1.10x-4.50x active: ${targetCrashPoint}x`);
         }
       } else {
         targetCrashPoint = getStandardDistributionCrashPoint();
