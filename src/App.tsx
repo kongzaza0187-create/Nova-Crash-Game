@@ -368,7 +368,8 @@ export default function App() {
           sessionId: sessionIdRef.current,
           sessionRoundCounter: sessionRoundCounter,
           fakeTargetRound: fakeTargetRound,
-          recalibrationCount: recalibrationCount
+          recalibrationCount: recalibrationCount,
+          userStats: userStats
         })
       });
       if (response.ok) {

