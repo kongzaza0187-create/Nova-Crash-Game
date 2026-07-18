@@ -613,6 +613,7 @@ function generateGroupDRoundIn50(): number {
 let groupDRoundInCurrent50 = generateGroupDRoundIn50();
 let cooldownRoundsRemaining = 0;
 let postCooldownRewardsRemaining = 0;
+let hotStreakRoundsRemaining = 0;
 const playerSuccessfulCashouts: number[] = [1.45, 1.50, 1.35, 1.60]; // Seed with standard values
 let trapRoundsRemaining = 0;
 let favoriteCashoutPoint = 1.50; // Analyzed preference threshold
@@ -1035,6 +1036,23 @@ async function runSecurityFullstackServer() {
       }
     }
 
+    // Roll for a new Hot Streak if we are in normal gameplay (no active traps, cooldowns, or special rounds)
+    if (hotStreakRoundsRemaining === 0 && 
+        cooldownRoundsRemaining === 0 && 
+        postCooldownRewardsRemaining === 0 && 
+        trapRoundsRemaining === 0 && 
+        !isPreemptTrapActive && 
+        !isNearCapitalTrap &&
+        backendRoundCounter > 1 &&
+        !(state && state.sessionRoundCounter === 2) &&
+        !isSpecial49xRound &&
+        !isLowWinRateJackpotTriggered) {
+      if (Math.random() < 0.15) { // 15% chance to trigger a 2-3 round streak of 2x, 3x, 4x payouts
+        hotStreakRoundsRemaining = Math.floor(Math.random() * 2) + 2; // 2 or 3 rounds
+        console.log(`[HOT STREAK ENGINE] 🔥 RNG triggered a Hot Streak! Configured for ${hotStreakRoundsRemaining} consecutive rounds of 2.00x - 4.99x payouts.`);
+      }
+    }
+
     // Branching decisions for target crash point
     if (state && state.sessionRoundCounter === 2) {
       // Special Rule from user: 2nd session round must reach exactly 99.00x multiplier with 100% chance!
@@ -1052,6 +1070,11 @@ async function runSecurityFullstackServer() {
       // แตกรางวัลใหญ่ทันทีเมื่อวิลเลจเฉลี่ย <= 30% (25.00x - 45.00x)
       targetCrashPoint = parseFloat((25.00 + Math.random() * (45.00 - 25.00)).toFixed(2));
       console.log(`[LOW WIN RATE JACKPOT] 🎁 วิลเลจเฉลี่ยของลูกค้าต่ำกว่า 30% (${(clientWinRate * 100).toFixed(1)}%). แตกรางวัลใหญ่ทันที: ${targetCrashPoint}x เพื่อให้ลูกค้ามีทุนเล่นยาวขึ้น!`);
+    } else if (hotStreakRoundsRemaining > 0) {
+      hotStreakRoundsRemaining -= 1;
+      // Generate a solid consecutive multiplier of 2x, 3x, or 4x: [2.00x - 4.99x]
+      targetCrashPoint = parseFloat((2.00 + Math.random() * 3.00).toFixed(2));
+      console.log(`[HOT STREAK ACTIVE] 🔥 Consecutive win active! (Rounds remaining: ${hotStreakRoundsRemaining}) -> Exploding at ${targetCrashPoint}x (Guaranteed 2.00x-4.99x)`);
     } else if (cooldownRoundsRemaining > 0) {
       // Rule: Cooldown Phase (3-6 rounds) following any crash >= 6.00x. Forces low multipliers between 1.00x and 2.00x.
       cooldownRoundsRemaining -= 1;
