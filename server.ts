@@ -969,34 +969,64 @@ async function runSecurityFullstackServer() {
       // Roll 40% House Edge / 60% RTP
       const mainRoll = Math.random();
       if (mainRoll < 0.40) {
-        // House Edge Phase (Strict 40%): low-capped crash points [1.01x - 1.25x]
-        return parseFloat((1.01 + Math.random() * 0.24).toFixed(2));
-      } else {
-        // RTP Phase (Strict 60%): Nicely distributed from 1.35x up to 4.99x primarily, and occasionally higher
-        const rtpRoll = Math.random();
-        if (rtpRoll < 0.65) {
-          // Group A (65% relative chance of RTP Phase): Beautifully spread across [1.35x - 4.99x]
-          const groupASubRoll = Math.random();
-          if (groupASubRoll < 0.25) {
-            // Lower bracket: [1.35x - 1.99x]
-            return parseFloat((1.35 + Math.random() * 0.64).toFixed(2));
-          } else if (groupASubRoll < 0.55) {
-            // Mid bracket (2.xx): [2.00x - 2.99x]
-            return parseFloat((2.00 + Math.random() * 0.99).toFixed(2));
-          } else if (groupASubRoll < 0.80) {
-            // High bracket (3.xx): [3.00x - 3.99x]
-            return parseFloat((3.00 + Math.random() * 0.99).toFixed(2));
-          } else {
-            // Peak bracket (4.xx): [4.00x - 4.99x]
-            return parseFloat((4.00 + Math.random() * 0.99).toFixed(2));
-          }
-        } else if (rtpRoll < 0.85) {
-          // Group B (20% relative chance of RTP Phase): [5.00x - 7.50x]
-          return parseFloat((5.00 + Math.random() * (7.50 - 5.00)).toFixed(2));
+        // House Edge Phase (Strict 40%): low-capped crash points to guarantee house advantage.
+        // We split this so 80% is 1.01x - 1.25x (instant crash) and 20% is 1.26x - 1.45x (organic flight).
+        // This keeps the gameplay feeling natural and less repetitive, while preserving the 40% house edge.
+        if (Math.random() < 0.80) {
+          return parseFloat((1.01 + Math.random() * 0.24).toFixed(2));
         } else {
-          // Group C (15% relative chance of RTP Phase): [7.51x - 12.00x]
-          return parseFloat((7.51 + Math.random() * (12.00 - 7.51)).toFixed(2));
+          return parseFloat((1.26 + Math.random() * 0.19).toFixed(2));
         }
+      } else {
+        // RTP Phase (Strict 60%): Designed as an elegant 10-Round Staircase Trend Wave Cycle
+        // เพื่อลบปัญหาการระเบิดซ้ำๆ ในช่วง 1.5 - 1.7 และกระจายตัวไปที่ 2x, 3x, 4x เป็นขั้นบันไดพร้อมช่วงขาขึ้น
+        const cycleIndex = ((backendRoundCounter - 1) % 10) + 1;
+        let val = 1.50;
+
+        switch (cycleIndex) {
+          case 1: // Accumulation Phase Start: Gentle 1.35x - 1.75x
+            val = parseFloat((1.35 + Math.random() * 0.40).toFixed(2));
+            console.log(`[STAIRCASE RNG] 📈 Step 1: Accumulation Start -> ${val}x`);
+            break;
+          case 2: // Accumulation Phase Mid: Gentle 1.45x - 1.85x
+            val = parseFloat((1.45 + Math.random() * 0.40).toFixed(2));
+            console.log(`[STAIRCASE RNG] 📈 Step 2: Accumulation Mid -> ${val}x`);
+            break;
+          case 3: // Accumulation Phase End: Launchpad 1.65x - 2.25x (Breaking out of 1.x)
+            val = parseFloat((1.65 + Math.random() * 0.60).toFixed(2));
+            console.log(`[STAIRCASE RNG] 🚀 Step 3: Launchpad -> ${val}x`);
+            break;
+          case 4: // Uptrend Step 1 (The 2.xx Step): Guaranteed 2.00x - 2.99x
+            val = parseFloat((2.00 + Math.random() * 0.99).toFixed(2));
+            console.log(`[STAIRCASE RNG] 🔥 Uptrend Step 1 (2.xx) -> ${val}x`);
+            break;
+          case 5: // Uptrend Step 2 (The 3.xx Step): Guaranteed 3.00x - 3.99x
+            val = parseFloat((3.00 + Math.random() * 0.99).toFixed(2));
+            console.log(`[STAIRCASE RNG] 🔥 Uptrend Step 2 (3.xx) -> ${val}x`);
+            break;
+          case 6: // Uptrend Step 3 (The 4.xx Step): Guaranteed 4.00x - 4.99x
+            val = parseFloat((4.00 + Math.random() * 0.99).toFixed(2));
+            console.log(`[STAIRCASE RNG] 🔥 Uptrend Step 3 (4.xx) -> ${val}x`);
+            break;
+          case 7: // Peak Wave Phase: Jump to high multiplier [5.00x - 9.50x]
+            val = parseFloat((5.00 + Math.random() * 4.50).toFixed(2));
+            console.log(`[STAIRCASE RNG] 👑 Peak Wave Payout -> ${val}x`);
+            break;
+          case 8: // Correction / Pullback Phase: Shakes out players [1.30x - 1.70x]
+            val = parseFloat((1.30 + Math.random() * 0.40).toFixed(2));
+            console.log(`[STAIRCASE RNG] 📉 Step 8: Correction Pullback -> ${val}x`);
+            break;
+          case 9: // Stabilization Phase: Bounces back nicely [1.80x - 2.60x]
+            val = parseFloat((1.80 + Math.random() * 0.80).toFixed(2));
+            console.log(`[STAIRCASE RNG] ⚖️ Step 9: Stabilization Bounce -> ${val}x`);
+            break;
+          case 10: // Cycle Close: Wrapping up [1.40x - 1.95x]
+          default:
+            val = parseFloat((1.40 + Math.random() * 0.55).toFixed(2));
+            console.log(`[STAIRCASE RNG] 🏁 Step 10: Cycle Close -> ${val}x`);
+            break;
+        }
+        return val;
       }
     };
 
