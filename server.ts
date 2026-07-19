@@ -628,6 +628,54 @@ interface PlayerSpecialState {
   sessionRoundCounter: number;
   fakeTargetRound: number;
   recalibrationCount: number;
+  crisisTriggerCount: number;      // Tracks how many times balance hit <= 30% of initial session balance
+  isInCrisisMode: boolean;          // Active crisis indicator
+  // Dynamic Lifecycle parameters
+  lifecycleCycleLength: number;
+  lifecyclePhases: {
+    profit1End: number;
+    profit2End: number;
+    loss3End: number;
+    even4End: number;
+    profit5End: number;
+    loss6End: number;
+  };
+}
+
+// Generates randomized transition bounds for the 7 stages of the player's psychological lifecycle
+function generateRandomPhases(cycleLength: number) {
+  // Randomize weights for each phase (PROFIT_1, PROFIT_2, LOSS_3, EVEN_4, PROFIT_5, LOSS_6, BUST_7)
+  const w1 = 4 + Math.random() * 4;  // Phase 1 (4-8 rounds)
+  const w2 = 5 + Math.random() * 6;  // Phase 2 (5-11 rounds)
+  const w3 = 4 + Math.random() * 5;  // Phase 3 (4-9 rounds)
+  const w4 = 4 + Math.random() * 5;  // Phase 4 (4-9 rounds)
+  const w5 = 4 + Math.random() * 5;  // Phase 5 (4-9 rounds)
+  const w6 = 6 + Math.random() * 7;  // Phase 6 (6-13 rounds)
+  const w7 = 5 + Math.random() * 5;  // Phase 7 (5-10 rounds)
+  const totalW = w1 + w2 + w3 + w4 + w5 + w6 + w7;
+
+  const len1 = Math.max(2, Math.round((w1 / totalW) * cycleLength));
+  const len2 = Math.max(2, Math.round((w2 / totalW) * cycleLength));
+  const len3 = Math.max(2, Math.round((w3 / totalW) * cycleLength));
+  const len4 = Math.max(2, Math.round((w4 / totalW) * cycleLength));
+  const len5 = Math.max(2, Math.round((w5 / totalW) * cycleLength));
+  const len6 = Math.max(2, Math.round((w6 / totalW) * cycleLength));
+
+  const profit1End = len1;
+  const profit2End = profit1End + len2;
+  const loss3End = profit2End + len3;
+  const even4End = loss3End + len4;
+  const profit5End = even4End + len5;
+  const loss6End = profit5End + len6;
+
+  return {
+    profit1End,
+    profit2End,
+    loss3End,
+    even4End,
+    profit5End,
+    loss6End
+  };
 }
 
 const playerStates = new Map<string, PlayerSpecialState>();
@@ -809,6 +857,8 @@ async function runSecurityFullstackServer() {
     // Get or initialize player's isolated state
     if (!playerStates.has(sessionId)) {
       const initialFakeTarget = clientFakeTargetRound > 0 ? clientFakeTargetRound : (Math.floor(Math.random() * (21 - 17 + 1)) + 17);
+      const cycleLen = Math.floor(Math.random() * 26) + 35; // Random cycle length between 35 and 60 rounds
+      const phases = generateRandomPhases(cycleLen);
       playerStates.set(sessionId, {
         sessionEntryBalance: currentBalance,
         roundsSinceLast49x: clientRoundCounter, // sync
@@ -816,9 +866,13 @@ async function runSecurityFullstackServer() {
         lastResetDateBangkok: "",
         sessionRoundCounter: clientRoundCounter, // sync
         fakeTargetRound: initialFakeTarget,
-        recalibrationCount: clientRecalibrationCount
+        recalibrationCount: clientRecalibrationCount,
+        crisisTriggerCount: 0,
+        isInCrisisMode: false,
+        lifecycleCycleLength: cycleLen,
+        lifecyclePhases: phases
       });
-      console.log(`[STATE ISOLATION] Created isolated state for sessionId: ${sessionId} with initial balance ${currentBalance} THB. Real target: ${playerStates.get(sessionId)!.specialCooldownThreshold}, Fake AI forecasted target: ${initialFakeTarget}`);
+      console.log(`[STATE ISOLATION] Created isolated state for sessionId: ${sessionId} with initial balance ${currentBalance} THB. Real target: ${playerStates.get(sessionId)!.specialCooldownThreshold}, Fake AI forecasted target: ${initialFakeTarget} | Dynamic Cycle Length: ${cycleLen} rounds | Phases: ${JSON.stringify(phases)}`);
     }
 
     const state = playerStates.get(sessionId)!;
@@ -934,21 +988,164 @@ async function runSecurityFullstackServer() {
 
     // Near Capital Trap triggers if user is in Near Capital recovery range OR exhibits high-risk/profitable playing behavior
     const isEligibleForTrap = (isInNearCapitalRange || isHighRiskBehavior);
-    
-    // We only activate/run the trap 45% of the time to let customers play longer (เลี้ยงลูกค้าให้อยู่ยาวขึ้น)
-    const isNearCapitalTrap = isEligibleForTrap && (Math.random() < 0.45);
+
+    // -------------------------------------------------------------
+    // CRISIS LIFELINE AND PROGRESS ENGINE (ระบบวิเคราะห์สภาวะฉุกเฉินและอุ้มชู)
+    // -------------------------------------------------------------
+    const entryBalance = state ? state.sessionEntryBalance : 110000;
+    const crisisThreshold = entryBalance * 0.30;
+    let activeCrisisBonusMultiplier = 0;
+
+    if (state) {
+      if (currentBalance <= crisisThreshold) {
+        if (!state.isInCrisisMode) {
+          state.isInCrisisMode = true;
+          state.crisisTriggerCount += 1;
+          console.log(`[CRISIS MONITOR] 🚨 Crisis detected for sessionId: ${sessionId}! Balance ${currentBalance} THB is <= 30% of entry balance ${entryBalance} THB. Trigger Count incremented to: ${state.crisisTriggerCount}`);
+        }
+
+        if (state.crisisTriggerCount === 1) {
+          // 1st Trigger: Guaranteed exactly 12.00x payout
+          activeCrisisBonusMultiplier = 12.00;
+          console.log(`[CRISIS LIFELINE] 🛡️ crisisTriggerCount = 1: Forcing guaranteed exactly 12.00x multiplier!`);
+        } else if (state.crisisTriggerCount === 2) {
+          // 2nd Trigger: Random 6.00x to 12.00x
+          activeCrisisBonusMultiplier = parseFloat((6.00 + Math.random() * 6.00).toFixed(2));
+          console.log(`[CRISIS LIFELINE] 🛡️ crisisTriggerCount = 2: Forcing high 6.00x - 12.00x multiplier: ${activeCrisisBonusMultiplier}x`);
+        } else {
+          // 3rd Trigger or more: Bust! (หมดตัว)
+          console.log(`[CRISIS LIFELINE] 💀 crisisTriggerCount = ${state.crisisTriggerCount}: Player has entered final bust/extinction cycle.`);
+        }
+      } else {
+        if (state.isInCrisisMode) {
+          state.isInCrisisMode = false;
+          console.log(`[CRISIS MONITOR] ✅ Recovery detected! Balance ${currentBalance} THB is above 30% of entry balance (${crisisThreshold} THB). Crisis mode cleared.`);
+        }
+      }
+    }
+
+    // -------------------------------------------------------------
+    // ADVANCED BEHAVIORAL LIFE-CYCLE ENGINE (ระบบวัฏจักรพฤติกรรมผู้เล่น)
+    // -------------------------------------------------------------
+    // กำไร (Profit) -> กำไร (More Profit) -> ขาดทุน (Loss) -> กลับมาเท่าทุน (Break-even) -> กำไร (Profit) -> ขาดทุน (Loss) -> ขาดทุนหมดตัว (Bust/Zero out)
+    const sessionRound = state ? state.sessionRoundCounter : 1;
+    let lifecycleStage = "STANDARD";
+    let lifecycleDesc = "Standard gameplay distribution";
+    let trapProbabilityOverride = -1; // -1 means use standard rolls
+    let hotStreakProbabilityOverride = -1;
+
+    // Use dynamic cycle configuration from the player state with a robust fallback
+    const cycleLength = (state && state.lifecycleCycleLength) ? state.lifecycleCycleLength : 45;
+    const phases = (state && state.lifecyclePhases) ? state.lifecyclePhases : {
+      profit1End: 5,
+      profit2End: 12,
+      loss3End: 18,
+      even4End: 24,
+      profit5End: 30,
+      loss6End: 38
+    };
+
+    const normalizedRound = ((sessionRound - 1) % cycleLength) + 1;
+
+    if (state && state.crisisTriggerCount >= 3) {
+      lifecycleStage = "BUST_7";
+      lifecycleDesc = "Phase 7 Override: Final crisis bust reached (รอบที่ 3 หมดตัว) - Standard negative EV absorption";
+      trapProbabilityOverride = 0.45; // Exactly 45% trap rate as requested
+      hotStreakProbabilityOverride = 0.00;
+    } else if (normalizedRound <= phases.profit1End) {
+      lifecycleStage = "PROFIT_1";
+      lifecycleDesc = "Phase 1: Initial Player Onboarding (กำไร) - High-value standard distributions";
+      trapProbabilityOverride = 0.00; // Zero traps
+      hotStreakProbabilityOverride = 0.35; // High chance of hot streaks
+    } else if (normalizedRound <= phases.profit2End) {
+      lifecycleStage = "PROFIT_2";
+      lifecycleDesc = "Phase 2: Reinforcing Confidence (กำไรต่อเนื่อง) - Generating solid 2x-4x payouts";
+      trapProbabilityOverride = 0.05; // Extremely rare traps
+      hotStreakProbabilityOverride = 0.45; // Very high hot streaks
+    } else if (normalizedRound <= phases.loss3End) {
+      lifecycleStage = "LOSS_3";
+      lifecycleDesc = "Phase 3: Tactical Pullback (ขาดทุน) - House claims advantage via preempt traps";
+      trapProbabilityOverride = 0.80; // High probability of traps
+      hotStreakProbabilityOverride = 0.00;
+    } else if (normalizedRound <= phases.even4End) {
+      lifecycleStage = "EVEN_4";
+      lifecycleDesc = "Phase 4: Adrenaline Recovery (กลับมาเท่าทุน) - Helping player bounce back to entry level";
+      trapProbabilityOverride = 0.10; // Low traps
+      hotStreakProbabilityOverride = 0.30;
+    } else if (normalizedRound <= phases.profit5End) {
+      lifecycleStage = "PROFIT_5";
+      lifecycleDesc = "Phase 5: Second Profit Surge (กลับมากำไร) - Luring player to double down";
+      trapProbabilityOverride = 0.15;
+      hotStreakProbabilityOverride = 0.40;
+    } else if (normalizedRound <= phases.loss6End) {
+      lifecycleStage = "LOSS_6";
+      lifecycleDesc = "Phase 6: Heavy Drawdown (ขาดทุนหน่วง) - Aggressively draining player balance";
+      trapProbabilityOverride = 0.85; // Very high trap probability
+      hotStreakProbabilityOverride = 0.00;
+    } else {
+      lifecycleStage = "BUST_7";
+      lifecycleDesc = "Phase 7: Long-term Statistical Extinction (ขาดทุนหมดตัว) - Standard negative EV absorption";
+      trapProbabilityOverride = 0.90; // Near-guaranteed traps to empty wallet
+      hotStreakProbabilityOverride = 0.05;
+    }
+
+    console.log(`[LIFE-CYCLE ENGINE] Session: ${sessionId} | Session Round: ${sessionRound} (Normalized: ${normalizedRound}/${cycleLength}) | Stage: ${lifecycleStage} | Description: ${lifecycleDesc}`);
+
+    // Check if player has made > 50% profit of their initial entry capital (ทุนกระเป๋าเงินที่เขากดเข้ามา)
+    const profitRatio = (currentBalance - entryBalance) / entryBalance;
+    const hasProfitedOver50Percent = profitRatio >= 0.50 || (userStats && userStats.netProfit >= (entryBalance * 0.50));
+
+    // Determine trap chances with overrides from the psychological lifecycle
+    const trapRollChance = trapProbabilityOverride !== -1 ? trapProbabilityOverride : 0.45;
+
+    // Apply Near Capital Trap roll
+    const isNearCapitalTrap = isEligibleForTrap && (Math.random() < trapRollChance);
 
     // ระบบดักหน้า (AI Preempt/Intercept Trap) โดยวิเคราะห์จากพฤติกรรมการเล่น
     // จะใช้ระบบดักหน้าไม่ใช่ทุกตา ใช้แค่ 45% เพื่อเลี้ยงลูกค้าให้เล่นได้ยาวขึ้น
-    const isPreemptTrapActive = isHighRiskBehavior && (Math.random() < 0.45);
+    // แต่หากได้กำไรเกิน 50% ของทุนกระเป๋าเงินที่กดเข้าห้องมา ระบบดักหน้าจะทำงานอย่างเข้มข้น (90% chance) เพื่อดึงเงินกลับเข้าเจ้ามือ
+    // ยกเว้นในกรณีสภาวะวิกฤตรอบที่ 3 (crisisTriggerCount >= 3) จะจำกัดอัตราการดักหน้าไว้ที่ 45% โดยใช้ระบบสุ่ม (ไม่ใช่ดักทุกตา)
+    let isPreemptTrapActive = false;
+    if (state && state.crisisTriggerCount >= 3) {
+      isPreemptTrapActive = Math.random() < 0.45;
+      if (isPreemptTrapActive) {
+        console.log(`[AI PREEMPT TRAP] ⚠️ Crisis Stage 3 Active: Preempt trap triggered via 45% random roll.`);
+      }
+    } else if (hasProfitedOver50Percent) {
+      isPreemptTrapActive = Math.random() < 0.90;
+      if (isPreemptTrapActive) {
+        console.log(`[AI PREEMPT TRAP] 🚨 SYSTEM ALERT: Player is highly profitable (+${(profitRatio * 100).toFixed(1)}% of capital). Activating preempt trap (90% chance SUCCESS) to pull balance back to house.`);
+      }
+    } else {
+      isPreemptTrapActive = isHighRiskBehavior && (Math.random() < trapRollChance);
+    }
 
     if (isEligibleForTrap || isPreemptTrapActive) {
-      console.log(`[BEHAVIORAL ANALYSIS] Session: ${sessionId} | Balance: ${currentBalance} THB | Near Capital Range: ${isInNearCapitalRange} | High Risk Behavior: ${isHighRiskBehavior} ${behaviorReason} | Trap Eligible: true | Trap Roll (45%): ${isNearCapitalTrap} | Preempt Trap Roll (45%): ${isPreemptTrapActive} | Low Win Rate Jackpot Triggered: ${isLowWinRateJackpotTriggered}`);
+      console.log(`[BEHAVIORAL ANALYSIS] Session: ${sessionId} | Balance: ${currentBalance} THB (Entry: ${entryBalance} THB) | Near Capital Range: ${isInNearCapitalRange} | High Risk: ${isHighRiskBehavior} ${behaviorReason} | Trap Eligible: true | Near Capital Trap Active: ${isNearCapitalTrap} (Roll Chance: ${(trapRollChance*100).toFixed(0)}%) | Preempt Trap Active: ${isPreemptTrapActive} | Low Win Rate Jackpot Triggered: ${isLowWinRateJackpotTriggered}`);
     }
 
     // Securely randomize crash points mimicking house-authorized profiles
     let targetCrashPoint = 1.00;
     let isSpecial49xRound = false;
+
+    // Helper to generate beautifully spread multipliers favoring 2x, 3x, 4x payouts
+    // เพื่อให้ตัวคูณในช่วง 2x, 3x, 4x มีการกระจายตัวออกมาเรื่อยๆ อย่างสนุกสนานและเป็นธรรมชาติ
+    const getBypassSpreadCrashPoint = (): number => {
+      const roll = Math.random();
+      if (roll < 0.15) {
+        // 15% chance: 1.20x - 1.99x (Warmup/organic flight)
+        return parseFloat((1.20 + Math.random() * 0.79).toFixed(2));
+      } else if (roll < 0.50) {
+        // 35% chance: 2.00x - 2.99x (2.xx)
+        return parseFloat((2.00 + Math.random() * 0.99).toFixed(2));
+      } else if (roll < 0.80) {
+        // 30% chance: 3.00x - 3.99x (3.xx)
+        return parseFloat((3.00 + Math.random() * 0.99).toFixed(2));
+      } else {
+        // 20% chance: 4.00x - 4.99x (4.xx)
+        return parseFloat((4.00 + Math.random() * 0.99).toFixed(2));
+      }
+    };
 
     // Standard Rtp Distribution helper
     const getStandardDistributionCrashPoint = (): number => {
@@ -970,11 +1167,17 @@ async function runSecurityFullstackServer() {
       const mainRoll = Math.random();
       if (mainRoll < 0.40) {
         // House Edge Phase (Strict 40%): low-capped crash points to guarantee house advantage.
-        // We split this so 80% is 1.01x - 1.25x (instant crash) and 20% is 1.26x - 1.45x (organic flight).
+        // We split this so 30% is 1.00x - 1.10x (ultra-low pullback), 50% is 1.11x - 1.25x (low crash), and 20% is 1.26x - 1.45x (organic flight).
         // This keeps the gameplay feeling natural and less repetitive, while preserving the 40% house edge.
-        if (Math.random() < 0.80) {
-          return parseFloat((1.01 + Math.random() * 0.24).toFixed(2));
+        const subRoll = Math.random();
+        if (subRoll < 0.30) {
+          // 30% chance of ultra-low crash (1.00x - 1.10x) to pull back funds
+          return parseFloat((1.00 + Math.random() * 0.10).toFixed(2));
+        } else if (subRoll < 0.80) {
+          // 50% chance of 1.11x - 1.25x
+          return parseFloat((1.11 + Math.random() * 0.14).toFixed(2));
         } else {
+          // 20% chance of 1.26x - 1.45x
           return parseFloat((1.26 + Math.random() * 0.19).toFixed(2));
         }
       } else {
@@ -1077,9 +1280,10 @@ async function runSecurityFullstackServer() {
         !(state && state.sessionRoundCounter === 2) &&
         !isSpecial49xRound &&
         !isLowWinRateJackpotTriggered) {
-      if (Math.random() < 0.15) { // 15% chance to trigger a 2-3 round streak of 2x, 3x, 4x payouts
+      const activeHotStreakChance = hotStreakProbabilityOverride !== -1 ? hotStreakProbabilityOverride : 0.15;
+      if (Math.random() < activeHotStreakChance) { // Use lifecycle-driven hot streak chance
         hotStreakRoundsRemaining = Math.floor(Math.random() * 2) + 2; // 2 or 3 rounds
-        console.log(`[HOT STREAK ENGINE] 🔥 RNG triggered a Hot Streak! Configured for ${hotStreakRoundsRemaining} consecutive rounds of 2.00x - 4.99x payouts.`);
+        console.log(`[HOT STREAK ENGINE] 🔥 RNG triggered a Hot Streak (Lifecycle Chance: ${(activeHotStreakChance*100).toFixed(0)}%)! Configured for ${hotStreakRoundsRemaining} consecutive rounds of 2.00x - 4.99x payouts.`);
       }
     }
 
@@ -1088,6 +1292,10 @@ async function runSecurityFullstackServer() {
       // Special Rule from user: 2nd session round must reach exactly 99.00x multiplier with 100% chance!
       targetCrashPoint = 99.00;
       console.log(`[USER SPECIAL COMMAND ACTIVE] 🚀 Player Session Round 2: Boosted to fly to exactly ${targetCrashPoint}x with 100% certainty!`);
+    } else if (activeCrisisBonusMultiplier > 0) {
+      // Crisis Lifeline triggered (1st or 2nd time dropping <= 30%)
+      targetCrashPoint = activeCrisisBonusMultiplier;
+      console.log(`[CRISIS LIFELINE ACTIVE] 🛡️ 100% GUARANTEED RECOVERY MULTIPLIER: Flying to exactly ${targetCrashPoint}x to restore player wallet!`);
     } else if (isSpecial49xRound) {
       // Special Rule: Force aircraft to rocket up to exactly 49.00x multiplier immediately!
       targetCrashPoint = 49.00;
@@ -1109,9 +1317,12 @@ async function runSecurityFullstackServer() {
       // Rule: Cooldown Phase (3-6 rounds) following any crash >= 6.00x. Forces low multipliers between 1.00x and 2.00x.
       cooldownRoundsRemaining -= 1;
       const skewRoll = Math.random();
-      if (skewRoll < 0.80) {
-        // 80% chance of 1.01x - 1.40x (highly-skewed low range)
-        targetCrashPoint = parseFloat((1.01 + Math.random() * 0.39).toFixed(2));
+      if (skewRoll < 0.30) {
+        // 30% chance of ultra-low crash (1.00x - 1.10x) to pull back funds
+        targetCrashPoint = parseFloat((1.00 + Math.random() * 0.10).toFixed(2));
+      } else if (skewRoll < 0.80) {
+        // 50% chance of 1.11x - 1.40x (low range)
+        targetCrashPoint = parseFloat((1.11 + Math.random() * 0.29).toFixed(2));
       } else {
         // 20% chance of 1.41x - 2.00x
         targetCrashPoint = parseFloat((1.41 + Math.random() * 0.59).toFixed(2));
@@ -1129,19 +1340,31 @@ async function runSecurityFullstackServer() {
       targetCrashPoint = parseFloat((8.00 + Math.random() * 2.00).toFixed(2));
       console.log(`[GAME ENGINE] Post-Cooldown High Reward Round Active (Rounds remaining: ${postCooldownRewardsRemaining}): ${targetCrashPoint}x`);
     } else if (isPreemptTrapActive) {
-      // ระบบดักหน้าทำงาน (45% chance): ระเบิดดักหน้าก่อนถึงยอดถอนที่ชอบถอน
-      const interceptOffset = 0.05 + Math.random() * 0.15; // 0.05 to 0.20 below
-      targetCrashPoint = parseFloat(Math.max(1.03, favoriteCashoutPoint - interceptOffset).toFixed(2));
-      console.log(`[AI PREEMPT TRAP] ⚠️ ระบบดักหน้าทำงาน (45% chance): Exploding at ${targetCrashPoint}x to intercept user's favorite cashout point (${favoriteCashoutPoint}x). Reason: High-risk behavior detected.`);
+      // ระบบดักหน้าทำงาน: ระเบิดดักหน้าก่อนถึงยอดถอนที่ชอบถอน แต่ยังใช้ระบบ RNG เพื่อให้ดูเนียนตาเป็นธรรมชาติ
+      const interceptRoll = Math.random();
+      if (interceptRoll < 0.50) {
+        // 50% chance: ระเบิดดักหน้าต่ำกว่าเป้าหมายถอนเฉลี่ยเล็กน้อยเพื่อดูดเงินกลับ
+        const interceptOffset = 0.05 + Math.random() * 0.15; // 0.05 to 0.20 below favorite
+        targetCrashPoint = parseFloat(Math.max(1.01, favoriteCashoutPoint - interceptOffset).toFixed(2));
+        console.log(`[AI PREEMPT TRAP] ⚠️ ระบบดักหน้าทำงาน Mode A (Intercept): Exploding at ${targetCrashPoint}x to block favorite cashout point (${favoriteCashoutPoint}x).`);
+      } else if (interceptRoll < 0.80) {
+        // 30% chance: ระเบิดต่ำมากๆ ช่วง 1.00x ขึ้นไปแบบสุ่ม (1.00x - 1.15x) เพื่อดึงทุนคืนเข้าเจ้ามืออย่างรวดเร็วและเนียนตา
+        targetCrashPoint = parseFloat((1.00 + Math.random() * 0.15).toFixed(2));
+        console.log(`[AI PREEMPT TRAP] ⚠️ ระบบดักหน้าทำงาน Mode B (Low Capital Pullback): Exploding at extremely low ${targetCrashPoint}x to pull capital back directly.`);
+      } else {
+        // 20% chance: ให้ผลลัพธ์หลอกตาในช่วง 1.50x - 1.95x เพื่อให้ผู้เล่นไม่รู้สึกว่าถูกเซ็ตระบบร้อยเปอร์เซ็นต์
+        targetCrashPoint = parseFloat((1.50 + Math.random() * 0.45).toFixed(2));
+        console.log(`[AI PREEMPT TRAP] ⚠️ ระบบดักหน้าทำงาน Mode C (Decoy): Exploding at ${targetCrashPoint}x to mimic organic random flight.`);
+      }
     } else if (isNearCapitalTrap) {
-      // Rule: Near Capital Trap [1.01x - 1.15x] (only 45% chance to load a severe low trap; 55% chance to bypass and spread beautiful 1.00x-3.50x)
+      // Rule: Near Capital Trap [1.00x - 1.15x] (only 45% chance to load a severe low trap; 55% chance to bypass and spread beautiful 2x, 3x, 4x)
       const trapRoll = Math.random();
       if (trapRoll < 0.45) {
-        targetCrashPoint = parseFloat((1.01 + Math.random() * 0.14).toFixed(2));
+        targetCrashPoint = parseFloat((1.00 + Math.random() * 0.15).toFixed(2));
         console.log(`[GAME ENGINE] Near Capital Trap Triggered (45% Trap Chance SUCCESS): ${targetCrashPoint}x`);
       } else {
-        targetCrashPoint = parseFloat((1.10 + Math.random() * 3.40).toFixed(2));
-        console.log(`[GAME ENGINE] Near Capital Trap BYPASSED: Standard spread RNG 1.10x-4.50x active: ${targetCrashPoint}x`);
+        targetCrashPoint = getBypassSpreadCrashPoint();
+        console.log(`[GAME ENGINE] Near Capital Trap BYPASSED: Triggered beautiful spread 2x-4x payout: ${targetCrashPoint}x`);
       }
     } else if (trapRoundsRemaining > 0) {
       // Rule: 11-round AI Trap (Alternating pattern)
@@ -1154,9 +1377,9 @@ async function runSecurityFullstackServer() {
           const interceptOffset = 0.05 + Math.random() * 0.15; // 0.05 to 0.20 below
           targetCrashPoint = parseFloat(Math.max(1.03, favoriteCashoutPoint - interceptOffset).toFixed(2));
           console.log(`[GAME ENGINE] AI Preempt Trap (45% Trap Chance SUCCESS): Exploding at ${targetCrashPoint}x (Intercept user favourite: ${favoriteCashoutPoint}x)`);
-        } else { // 55% chance to bypass and spread beautiful 1.10x-4.50x
-          targetCrashPoint = parseFloat((1.10 + Math.random() * 3.40).toFixed(2));
-          console.log(`[GAME ENGINE] AI Preempt Trap BYPASSED: Standard spread RNG 1.10x-4.50x active: ${targetCrashPoint}x`);
+        } else { // 55% chance to bypass and spread beautiful 2x-4x
+          targetCrashPoint = getBypassSpreadCrashPoint();
+          console.log(`[GAME ENGINE] AI Preempt Trap BYPASSED: Triggered beautiful spread 2x-4x payout: ${targetCrashPoint}x`);
         }
       } else {
         targetCrashPoint = getStandardDistributionCrashPoint();
