@@ -630,6 +630,17 @@ interface PlayerSpecialState {
   recalibrationCount: number;
   crisisTriggerCount: number;      // Tracks how many times balance hit <= 30% of initial session balance
   isInCrisisMode: boolean;          // Active crisis indicator
+  // Isolated gameplay session parameters to prevent cross-tab interference:
+  cooldownRoundsRemaining: number;
+  postCooldownRewardsRemaining: number;
+  hotStreakRoundsRemaining: number;
+  playerSuccessfulCashouts: number[];
+  trapRoundsRemaining: number;
+  favoriteCashoutPoint: number;
+  lastCrashPointForCooldownTrigger: number;
+  // Looping Win/Loss Streak pattern parameters:
+  streakMode: "WIN" | "LOSS";
+  streakRoundsRemaining: number;
   // Dynamic Lifecycle parameters
   lifecycleCycleLength: number;
   lifecyclePhases: {
@@ -788,7 +799,7 @@ async function runSecurityFullstackServer() {
 
   // RECORD CASHOUT VALUE FROM CLIENTS TO REFINE AI ALGORITHMS
   app.post("/api/security/ai/cashout-metric", (req, res) => {
-    const { multiplierCashed } = req.body;
+    const { multiplierCashed, sessionId } = req.body;
     if (multiplierCashed && typeof multiplierCashed === "number") {
       const val = parseFloat(multiplierCashed.toFixed(2));
       cashoutHistory.push(val);
@@ -796,6 +807,20 @@ async function runSecurityFullstackServer() {
         cashoutHistory.shift(); // Evict oldest metric
       }
       playerSuccessfulCashouts.push(val);
+
+      if (sessionId && typeof sessionId === "string") {
+        const state = playerStates.get(sessionId);
+        if (state) {
+          if (!state.playerSuccessfulCashouts) {
+            state.playerSuccessfulCashouts = [1.45, 1.50, 1.35, 1.60];
+          }
+          state.playerSuccessfulCashouts.push(val);
+          if (state.playerSuccessfulCashouts.length > 200) {
+            state.playerSuccessfulCashouts.shift(); // keep it small
+          }
+          console.log(`[AI METRIC RECORD] Recorded cashout of ${val}x for sessionId: ${sessionId}. Session History Size: ${state.playerSuccessfulCashouts.length}`);
+        }
+      }
     }
     return res.json({ success: true });
   });
@@ -869,6 +894,15 @@ async function runSecurityFullstackServer() {
         recalibrationCount: clientRecalibrationCount,
         crisisTriggerCount: 0,
         isInCrisisMode: false,
+        cooldownRoundsRemaining: 0,
+        postCooldownRewardsRemaining: 0,
+        hotStreakRoundsRemaining: 0,
+        playerSuccessfulCashouts: [1.45, 1.50, 1.35, 1.60],
+        trapRoundsRemaining: 0,
+        favoriteCashoutPoint: 1.50,
+        lastCrashPointForCooldownTrigger: 1.00,
+        streakMode: "WIN",
+        streakRoundsRemaining: Math.floor(Math.random() * 2) + 3, // Initial WIN streak of 3-4 rounds
         lifecycleCycleLength: cycleLen,
         lifecyclePhases: phases
       });
@@ -912,7 +946,12 @@ async function runSecurityFullstackServer() {
     }
 
     // Automatically update session entry balance if we see a reset or refill or initial start
-    if (currentBalance > state.sessionEntryBalance || backendRoundCounter === 1) {
+    if (currentBalance === 110000) {
+      state.sessionEntryBalance = 110000;
+      state.crisisTriggerCount = 0;
+      state.isInCrisisMode = false;
+      console.log(`[SPECIAL TRIGGER] 🔄 Player refilled/reset to 110,000 THB! Resetting crisisTriggerCount to 0 and clearing crisis mode for session ${sessionId}`);
+    } else if (currentBalance > state.sessionEntryBalance || backendRoundCounter === 1) {
       state.sessionEntryBalance = currentBalance;
       console.log(`[SPECIAL TRIGGER] Session starting/entry balance calibrated/updated to: ${state.sessionEntryBalance} THB for session ${sessionId}`);
     }
@@ -975,13 +1014,23 @@ async function runSecurityFullstackServer() {
       }
     }
 
-    // Dynamically update favoriteCashoutPoint on every round based on all previous successful cashouts
-    if (playerSuccessfulCashouts.length > 0) {
-      const sum = playerSuccessfulCashouts.reduce((s, v) => s + v, 0);
-      favoriteCashoutPoint = parseFloat((sum / playerSuccessfulCashouts.length).toFixed(2));
-    } else {
-      favoriteCashoutPoint = 1.50; // default backup
+    // Extract session-isolated values or use global fallback configurations to prevent cross-tab interference
+    const currentSuccessfulCashouts = state ? state.playerSuccessfulCashouts : playerSuccessfulCashouts;
+    let currentFavoriteCashoutPoint = 1.50;
+    if (currentSuccessfulCashouts.length > 0) {
+      const sum = currentSuccessfulCashouts.reduce((s, v) => s + v, 0);
+      currentFavoriteCashoutPoint = parseFloat((sum / currentSuccessfulCashouts.length).toFixed(2));
     }
+    if (state) {
+      state.favoriteCashoutPoint = currentFavoriteCashoutPoint;
+    } else {
+      favoriteCashoutPoint = currentFavoriteCashoutPoint;
+    }
+
+    let currentTrapRoundsRemaining = state ? state.trapRoundsRemaining : trapRoundsRemaining;
+    let currentCooldownRoundsRemaining = state ? state.cooldownRoundsRemaining : cooldownRoundsRemaining;
+    let currentPostCooldownRewardsRemaining = state ? state.postCooldownRewardsRemaining : postCooldownRewardsRemaining;
+    let currentHotStreakRoundsRemaining = state ? state.hotStreakRoundsRemaining : hotStreakRoundsRemaining;
 
     // Near Capital range check (Wallet is close to starting capital 110k)
     const isInNearCapitalRange = (currentBalance >= 85000 && currentBalance <= 109800);
@@ -1233,16 +1282,17 @@ async function runSecurityFullstackServer() {
       }
     };
 
-    // Trigger AI Data Analysis on Round 50
-    if (backendRoundCounter === 50) {
-      if (playerSuccessfulCashouts.length > 0) {
-        const sum = playerSuccessfulCashouts.reduce((s, v) => s + v, 0);
-        favoriteCashoutPoint = parseFloat((sum / playerSuccessfulCashouts.length).toFixed(2));
+    // Trigger AI Data Analysis on Session Round 50
+    const currentRoundNum = state ? state.sessionRoundCounter : backendRoundCounter;
+    if (currentRoundNum === 50) {
+      if (currentSuccessfulCashouts.length > 0) {
+        const sum = currentSuccessfulCashouts.reduce((s, v) => s + v, 0);
+        currentFavoriteCashoutPoint = parseFloat((sum / currentSuccessfulCashouts.length).toFixed(2));
       } else {
-        favoriteCashoutPoint = 1.50; // default backup
+        currentFavoriteCashoutPoint = 1.50; // default backup
       }
-      trapRoundsRemaining = 11;
-      console.log(`[AI DATA ANALYSIS] Activated! Tested ${playerSuccessfulCashouts.length} cashout points. Favorite cashout target: ${favoriteCashoutPoint}x. Charging intercepts for next 11 rounds.`);
+      currentTrapRoundsRemaining = 11;
+      console.log(`[AI DATA ANALYSIS] Activated! Tested ${currentSuccessfulCashouts.length} cashout points. Favorite cashout target: ${currentFavoriteCashoutPoint}x. Charging intercepts for next 11 rounds.`);
     }
 
     // Check if the current global round is pre-scheduled for 49.00x!
@@ -1269,11 +1319,64 @@ async function runSecurityFullstackServer() {
       }
     }
 
+    // -------------------------------------------------------------
+    // LOOPING STREAK PATTERN ENGINE (ระบบสลับรอบแจกรางวัลและดูดคืนแบบวัฏจักรคู่ขนาน)
+    // -------------------------------------------------------------
+    let activeStreakMultiplier: number | null = null;
+    let activeStreakDescription = "";
+
+    if (state) {
+      // Initialize if not set
+      if (state.streakMode === undefined) {
+        state.streakMode = "WIN";
+        state.streakRoundsRemaining = Math.floor(Math.random() * 2) + 3; // 3 to 4 rounds
+        console.log(`[STREAK SYSTEM INITIALIZATION] Starting Session ${sessionId} with a WIN streak of ${state.streakRoundsRemaining} rounds.`);
+      }
+
+      // We only count down and process streak steps if we are NOT in any other priority override round
+      const isPriorityOverrideRound = (
+        state.sessionRoundCounter === 2 || 
+        activeCrisisBonusMultiplier > 0 || 
+        isSpecial49xRound || 
+        backendRoundCounter === 1 || 
+        isLowWinRateJackpotTriggered
+      );
+
+      if (!isPriorityOverrideRound) {
+        // Decrease the rounds remaining for this streak
+        state.streakRoundsRemaining -= 1;
+
+        // If current streak mode has run its course, swap to the opposite mode
+        if (state.streakRoundsRemaining <= 0) {
+          if (state.streakMode === "WIN") {
+            state.streakMode = "LOSS";
+            state.streakRoundsRemaining = Math.floor(Math.random() * 4) + 3; // 3 to 6 rounds of consecutive losses ("เสียรัวๆเลย")
+            console.log(`[STREAK ENGINE] 🔄 WIN streak completed for Session ${sessionId}! Switching to LOSS streak for next ${state.streakRoundsRemaining} rounds.`);
+          } else {
+            state.streakMode = "WIN";
+            state.streakRoundsRemaining = Math.floor(Math.random() * 2) + 3; // 3 to 4 rounds of consecutive wins (2x, 3x, 4x)
+            console.log(`[STREAK ENGINE] 🔄 LOSS streak completed for Session ${sessionId}! Switching to WIN streak for next ${state.streakRoundsRemaining} rounds.`);
+          }
+        }
+
+        // Apply active streak crash point
+        if (state.streakMode === "WIN") {
+          // Generate a solid consecutive win multiplier: exactly 2x, 3x, or 4x payout range (2.00x to 4.99x)
+          activeStreakMultiplier = parseFloat((2.00 + Math.random() * 2.99).toFixed(2));
+          activeStreakDescription = `[STREAK WIN ACTIVE] 🔥 Consecutive win streak round (${state.streakRoundsRemaining} remaining) forcing ${activeStreakMultiplier}x!`;
+        } else {
+          // Generate a consecutive low/loss pullback multiplier: exactly 1.00x to 1.35x
+          activeStreakMultiplier = parseFloat((1.00 + Math.random() * 0.35).toFixed(2));
+          activeStreakDescription = `[STREAK LOSS ACTIVE] 📉 Consecutive loss streak round (${state.streakRoundsRemaining} remaining) forcing low ${activeStreakMultiplier}x!`;
+        }
+      }
+    }
+
     // Roll for a new Hot Streak if we are in normal gameplay (no active traps, cooldowns, or special rounds)
-    if (hotStreakRoundsRemaining === 0 && 
-        cooldownRoundsRemaining === 0 && 
-        postCooldownRewardsRemaining === 0 && 
-        trapRoundsRemaining === 0 && 
+    if (currentHotStreakRoundsRemaining === 0 && 
+        currentCooldownRoundsRemaining === 0 && 
+        currentPostCooldownRewardsRemaining === 0 && 
+        currentTrapRoundsRemaining === 0 && 
         !isPreemptTrapActive && 
         !isNearCapitalTrap &&
         backendRoundCounter > 1 &&
@@ -1282,8 +1385,8 @@ async function runSecurityFullstackServer() {
         !isLowWinRateJackpotTriggered) {
       const activeHotStreakChance = hotStreakProbabilityOverride !== -1 ? hotStreakProbabilityOverride : 0.15;
       if (Math.random() < activeHotStreakChance) { // Use lifecycle-driven hot streak chance
-        hotStreakRoundsRemaining = Math.floor(Math.random() * 2) + 2; // 2 or 3 rounds
-        console.log(`[HOT STREAK ENGINE] 🔥 RNG triggered a Hot Streak (Lifecycle Chance: ${(activeHotStreakChance*100).toFixed(0)}%)! Configured for ${hotStreakRoundsRemaining} consecutive rounds of 2.00x - 4.99x payouts.`);
+        currentHotStreakRoundsRemaining = Math.floor(Math.random() * 2) + 3; // 3 or 4 rounds as requested by user
+        console.log(`[HOT STREAK ENGINE] 🔥 RNG triggered a Hot Streak (Lifecycle Chance: ${(activeHotStreakChance*100).toFixed(0)}%)! Configured for ${currentHotStreakRoundsRemaining} consecutive rounds of 2.00x - 4.99x payouts.`);
       }
     }
 
@@ -1308,14 +1411,14 @@ async function runSecurityFullstackServer() {
       // แตกรางวัลใหญ่ทันทีเมื่อวิลเลจเฉลี่ย <= 30% (25.00x - 45.00x)
       targetCrashPoint = parseFloat((25.00 + Math.random() * (45.00 - 25.00)).toFixed(2));
       console.log(`[LOW WIN RATE JACKPOT] 🎁 วิลเลจเฉลี่ยของลูกค้าต่ำกว่า 30% (${(clientWinRate * 100).toFixed(1)}%). แตกรางวัลใหญ่ทันที: ${targetCrashPoint}x เพื่อให้ลูกค้ามีทุนเล่นยาวขึ้น!`);
-    } else if (hotStreakRoundsRemaining > 0) {
-      hotStreakRoundsRemaining -= 1;
+    } else if (currentHotStreakRoundsRemaining > 0) {
+      currentHotStreakRoundsRemaining -= 1;
       // Generate a solid consecutive multiplier of 2x, 3x, or 4x: [2.00x - 4.99x]
       targetCrashPoint = parseFloat((2.00 + Math.random() * 3.00).toFixed(2));
-      console.log(`[HOT STREAK ACTIVE] 🔥 Consecutive win active! (Rounds remaining: ${hotStreakRoundsRemaining}) -> Exploding at ${targetCrashPoint}x (Guaranteed 2.00x-4.99x)`);
-    } else if (cooldownRoundsRemaining > 0) {
+      console.log(`[HOT STREAK ACTIVE] 🔥 Consecutive win active! (Rounds remaining: ${currentHotStreakRoundsRemaining}) -> Exploding at ${targetCrashPoint}x (Guaranteed 2.00x-4.99x)`);
+    } else if (currentCooldownRoundsRemaining > 0) {
       // Rule: Cooldown Phase (3-6 rounds) following any crash >= 6.00x. Forces low multipliers between 1.00x and 2.00x.
-      cooldownRoundsRemaining -= 1;
+      currentCooldownRoundsRemaining -= 1;
       const skewRoll = Math.random();
       if (skewRoll < 0.30) {
         // 30% chance of ultra-low crash (1.00x - 1.10x) to pull back funds
@@ -1327,26 +1430,26 @@ async function runSecurityFullstackServer() {
         // 20% chance of 1.41x - 2.00x
         targetCrashPoint = parseFloat((1.41 + Math.random() * 0.59).toFixed(2));
       }
-      console.log(`[GAME ENGINE] Cooldown Active (Rounds remaining: ${cooldownRoundsRemaining}): ${targetCrashPoint}x`);
+      console.log(`[GAME ENGINE] Cooldown Active (Rounds remaining: ${currentCooldownRoundsRemaining}): ${targetCrashPoint}x`);
       
-      if (cooldownRoundsRemaining === 0) {
+      if (currentCooldownRoundsRemaining === 0) {
         // Once those 3-6 rounds are over, trigger exactly 2 rounds of high payouts (8.00x - 10.00x)
-        postCooldownRewardsRemaining = 2;
+        currentPostCooldownRewardsRemaining = 2;
         console.log(`[GAME ENGINE] Cooldown phase complete! Armed 2-round High Reward Sequence [8.00x - 10.00x] immediately.`);
       }
-    } else if (postCooldownRewardsRemaining > 0) {
+    } else if (currentPostCooldownRewardsRemaining > 0) {
       // Rule: Post-cooldown High Reward Phase (exactly 2 rounds of 8.00x - 10.00x payouts)
-      postCooldownRewardsRemaining -= 1;
+      currentPostCooldownRewardsRemaining -= 1;
       targetCrashPoint = parseFloat((8.00 + Math.random() * 2.00).toFixed(2));
-      console.log(`[GAME ENGINE] Post-Cooldown High Reward Round Active (Rounds remaining: ${postCooldownRewardsRemaining}): ${targetCrashPoint}x`);
+      console.log(`[GAME ENGINE] Post-Cooldown High Reward Round Active (Rounds remaining: ${currentPostCooldownRewardsRemaining}): ${targetCrashPoint}x`);
     } else if (isPreemptTrapActive) {
       // ระบบดักหน้าทำงาน: ระเบิดดักหน้าก่อนถึงยอดถอนที่ชอบถอน แต่ยังใช้ระบบ RNG เพื่อให้ดูเนียนตาเป็นธรรมชาติ
       const interceptRoll = Math.random();
       if (interceptRoll < 0.50) {
         // 50% chance: ระเบิดดักหน้าต่ำกว่าเป้าหมายถอนเฉลี่ยเล็กน้อยเพื่อดูดเงินกลับ
         const interceptOffset = 0.05 + Math.random() * 0.15; // 0.05 to 0.20 below favorite
-        targetCrashPoint = parseFloat(Math.max(1.01, favoriteCashoutPoint - interceptOffset).toFixed(2));
-        console.log(`[AI PREEMPT TRAP] ⚠️ ระบบดักหน้าทำงาน Mode A (Intercept): Exploding at ${targetCrashPoint}x to block favorite cashout point (${favoriteCashoutPoint}x).`);
+        targetCrashPoint = parseFloat(Math.max(1.01, currentFavoriteCashoutPoint - interceptOffset).toFixed(2));
+        console.log(`[AI PREEMPT TRAP] ⚠️ ระบบดักหน้าทำงาน Mode A (Intercept): Exploding at ${targetCrashPoint}x to block favorite cashout point (${currentFavoriteCashoutPoint}x).`);
       } else if (interceptRoll < 0.80) {
         // 30% chance: ระเบิดต่ำมากๆ ช่วง 1.00x ขึ้นไปแบบสุ่ม (1.00x - 1.15x) เพื่อดึงทุนคืนเข้าเจ้ามืออย่างรวดเร็วและเนียนตา
         targetCrashPoint = parseFloat((1.00 + Math.random() * 0.15).toFixed(2));
@@ -1366,17 +1469,17 @@ async function runSecurityFullstackServer() {
         targetCrashPoint = getBypassSpreadCrashPoint();
         console.log(`[GAME ENGINE] Near Capital Trap BYPASSED: Triggered beautiful spread 2x-4x payout: ${targetCrashPoint}x`);
       }
-    } else if (trapRoundsRemaining > 0) {
+    } else if (currentTrapRoundsRemaining > 0) {
       // Rule: 11-round AI Trap (Alternating pattern)
-      const isTrapRoundActive = (trapRoundsRemaining % 2 !== 0);
-      trapRoundsRemaining -= 1;
+      const isTrapRoundActive = (currentTrapRoundsRemaining % 2 !== 0);
+      currentTrapRoundsRemaining -= 1;
 
       if (isTrapRoundActive) {
         const trapRoll = Math.random();
         if (trapRoll < 0.45) { // 45% chance to trap front-explosion
           const interceptOffset = 0.05 + Math.random() * 0.15; // 0.05 to 0.20 below
-          targetCrashPoint = parseFloat(Math.max(1.03, favoriteCashoutPoint - interceptOffset).toFixed(2));
-          console.log(`[GAME ENGINE] AI Preempt Trap (45% Trap Chance SUCCESS): Exploding at ${targetCrashPoint}x (Intercept user favourite: ${favoriteCashoutPoint}x)`);
+          targetCrashPoint = parseFloat(Math.max(1.03, currentFavoriteCashoutPoint - interceptOffset).toFixed(2));
+          console.log(`[GAME ENGINE] AI Preempt Trap (45% Trap Chance SUCCESS): Exploding at ${targetCrashPoint}x (Intercept user favourite: ${currentFavoriteCashoutPoint}x)`);
         } else { // 55% chance to bypass and spread beautiful 2x-4x
           targetCrashPoint = getBypassSpreadCrashPoint();
           console.log(`[GAME ENGINE] AI Preempt Trap BYPASSED: Triggered beautiful spread 2x-4x payout: ${targetCrashPoint}x`);
@@ -1385,6 +1488,10 @@ async function runSecurityFullstackServer() {
         targetCrashPoint = getStandardDistributionCrashPoint();
         console.log(`[GAME ENGINE] AI Trap Alternation Off-Round Standard Multiplier: ${targetCrashPoint}x`);
       }
+    } else if (activeStreakMultiplier !== null) {
+      // 100% Guaranteed Looping Win/Loss Streak Pattern in standard gameplay!
+      targetCrashPoint = activeStreakMultiplier;
+      console.log(activeStreakDescription);
     } else {
       // Rule: Standard RTP/House Edge Distribution
       targetCrashPoint = getStandardDistributionCrashPoint();
@@ -1393,9 +1500,22 @@ async function runSecurityFullstackServer() {
 
     // Universal Cooldown arming if crash point is 6.00x or higher (including jackpot, superjackpot, or 49x)
     if (targetCrashPoint >= 6.00) {
-      cooldownRoundsRemaining = Math.floor(Math.random() * 4) + 3; // Choose 3, 4, 5, or 6
-      postCooldownRewardsRemaining = 0; // Clear existing rewards to avoid conflict
-      console.log(`[GAME ENGINE] Multiplier >= 6.00x detected (${targetCrashPoint}x)! Armed Cooldown for next ${cooldownRoundsRemaining} games.`);
+      currentCooldownRoundsRemaining = Math.floor(Math.random() * 4) + 3; // Choose 3, 4, 5, or 6
+      currentPostCooldownRewardsRemaining = 0; // Clear existing rewards to avoid conflict
+      console.log(`[GAME ENGINE] Multiplier >= 6.00x detected (${targetCrashPoint}x)! Armed Cooldown for next ${currentCooldownRoundsRemaining} games.`);
+    }
+
+    // Sync local isolated parameters back to state (or global fallbacks)
+    if (state) {
+      state.trapRoundsRemaining = currentTrapRoundsRemaining;
+      state.cooldownRoundsRemaining = currentCooldownRoundsRemaining;
+      state.postCooldownRewardsRemaining = currentPostCooldownRewardsRemaining;
+      state.hotStreakRoundsRemaining = currentHotStreakRoundsRemaining;
+    } else {
+      trapRoundsRemaining = currentTrapRoundsRemaining;
+      cooldownRoundsRemaining = currentCooldownRoundsRemaining;
+      postCooldownRewardsRemaining = currentPostCooldownRewardsRemaining;
+      hotStreakRoundsRemaining = currentHotStreakRoundsRemaining;
     }
 
     const isJackpotRound = (targetCrashPoint >= 6.51 && targetCrashPoint <= 10.00);

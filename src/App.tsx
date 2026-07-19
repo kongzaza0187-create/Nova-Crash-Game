@@ -442,7 +442,10 @@ export default function App() {
       await fetch("/api/security/ai/cashout-metric", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ multiplierCashed: multiplier })
+        body: JSON.stringify({ 
+          multiplierCashed: multiplier,
+          sessionId: sessionIdRef.current 
+        })
       });
     } catch (err) {
       // Fail silently for offline robustness
