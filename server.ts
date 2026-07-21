@@ -1162,7 +1162,8 @@ async function runSecurityFullstackServer() {
     const trapRollChance = trapProbabilityOverride !== -1 ? trapProbabilityOverride : 0.45;
 
     // Apply Near Capital Trap roll
-    const isNearCapitalTrap = isEligibleForTrap && (Math.random() < trapRollChance);
+    // DISABLED to strictly respect the 45% overall AI Preempt Trap proportion and prevent player balance draining too fast!
+    const isNearCapitalTrap = false;
 
     // ระบบดักหน้า (AI Preempt/Intercept Trap) โดยวิเคราะห์จากพฤติกรรมการเล่น
     // จะใช้ระบบดักหน้าไม่ใช่ทุกตา แต่จะล็อกสัดส่วนไว้ที่ 45% อย่างเป๊ะๆ ตามที่ผู้เล่นร้องขอ (เล่น 10 ตา ดัก 4.5 ตา, 100 ตา ดัก 45 ตา, 1000 ตา ดัก 450 ตา)
@@ -1177,9 +1178,15 @@ async function runSecurityFullstackServer() {
       isPreemptTrapActive = state.preemptTrapQueue[queueIndex];
       // Increment the index to progress through the perfectly proportional 45% deck
       state.preemptTrapIndex = queueIndex + 1;
+
+      // If player is in Crisis Lifeline, bypass Preempt Trap for this round so they win!
+      if (activeCrisisBonusMultiplier > 0) {
+        isPreemptTrapActive = false;
+      }
+
       console.log(`[AI PREEMPT TRAP SYSTEM] 🎯 Proportional Deck Active: Session Round ${sessionRound} | Queue Index ${queueIndex}/100 | Active Status: ${isPreemptTrapActive} (Perfect 45% ratio secured)`);
     } else {
-      isPreemptTrapActive = Math.random() < 0.45;
+      isPreemptTrapActive = activeCrisisBonusMultiplier > 0 ? false : Math.random() < 0.45;
     }
 
     if (isEligibleForTrap || isPreemptTrapActive) {
@@ -1472,10 +1479,13 @@ async function runSecurityFullstackServer() {
     }
 
     // Universal Cooldown arming if crash point is 6.00x or higher (including jackpot, superjackpot, or 49x)
-    if (targetCrashPoint >= 6.00) {
+    // ONLY arm cooldown if it is not a crisis lifeline recovery round, to prevent penalizing struggling players!
+    if (targetCrashPoint >= 6.00 && activeCrisisBonusMultiplier === 0 && currentBalance > crisisThreshold) {
       currentCooldownRoundsRemaining = Math.floor(Math.random() * 4) + 3; // Choose 3, 4, 5, or 6
       currentPostCooldownRewardsRemaining = 0; // Clear existing rewards to avoid conflict
       console.log(`[GAME ENGINE] Multiplier >= 6.00x detected (${targetCrashPoint}x)! Armed Cooldown for next ${currentCooldownRoundsRemaining} games.`);
+    } else if (targetCrashPoint >= 6.00) {
+      console.log(`[GAME ENGINE] Multiplier >= 6.00x detected (${targetCrashPoint}x) but Cooldown bypassed due to Crisis Lifeline / low balance safety check.`);
     }
 
     // Sync local isolated parameters back to state (or global fallbacks)
