@@ -630,6 +630,8 @@ interface PlayerSpecialState {
   recalibrationCount: number;
   crisisTriggerCount: number;      // Tracks how many times balance hit <= 30% of initial session balance
   isInCrisisMode: boolean;          // Active crisis indicator
+  preemptTrapQueue?: boolean[];     // A pre-shuffled list of exactly 45% traps to ensure perfect proportionality over rounds
+  preemptTrapIndex?: number;        // Tracking index in the pre-shuffled queue
   // Isolated gameplay session parameters to prevent cross-tab interference:
   cooldownRoundsRemaining: number;
   postCooldownRewardsRemaining: number;
@@ -687,6 +689,24 @@ function generateRandomPhases(cycleLength: number) {
     profit5End,
     loss6End
   };
+}
+
+// Generates a pre-shuffled queue of boolean values with exactly 45% true (Preempt Trap) and 55% false
+function generatePreemptTrapQueue(): boolean[] {
+  const queue: boolean[] = [];
+  for (let i = 0; i < 45; i++) {
+    queue.push(true);
+  }
+  for (let i = 0; i < 55; i++) {
+    queue.push(false);
+  }
+  for (let i = queue.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const temp = queue[i];
+    queue[i] = queue[j];
+    queue[j] = temp;
+  }
+  return queue;
 }
 
 const playerStates = new Map<string, PlayerSpecialState>();
@@ -894,6 +914,8 @@ async function runSecurityFullstackServer() {
         recalibrationCount: clientRecalibrationCount,
         crisisTriggerCount: 0,
         isInCrisisMode: false,
+        preemptTrapQueue: generatePreemptTrapQueue(),
+        preemptTrapIndex: 0,
         cooldownRoundsRemaining: 0,
         postCooldownRewardsRemaining: 0,
         hotStreakRoundsRemaining: 0,
@@ -1050,21 +1072,13 @@ async function runSecurityFullstackServer() {
         if (!state.isInCrisisMode) {
           state.isInCrisisMode = true;
           state.crisisTriggerCount += 1;
-          console.log(`[CRISIS MONITOR] 🚨 Crisis detected for sessionId: ${sessionId}! Balance ${currentBalance} THB is <= 30% of entry balance ${entryBalance} THB. Trigger Count incremented to: ${state.crisisTriggerCount}`);
+          console.log(`[CRISIS MONITOR] 🚨 Crisis detected for sessionId: ${sessionId}! Balance ${currentBalance} THB is <= 30% of entry balance ${entryBalance} THB. Trigger Count: ${state.crisisTriggerCount}`);
         }
 
-        if (state.crisisTriggerCount === 1) {
-          // 1st Trigger: Guaranteed exactly 12.00x payout
-          activeCrisisBonusMultiplier = 12.00;
-          console.log(`[CRISIS LIFELINE] 🛡️ crisisTriggerCount = 1: Forcing guaranteed exactly 12.00x multiplier!`);
-        } else if (state.crisisTriggerCount === 2) {
-          // 2nd Trigger: Random 6.00x to 12.00x
-          activeCrisisBonusMultiplier = parseFloat((6.00 + Math.random() * 6.00).toFixed(2));
-          console.log(`[CRISIS LIFELINE] 🛡️ crisisTriggerCount = 2: Forcing high 6.00x - 12.00x multiplier: ${activeCrisisBonusMultiplier}x`);
-        } else {
-          // 3rd Trigger or more: Bust! (หมดตัว)
-          console.log(`[CRISIS LIFELINE] 💀 crisisTriggerCount = ${state.crisisTriggerCount}: Player has entered final bust/extinction cycle.`);
-        }
+        // Always guarantee a big win/multiplier of 6.00x or higher when below or equal to 30% of entry balance to prevent player from busting!
+        // Generates an attractive multiplier between 6.00x and 13.00x (exactly as requested!)
+        activeCrisisBonusMultiplier = parseFloat((6.00 + Math.random() * 7.00).toFixed(2));
+        console.log(`[CRISIS LIFELINE] 🛡️ Forcing guaranteed 6.00x+ big recovery multiplier: ${activeCrisisBonusMultiplier}x`);
       } else {
         if (state.isInCrisisMode) {
           state.isInCrisisMode = false;
@@ -1096,7 +1110,7 @@ async function runSecurityFullstackServer() {
 
     const normalizedRound = ((sessionRound - 1) % cycleLength) + 1;
 
-    if (state && state.crisisTriggerCount >= 3) {
+    if (false) { // Disabled bust override to support infinite safety lifelines
       lifecycleStage = "BUST_7";
       lifecycleDesc = "Phase 7 Override: Final crisis bust reached (รอบที่ 3 หมดตัว) - Standard negative EV absorption";
       trapProbabilityOverride = 0.45; // Exactly 45% trap rate as requested
@@ -1151,22 +1165,21 @@ async function runSecurityFullstackServer() {
     const isNearCapitalTrap = isEligibleForTrap && (Math.random() < trapRollChance);
 
     // ระบบดักหน้า (AI Preempt/Intercept Trap) โดยวิเคราะห์จากพฤติกรรมการเล่น
-    // จะใช้ระบบดักหน้าไม่ใช่ทุกตา ใช้แค่ 45% เพื่อเลี้ยงลูกค้าให้เล่นได้ยาวขึ้น
-    // แต่หากได้กำไรเกิน 50% ของทุนกระเป๋าเงินที่กดเข้าห้องมา ระบบดักหน้าจะทำงานอย่างเข้มข้น (90% chance) เพื่อดึงเงินกลับเข้าเจ้ามือ
-    // ยกเว้นในกรณีสภาวะวิกฤตรอบที่ 3 (crisisTriggerCount >= 3) จะจำกัดอัตราการดักหน้าไว้ที่ 45% โดยใช้ระบบสุ่ม (ไม่ใช่ดักทุกตา)
+    // จะใช้ระบบดักหน้าไม่ใช่ทุกตา แต่จะล็อกสัดส่วนไว้ที่ 45% อย่างเป๊ะๆ ตามที่ผู้เล่นร้องขอ (เล่น 10 ตา ดัก 4.5 ตา, 100 ตา ดัก 45 ตา, 1000 ตา ดัก 450 ตา)
+    // โดยใช้ระบบ Pre-shuffled Queue ที่มีอัตราส่วน True 45% และ False 55%
     let isPreemptTrapActive = false;
-    if (state && state.crisisTriggerCount >= 3) {
-      isPreemptTrapActive = Math.random() < 0.45;
-      if (isPreemptTrapActive) {
-        console.log(`[AI PREEMPT TRAP] ⚠️ Crisis Stage 3 Active: Preempt trap triggered via 45% random roll.`);
+    if (state) {
+      if (!state.preemptTrapQueue || state.preemptTrapQueue.length === 0) {
+        state.preemptTrapQueue = generatePreemptTrapQueue();
+        state.preemptTrapIndex = 0;
       }
-    } else if (hasProfitedOver50Percent) {
-      isPreemptTrapActive = Math.random() < 0.90;
-      if (isPreemptTrapActive) {
-        console.log(`[AI PREEMPT TRAP] 🚨 SYSTEM ALERT: Player is highly profitable (+${(profitRatio * 100).toFixed(1)}% of capital). Activating preempt trap (90% chance SUCCESS) to pull balance back to house.`);
-      }
+      const queueIndex = (state.preemptTrapIndex ?? 0) % state.preemptTrapQueue.length;
+      isPreemptTrapActive = state.preemptTrapQueue[queueIndex];
+      // Increment the index to progress through the perfectly proportional 45% deck
+      state.preemptTrapIndex = queueIndex + 1;
+      console.log(`[AI PREEMPT TRAP SYSTEM] 🎯 Proportional Deck Active: Session Round ${sessionRound} | Queue Index ${queueIndex}/100 | Active Status: ${isPreemptTrapActive} (Perfect 45% ratio secured)`);
     } else {
-      isPreemptTrapActive = isHighRiskBehavior && (Math.random() < trapRollChance);
+      isPreemptTrapActive = Math.random() < 0.45;
     }
 
     if (isEligibleForTrap || isPreemptTrapActive) {
@@ -1525,6 +1538,9 @@ async function runSecurityFullstackServer() {
       sessionRoundCounter: state.sessionRoundCounter,
       fakeTargetRound: state.fakeTargetRound,
       recalibrationCount: state.recalibrationCount,
+      sessionEntryBalance: state ? state.sessionEntryBalance : 110000,
+      isInCrisisMode: state ? state.isInCrisisMode : false,
+      isPreemptTrapActive: isPreemptTrapActive,
       hint: "Valid server hash generated. Salt precommitted."
     });
   });

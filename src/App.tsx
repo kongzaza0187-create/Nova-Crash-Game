@@ -184,6 +184,11 @@ export default function App() {
     jackpotsScheduledThisCycle: number[];
   } | null>(null);
 
+  // 30% CAPITAL SAFETY LIFELINE & 45% PREEMPTIVE TRAP INDICATOR STATES
+  const [sessionEntryBalance, setSessionEntryBalance] = useState<number>(110000);
+  const [isInCrisisMode, setIsInCrisisMode] = useState<boolean>(false);
+  const [isPreemptTrapActive, setIsPreemptTrapActive] = useState<boolean>(false);
+
   const nextRoundDataRef = useRef<{
     crashPoint: number;
     isJackpotRound: boolean;
@@ -375,6 +380,15 @@ export default function App() {
       if (response.ok) {
         const data = await response.json();
         if (data && typeof data.crashPointOverride === "number") {
+          if (typeof data.sessionEntryBalance === "number") {
+            setSessionEntryBalance(data.sessionEntryBalance);
+          }
+          if (typeof data.isInCrisisMode === "boolean") {
+            setIsInCrisisMode(data.isInCrisisMode);
+          }
+          if (typeof data.isPreemptTrapActive === "boolean") {
+            setIsPreemptTrapActive(data.isPreemptTrapActive);
+          }
           nextRoundDataRef.current = {
             crashPoint: data.crashPointOverride,
             isJackpotRound: data.isJackpotRound || false,
@@ -1250,7 +1264,12 @@ export default function App() {
             </div>
           ) : (
             <div className="flex items-center justify-between md:justify-end gap-3 mt-1 md:mt-0">
-              {fakeTargetRound - sessionRoundCounter <= 2 && fakeTargetRound - sessionRoundCounter > 0 ? (
+              {isInCrisisMode ? (
+                <span className="text-amber-400 font-black uppercase tracking-wider animate-pulse bg-amber-950/60 px-2.5 py-1 rounded-lg border border-amber-500/50 flex items-center gap-1.5 shadow-md shadow-amber-950/40 text-[10px]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
+                  🛡️ LIFELINE ACTIVE: NEXT FLIGHT GUARANTEED 6.00X+ BIG WIN!
+                </span>
+              ) : fakeTargetRound - sessionRoundCounter <= 2 && fakeTargetRound - sessionRoundCounter > 0 ? (
                 <span className="text-rose-400 font-black uppercase tracking-wider animate-bounce bg-rose-950/45 px-2 py-0.5 rounded border border-rose-500/30">
                   🔥 ALERT: High 49.00x probability! Prepare to ALL-IN!
                 </span>
@@ -1511,6 +1530,50 @@ export default function App() {
                       <span className="text-[8px] text-slate-500 mt-1 leading-snug font-sans">
                         Automatically clamps the next 3 rounds to Early Bracket ([1.00x - 2.00x]) if standard outcome lands &gt; 5.50x, re-arming forever.
                       </span>
+                    </div>
+                  </div>
+
+                  {/* 🔒 ACTUARIAL INTEGRITY ENGAGEMENT SYSTEMS (ระบบควบคุมอุ้มชูและระบบระเบิดดักหน้า) */}
+                  <div className="bg-slate-950/60 border border-indigo-950/60 p-4 rounded-xl flex flex-col gap-3">
+                    <h4 className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider font-mono flex items-center gap-1.5">
+                      <ShieldCheck size={12} className="text-indigo-400" />
+                      ACTUARIAL SAFES & TRAPS (โหมดผู้พัฒนา)
+                    </h4>
+                    
+                    <div className="grid grid-cols-2 gap-3 font-mono">
+                      {/* Preempt Trap Card */}
+                      <div className="bg-slate-900 border border-slate-800/80 p-3 rounded-lg flex flex-col gap-1">
+                        <span className="text-[8px] text-slate-400 uppercase tracking-widest font-black flex items-center gap-1">
+                          💣 AI PREEMPT TRAP (45%)
+                        </span>
+                        <div className="flex items-center justify-between mt-0.5">
+                          <span className={`text-[10px] font-black uppercase ${isPreemptTrapActive ? "text-amber-400 animate-pulse" : "text-slate-400"}`}>
+                            {isPreemptTrapActive ? "⚠️ ARMED / ACTIVE" : "🟢 STANDBY / SAFE"}
+                          </span>
+                          <span className="text-[8px] text-slate-500">Rate: 45.0%</span>
+                        </div>
+                        <span className="text-[8px] text-slate-500 leading-normal font-sans mt-1">
+                          Locked ratio: exactly 4.5 traps/10 rounds, 45/100 rounds (proportional).
+                        </span>
+                      </div>
+
+                      {/* Capital Safeguard Card */}
+                      <div className="bg-slate-900 border border-slate-800/80 p-3 rounded-lg flex flex-col gap-1">
+                        <span className="text-[8px] text-slate-400 uppercase tracking-widest font-black flex items-center gap-1">
+                          🛡️ CAPITAL LIFELINE (&le; 30%)
+                        </span>
+                        <div className="flex items-center justify-between mt-0.5">
+                          <span className={`text-[10px] font-black uppercase ${isInCrisisMode ? "text-emerald-400 animate-bounce" : "text-slate-400"}`}>
+                            {isInCrisisMode ? "🚨 ENGAGED" : "🟢 SECURE"}
+                          </span>
+                          <span className="text-[8px] text-slate-500">
+                            Limit: {(sessionEntryBalance * 0.3).toLocaleString()}
+                          </span>
+                        </div>
+                        <span className="text-[8px] text-slate-500 leading-normal font-sans mt-1">
+                          Triggers 6.00x+ big payout if balance drops &le; 30% of entry capital ({sessionEntryBalance.toLocaleString()} THB).
+                        </span>
+                      </div>
                     </div>
                   </div>
 
