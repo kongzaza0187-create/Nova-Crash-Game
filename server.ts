@@ -639,7 +639,7 @@ interface PlayerSpecialState {
   favoriteCashoutPoint: number;
   lastCrashPointForCooldownTrigger: number;
   // Looping Win/Loss Streak pattern parameters:
-  streakMode: "WIN" | "LOSS";
+  streakMode: "WIN" | "LOSS" | "NORMAL";
   streakRoundsRemaining: number;
   // Dynamic Lifecycle parameters
   lifecycleCycleLength: number;
@@ -901,8 +901,8 @@ async function runSecurityFullstackServer() {
         trapRoundsRemaining: 0,
         favoriteCashoutPoint: 1.50,
         lastCrashPointForCooldownTrigger: 1.00,
-        streakMode: "WIN",
-        streakRoundsRemaining: Math.floor(Math.random() * 2) + 3, // Initial WIN streak of 3-4 rounds
+        streakMode: "NORMAL",
+        streakRoundsRemaining: Math.floor(Math.random() * 3) + 3, // Initial NORMAL streak of 3-5 rounds
         lifecycleCycleLength: cycleLen,
         lifecyclePhases: phases
       });
@@ -1212,72 +1212,25 @@ async function runSecurityFullstackServer() {
         return val;
       }
 
-      // Roll 40% House Edge / 60% RTP
-      const mainRoll = Math.random();
-      if (mainRoll < 0.40) {
-        // House Edge Phase (Strict 40%): low-capped crash points to guarantee house advantage.
-        // We split this so 30% is 1.00x - 1.10x (ultra-low pullback), 50% is 1.11x - 1.25x (low crash), and 20% is 1.26x - 1.45x (organic flight).
-        // This keeps the gameplay feeling natural and less repetitive, while preserving the 40% house edge.
-        const subRoll = Math.random();
-        if (subRoll < 0.30) {
-          // 30% chance of ultra-low crash (1.00x - 1.10x) to pull back funds
-          return parseFloat((1.00 + Math.random() * 0.10).toFixed(2));
-        } else if (subRoll < 0.80) {
-          // 50% chance of 1.11x - 1.25x
-          return parseFloat((1.11 + Math.random() * 0.14).toFixed(2));
-        } else {
-          // 20% chance of 1.26x - 1.45x
-          return parseFloat((1.26 + Math.random() * 0.19).toFixed(2));
-        }
-      } else {
-        // RTP Phase (Strict 60%): Designed as an elegant 10-Round Staircase Trend Wave Cycle
-        // เพื่อลบปัญหาการระเบิดซ้ำๆ ในช่วง 1.5 - 1.7 และกระจายตัวไปที่ 2x, 3x, 4x เป็นขั้นบันไดพร้อมช่วงขาขึ้น
-        const cycleIndex = ((backendRoundCounter - 1) % 10) + 1;
-        let val = 1.50;
-
-        switch (cycleIndex) {
-          case 1: // Accumulation Phase Start: Gentle 1.35x - 1.75x
-            val = parseFloat((1.35 + Math.random() * 0.40).toFixed(2));
-            console.log(`[STAIRCASE RNG] 📈 Step 1: Accumulation Start -> ${val}x`);
-            break;
-          case 2: // Accumulation Phase Mid: Gentle 1.45x - 1.85x
-            val = parseFloat((1.45 + Math.random() * 0.40).toFixed(2));
-            console.log(`[STAIRCASE RNG] 📈 Step 2: Accumulation Mid -> ${val}x`);
-            break;
-          case 3: // Accumulation Phase End: Launchpad 1.65x - 2.25x (Breaking out of 1.x)
-            val = parseFloat((1.65 + Math.random() * 0.60).toFixed(2));
-            console.log(`[STAIRCASE RNG] 🚀 Step 3: Launchpad -> ${val}x`);
-            break;
-          case 4: // Uptrend Step 1 (The 2.xx Step): Guaranteed 2.00x - 2.99x
-            val = parseFloat((2.00 + Math.random() * 0.99).toFixed(2));
-            console.log(`[STAIRCASE RNG] 🔥 Uptrend Step 1 (2.xx) -> ${val}x`);
-            break;
-          case 5: // Uptrend Step 2 (The 3.xx Step): Guaranteed 3.00x - 3.99x
-            val = parseFloat((3.00 + Math.random() * 0.99).toFixed(2));
-            console.log(`[STAIRCASE RNG] 🔥 Uptrend Step 2 (3.xx) -> ${val}x`);
-            break;
-          case 6: // Uptrend Step 3 (The 4.xx Step): Guaranteed 4.00x - 4.99x
-            val = parseFloat((4.00 + Math.random() * 0.99).toFixed(2));
-            console.log(`[STAIRCASE RNG] 🔥 Uptrend Step 3 (4.xx) -> ${val}x`);
-            break;
-          case 7: // Peak Wave Phase: Jump to high multiplier [5.00x - 9.50x]
-            val = parseFloat((5.00 + Math.random() * 4.50).toFixed(2));
-            console.log(`[STAIRCASE RNG] 👑 Peak Wave Payout -> ${val}x`);
-            break;
-          case 8: // Correction / Pullback Phase: Shakes out players [1.30x - 1.70x]
-            val = parseFloat((1.30 + Math.random() * 0.40).toFixed(2));
-            console.log(`[STAIRCASE RNG] 📉 Step 8: Correction Pullback -> ${val}x`);
-            break;
-          case 9: // Stabilization Phase: Bounces back nicely [1.80x - 2.60x]
-            val = parseFloat((1.80 + Math.random() * 0.80).toFixed(2));
-            console.log(`[STAIRCASE RNG] ⚖️ Step 9: Stabilization Bounce -> ${val}x`);
-            break;
-          case 10: // Cycle Close: Wrapping up [1.40x - 1.95x]
-          default:
-            val = parseFloat((1.40 + Math.random() * 0.55).toFixed(2));
-            console.log(`[STAIRCASE RNG] 🏁 Step 10: Cycle Close -> ${val}x`);
-            break;
-        }
+      // Roll based on new requested RNG probabilities:
+      // - 1.01 - 2.49x (45% probability)
+      // - 2.50 - 4.39x (35% probability)
+      // - 4.40 - 10.00x (20% probability)
+      const roll = Math.random();
+      if (roll < 0.45) {
+        // 1.01 - 2.49x
+        const val = parseFloat((1.01 + Math.random() * (2.49 - 1.01)).toFixed(2));
+        console.log(`[RNG SYSTEM] 🎰 Rolled low-range [1.01-2.49x] (45% chance) -> ${val}x`);
+        return val;
+      } else if (roll < 0.80) { // 0.45 + 0.35 = 0.80
+        // 2.50 - 4.39x
+        const val = parseFloat((2.50 + Math.random() * (4.39 - 2.50)).toFixed(2));
+        console.log(`[RNG SYSTEM] 🎰 Rolled mid-range [2.50-4.39x] (35% chance) -> ${val}x`);
+        return val;
+      } else { // 20%
+        // 4.40 - 10.00x
+        const val = parseFloat((4.40 + Math.random() * (10.00 - 4.40)).toFixed(2));
+        console.log(`[RNG SYSTEM] 🎰 Rolled high-range [4.40-10.00x] (20% chance) -> ${val}x`);
         return val;
       }
     };
@@ -1328,9 +1281,9 @@ async function runSecurityFullstackServer() {
     if (state) {
       // Initialize if not set
       if (state.streakMode === undefined) {
-        state.streakMode = "WIN";
-        state.streakRoundsRemaining = Math.floor(Math.random() * 2) + 3; // 3 to 4 rounds
-        console.log(`[STREAK SYSTEM INITIALIZATION] Starting Session ${sessionId} with a WIN streak of ${state.streakRoundsRemaining} rounds.`);
+        state.streakMode = "NORMAL";
+        state.streakRoundsRemaining = Math.floor(Math.random() * 3) + 3; // 3 to 5 rounds
+        console.log(`[STREAK SYSTEM INITIALIZATION] Starting Session ${sessionId} with NORMAL play of ${state.streakRoundsRemaining} rounds.`);
       }
 
       // We only count down and process streak steps if we are NOT in any other priority override round
@@ -1346,28 +1299,35 @@ async function runSecurityFullstackServer() {
         // Decrease the rounds remaining for this streak
         state.streakRoundsRemaining -= 1;
 
-        // If current streak mode has run its course, swap to the opposite mode
+        // If current streak mode has run its course, swap to the next mode in the cycle: NORMAL -> WIN -> LOSS -> NORMAL
         if (state.streakRoundsRemaining <= 0) {
-          if (state.streakMode === "WIN") {
-            state.streakMode = "LOSS";
-            state.streakRoundsRemaining = Math.floor(Math.random() * 4) + 3; // 3 to 6 rounds of consecutive losses ("เสียรัวๆเลย")
-            console.log(`[STREAK ENGINE] 🔄 WIN streak completed for Session ${sessionId}! Switching to LOSS streak for next ${state.streakRoundsRemaining} rounds.`);
-          } else {
+          if (state.streakMode === "NORMAL") {
             state.streakMode = "WIN";
-            state.streakRoundsRemaining = Math.floor(Math.random() * 2) + 3; // 3 to 4 rounds of consecutive wins (2x, 3x, 4x)
-            console.log(`[STREAK ENGINE] 🔄 LOSS streak completed for Session ${sessionId}! Switching to WIN streak for next ${state.streakRoundsRemaining} rounds.`);
+            state.streakRoundsRemaining = Math.floor(Math.random() * 2) + 2; // Exactly 2 or 3 rounds of consecutive wins
+            console.log(`[STREAK ENGINE] 🔄 NORMAL intermission completed for Session ${sessionId}! Entering consecutive WIN streak for next ${state.streakRoundsRemaining} rounds [2.50x - 4.39x].`);
+          } else if (state.streakMode === "WIN") {
+            state.streakMode = "LOSS";
+            state.streakRoundsRemaining = Math.floor(Math.random() * 3) + 3; // Exactly 3 to 5 rounds of consecutive low pulls ("เสียรัวๆ")
+            console.log(`[STREAK ENGINE] 🔄 WIN streak completed for Session ${sessionId}! Entering consecutive LOSS streak for next ${state.streakRoundsRemaining} rounds [1.01x - 2.49x] (+EV house edge).`);
+          } else { // LOSS -> NORMAL
+            state.streakMode = "NORMAL";
+            state.streakRoundsRemaining = Math.floor(Math.random() * 3) + 4; // 4 to 6 rounds of standard RNG distribution
+            console.log(`[STREAK ENGINE] 🔄 LOSS streak completed for Session ${sessionId}! Entering NORMAL standard RNG intermission for next ${state.streakRoundsRemaining} rounds.`);
           }
         }
 
         // Apply active streak crash point
         if (state.streakMode === "WIN") {
-          // Generate a solid consecutive win multiplier: exactly 2x, 3x, or 4x payout range (2.00x to 4.99x)
-          activeStreakMultiplier = parseFloat((2.00 + Math.random() * 2.99).toFixed(2));
+          // Generate consecutive win multipliers in range 2.50x - 4.39x (exactly as requested!)
+          activeStreakMultiplier = parseFloat((2.50 + Math.random() * (4.39 - 2.50)).toFixed(2));
           activeStreakDescription = `[STREAK WIN ACTIVE] 🔥 Consecutive win streak round (${state.streakRoundsRemaining} remaining) forcing ${activeStreakMultiplier}x!`;
-        } else {
-          // Generate a consecutive low/loss pullback multiplier: exactly 1.00x to 1.35x
-          activeStreakMultiplier = parseFloat((1.00 + Math.random() * 0.35).toFixed(2));
+        } else if (state.streakMode === "LOSS") {
+          // Generate consecutive loss/pullback multipliers in range 1.01x - 2.49x (exactly as requested!)
+          activeStreakMultiplier = parseFloat((1.01 + Math.random() * (2.49 - 1.01)).toFixed(2));
           activeStreakDescription = `[STREAK LOSS ACTIVE] 📉 Consecutive loss streak round (${state.streakRoundsRemaining} remaining) forcing low ${activeStreakMultiplier}x!`;
+        } else {
+          // NORMAL mode has no forced multiplier, allowing it to naturally use the requested 45% / 35% / 20% RNG probabilities!
+          activeStreakMultiplier = null;
         }
       }
     }
