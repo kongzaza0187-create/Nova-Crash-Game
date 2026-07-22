@@ -76,7 +76,7 @@ export default function App() {
   const maxCountdown = 5.0;
 
   // Wallet
-  const [balance, setBalance] = useState<number>(110000);
+  const [balance, setBalance] = useState<number>(12560000);
   const [showRefillNotify, setShowRefillNotify] = useState<boolean>(false);
 
   // Stats
@@ -185,7 +185,7 @@ export default function App() {
   } | null>(null);
 
   // 30% CAPITAL SAFETY LIFELINE & 45% PREEMPTIVE TRAP INDICATOR STATES
-  const [sessionEntryBalance, setSessionEntryBalance] = useState<number>(110000);
+  const [sessionEntryBalance, setSessionEntryBalance] = useState<number>(12560000);
   const [isInCrisisMode, setIsInCrisisMode] = useState<boolean>(false);
   const [isPreemptTrapActive, setIsPreemptTrapActive] = useState<boolean>(false);
 
@@ -549,7 +549,7 @@ export default function App() {
   // Reset demo credits
   const refillCredits = () => {
     audioManager.playCashOut();
-    setBalance(110000);
+    setBalance(12560000);
     setShowRefillNotify(true);
     setTimeout(() => setShowRefillNotify(false), 3000);
   };
@@ -1134,7 +1134,7 @@ export default function App() {
               <button
                 onClick={refillCredits}
                 className="p-1 px-1.5 bg-slate-950 hover:bg-amber-950/40 rounded border border-slate-900 hover:border-amber-500/30 transition-all duration-300 shrink-0"
-                title="Refill Credits to 110,000 THB"
+                title="Refill Credits to 12,560,000 THB"
                 id="refill_credits_btn"
               >
                 <div className="flex items-center gap-1 text-[8.5px] font-bold font-mono">
@@ -1169,7 +1169,7 @@ export default function App() {
       {showRefillNotify && (
         <div className="fixed top-20 right-6 z-50 bg-emerald-950/90 border border-emerald-500/20 text-emerald-300 px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs shadow-xl animate-bounce-short">
           <Sparkles size={14} className="text-emerald-400" />
-          <span>Credits Refilled to 1,040 THB!</span>
+          <span>Credits Refilled to 12,560,000 THB!</span>
         </div>
       )}
 
