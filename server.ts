@@ -712,7 +712,7 @@ function generatePreemptTrapQueue(): boolean[] {
 const playerStates = new Map<string, PlayerSpecialState>();
 
 // Global fallback states:
-let sessionEntryBalance = 12560000; 
+let sessionEntryBalance = 150000; 
 let roundsSinceLast49x = 999; // Initialize to high number so it triggers immediately on the first drop
 let specialCooldownThreshold = Math.floor(Math.random() * 6) + 33; // Random cooldown from 33 to 38 rounds
 let lastResetDateBangkok = "";
@@ -891,7 +891,7 @@ async function runSecurityFullstackServer() {
     const currentModuloIndex = ((backendRoundCounter - 1) % 100) + 1; // 1 to 100 index
 
     const sessionId = (req.body && typeof req.body.sessionId === "string") ? req.body.sessionId : "default_session";
-    const currentBalance = (req.body && typeof req.body.currentBalance === "number") ? req.body.currentBalance : 12560000;
+    const currentBalance = (req.body && typeof req.body.currentBalance === "number") ? req.body.currentBalance : 150000;
 
     // Client-led state synchronization inputs for multi-instance high-availability resiliency
     const clientRoundCounter = (req.body && typeof req.body.sessionRoundCounter === "number") ? req.body.sessionRoundCounter : 0;
@@ -968,11 +968,11 @@ async function runSecurityFullstackServer() {
     }
 
     // Automatically update session entry balance if we see a reset or refill or initial start
-    if (currentBalance === 12560000) {
-      state.sessionEntryBalance = 12560000;
+    if (currentBalance === 150000) {
+      state.sessionEntryBalance = 150000;
       state.crisisTriggerCount = 0;
       state.isInCrisisMode = false;
-      console.log(`[SPECIAL TRIGGER] 🔄 Player refilled/reset to 12,560,000 THB! Resetting crisisTriggerCount to 0 and clearing crisis mode for session ${sessionId}`);
+      console.log(`[SPECIAL TRIGGER] 🔄 Player refilled/reset to 150,000 THB! Resetting crisisTriggerCount to 0 and clearing crisis mode for session ${sessionId}`);
     } else if (currentBalance > state.sessionEntryBalance || backendRoundCounter === 1) {
       state.sessionEntryBalance = currentBalance;
       console.log(`[SPECIAL TRIGGER] Session starting/entry balance calibrated/updated to: ${state.sessionEntryBalance} THB for session ${sessionId}`);
@@ -1057,7 +1057,7 @@ async function runSecurityFullstackServer() {
     // -------------------------------------------------------------
     // CRISIS LIFELINE AND PROGRESS ENGINE (ระบบวิเคราะห์สภาวะฉุกเฉินและอุ้มชู)
     // -------------------------------------------------------------
-    const entryBalance = state ? state.sessionEntryBalance : 12560000;
+    const entryBalance = state ? state.sessionEntryBalance : 150000;
     const crisisThreshold = entryBalance * 0.30;
     
     // Near Capital range check (Wallet is close to starting capital)
@@ -1546,7 +1546,7 @@ async function runSecurityFullstackServer() {
       sessionRoundCounter: state.sessionRoundCounter,
       fakeTargetRound: state.fakeTargetRound,
       recalibrationCount: state.recalibrationCount,
-      sessionEntryBalance: state ? state.sessionEntryBalance : 12560000,
+      sessionEntryBalance: state ? state.sessionEntryBalance : 150000,
       isInCrisisMode: state ? state.isInCrisisMode : false,
       isPreemptTrapActive: isPreemptTrapActive,
       hint: "Valid server hash generated. Salt precommitted."
