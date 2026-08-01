@@ -653,6 +653,52 @@ interface PlayerSpecialState {
     profit5End: number;
     loss6End: number;
   };
+  setRewardCycle?: SetRewardCycle;
+}
+
+interface SetRewardCycle {
+  cycleIndex: number;
+  startTime: number;
+  durationMs: number;
+  startRound: number;
+  targets: number[];
+}
+
+function generateSetRewardTargets(cycleIndex: number, currentRound: number): SetRewardCycle {
+  const ranges: [number, number][] = [
+    [25, 29],    // Set 1: 25 – 29
+    [50, 58],    // Set 2: 50 – 58
+    [75, 87],    // Set 3: 75 – 87
+    [100, 116],  // Set 4: 100 – 116
+    [125, 145],  // Set 5: 125 – 145
+    [150, 174],  // Set 6: 150 – 174
+    [175, 203],  // Set 7: 175 – 203
+    [200, 232],  // Set 8: 200 – 232
+    [225, 261],  // Set 9: 225 – 261
+    [250, 290],  // Set 10: 250 – 290
+  ];
+
+  const targets: number[] = [];
+  let prevTarget = 0;
+
+  for (const [min, max] of ranges) {
+    const actualMin = Math.max(min, prevTarget + 1);
+    const actualMax = Math.max(actualMin, max);
+    const target = Math.floor(Math.random() * (actualMax - actualMin + 1)) + actualMin;
+    targets.push(target);
+    prevTarget = target;
+  }
+
+  // Duration randomly set between 90 and 100 minutes in milliseconds
+  const durationMs = Math.floor((90 + Math.random() * 10) * 60 * 1000);
+
+  return {
+    cycleIndex,
+    startTime: Date.now(),
+    durationMs,
+    startRound: currentRound,
+    targets
+  };
 }
 
 // Generates randomized transition bounds for the 7 stages of the player's psychological lifecycle
@@ -1368,6 +1414,25 @@ async function runSecurityFullstackServer() {
       }
     }
 
+    // Calculate 10-Set Reward System (11.00x - 12.01x in every 25-29, 50-58, ..., 250-290 round sets)
+    // Resets back to Round 1 every 90 to 100 minutes
+    const currentRoundForSet = state ? state.sessionRoundCounter : backendRoundCounter;
+    const nowMs = Date.now();
+
+    if (state) {
+      const cycleExpired = state.setRewardCycle && (nowMs - state.setRewardCycle.startTime >= state.setRewardCycle.durationMs);
+      if (!state.setRewardCycle || cycleExpired) {
+        const nextCycleIndex = state.setRewardCycle ? state.setRewardCycle.cycleIndex + 1 : 1;
+        state.setRewardCycle = generateSetRewardTargets(nextCycleIndex, currentRoundForSet);
+        const durMins = (state.setRewardCycle.durationMs / 60000).toFixed(1);
+        console.log(`[10-SET REWARD ENGINE] 🔄 ${cycleExpired ? '90-100 min timer expired!' : 'Initialized'} Resetting session reward cycle #${nextCycleIndex} for session ${sessionId}. Timer duration: ${durMins}m. Starting round: ${currentRoundForSet}. Scheduled relative targets:`, state.setRewardCycle.targets);
+      }
+    }
+
+    const rewardCycle = state ? state.setRewardCycle : null;
+    const setRelativeRound = rewardCycle ? (currentRoundForSet - rewardCycle.startRound + 1) : currentRoundForSet;
+    const isSetRewardRound = rewardCycle ? rewardCycle.targets.includes(setRelativeRound) : false;
+
     // Branching decisions for target crash point
     if (state && state.sessionRoundCounter === 2) {
       // Special Rule from user: 2nd session round must reach exactly 99.00x multiplier with 100% chance!
@@ -1381,6 +1446,11 @@ async function runSecurityFullstackServer() {
       // Special Rule: Force aircraft to rocket up to exactly 49.00x multiplier immediately!
       targetCrashPoint = 49.00;
       console.log(`[SPECIAL FEATURE ACTIVE] 🚀 Rocket boosted to fly to exactly ${targetCrashPoint}x! Let players get a massive recovery!`);
+    } else if (isSetRewardRound) {
+      // 10-Set Reward Rule: 11.00x to 12.01x on scheduled rounds (Sets 1-10 across 25..29, 50..58, ..., 250..290)
+      targetCrashPoint = parseFloat((11.00 + Math.random() * 1.01).toFixed(2));
+      const activeCycleIdx = rewardCycle ? rewardCycle.cycleIndex : 1;
+      console.log(`[10-SET REWARD ACTIVE] 🎁 Scheduled Set Reward Triggered! Cycle #${activeCycleIdx} Relative Round ${setRelativeRound}: Flying to ${targetCrashPoint}x (Range 11.00x - 12.01x)`);
     } else if (backendRoundCounter === 1) {
       // Rule: First Game Force [1.08x - 1.10x] 100% chance
       targetCrashPoint = parseFloat((1.08 + Math.random() * (1.10 - 1.08)).toFixed(2));

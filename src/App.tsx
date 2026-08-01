@@ -1223,71 +1223,7 @@ export default function App() {
           </div>
         </div>
 
-        {/* Real-time Deceptive AI Prediction Module (Jackpot Deception Engine) */}
-        <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 bg-purple-950/20 border border-purple-500/15 rounded-xl p-3 text-[10px] font-mono select-none w-full" id="ai_jackpot_deception_hud" title="AI high-precision Super Jackpot RNG analysis.">
-          <div className="flex items-center justify-between gap-2 md:justify-start">
-            <div className="flex items-center gap-1.5 text-slate-300">
-              <Sparkles size={12} className="text-purple-400 animate-pulse shrink-0" />
-              <span className="font-bold text-purple-200">AI Super Predictor:</span>
-            </div>
-            <span className="md:hidden text-[8px] bg-purple-500/10 text-purple-300 border border-purple-500/20 rounded px-1.5 py-0.5 font-bold shrink-0">
-              {aiAccuracy}% Acc
-            </span>
-          </div>
-          
-          <div className="hidden md:block h-4 w-px bg-slate-800" />
 
-          <div className="flex-1 flex flex-row items-center justify-start gap-4 md:gap-6 flex-wrap">
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-400">Session Rounds:</span>
-              <span className="text-slate-200 font-mono font-bold bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800">
-                {sessionRoundCounter > 0 ? sessionRoundCounter : 1}
-              </span>
-            </div>
-
-            <div className="h-3.5 w-px bg-slate-850" />
-
-            <div className="flex items-center gap-1.5">
-              <span className="text-slate-400">AI Predicts 49.00x Round:</span>
-              <span className="text-yellow-400 font-black tracking-tight animate-pulse bg-yellow-950/40 px-1.5 py-0.5 rounded border border-yellow-500/20">
-                {fakeTargetRound}
-              </span>
-            </div>
-          </div>
-
-          <div className="hidden md:block h-4 w-px bg-slate-800" />
-
-          {isAiCalculating ? (
-            <div className="flex items-center gap-1.5 justify-end mt-1 md:mt-0">
-              <span className="w-1.5 h-1.5 rounded-full bg-yellow-400 animate-ping shrink-0" />
-              <span className="text-yellow-400 font-bold">Recalibrating predictive model...</span>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between md:justify-end gap-3 mt-1 md:mt-0">
-              {isInCrisisMode ? (
-                <span className="text-amber-400 font-black uppercase tracking-wider animate-pulse bg-amber-950/60 px-2.5 py-1 rounded-lg border border-amber-500/50 flex items-center gap-1.5 shadow-md shadow-amber-950/40 text-[10px]">
-                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-ping" />
-                  🛡️ LIFELINE ACTIVE: NEXT FLIGHT GUARANTEED 6.00X+ BIG WIN!
-                </span>
-              ) : fakeTargetRound - sessionRoundCounter <= 2 && fakeTargetRound - sessionRoundCounter > 0 ? (
-                <span className="text-rose-400 font-black uppercase tracking-wider animate-bounce bg-rose-950/45 px-2 py-0.5 rounded border border-rose-500/30">
-                  🔥 ALERT: High 49.00x probability! Prepare to ALL-IN!
-                </span>
-              ) : recalibrationCount > 0 && sessionRoundCounter === 1 ? (
-                <span className="text-cyan-400 font-semibold italic">
-                  🔄 Fine-tuning successful. Calibrated next base target.
-                </span>
-              ) : (
-                <span className="text-emerald-400 font-medium">
-                  🟢 TREND: Large payouts in accumulation wave.
-                </span>
-              )}
-              <span className="hidden md:inline-block text-[8px] bg-purple-500/10 text-purple-300 border border-purple-500/20 rounded px-1.5 py-0.5 font-bold shrink-0">
-                {aiAccuracy}% Acc
-              </span>
-            </div>
-          )}
-        </div>
 
 
 
