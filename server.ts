@@ -656,6 +656,9 @@ interface PlayerSpecialState {
   setRewardCycle?: SetRewardCycle;
 }
 
+// Global 10-Set Reward System State
+let globalSetRewardCycle: SetRewardCycle | null = null;
+
 interface SetRewardCycle {
   cycleIndex: number;
   startTime: number;
@@ -980,7 +983,11 @@ async function runSecurityFullstackServer() {
     const state = playerStates.get(sessionId)!;
 
     // Synchronize container state with client-reported session progress for load-balanced environments
-    if (clientRoundCounter > state.sessionRoundCounter) {
+    if (clientRoundCounter === 0 || clientRoundCounter === 1) {
+      state.sessionRoundCounter = clientRoundCounter;
+      state.setRewardCycle = generateSetRewardTargets(1, state.sessionRoundCounter);
+      console.log(`[SESSION RESET SYNC] 🔄 Session reset detected for ${sessionId}. Reset sessionRoundCounter to ${state.sessionRoundCounter} and generated Set 1 reward targets!`);
+    } else if (clientRoundCounter > state.sessionRoundCounter) {
       state.sessionRoundCounter = clientRoundCounter;
     }
     if (clientFakeTargetRound > state.fakeTargetRound) {
@@ -1415,23 +1422,19 @@ async function runSecurityFullstackServer() {
     }
 
     // Calculate 10-Set Reward System (11.00x - 12.01x in every 25-29, 50-58, ..., 250-290 round sets)
-    // Resets back to Round 1 every 90 to 100 minutes
-    const currentRoundForSet = state ? state.sessionRoundCounter : backendRoundCounter;
+    // Synchronized globally for all room players based on backendRoundCounter and a 90-100 minute reset timer
     const nowMs = Date.now();
+    const globalCycleExpired = globalSetRewardCycle && (nowMs - globalSetRewardCycle.startTime >= globalSetRewardCycle.durationMs);
 
-    if (state) {
-      const cycleExpired = state.setRewardCycle && (nowMs - state.setRewardCycle.startTime >= state.setRewardCycle.durationMs);
-      if (!state.setRewardCycle || cycleExpired) {
-        const nextCycleIndex = state.setRewardCycle ? state.setRewardCycle.cycleIndex + 1 : 1;
-        state.setRewardCycle = generateSetRewardTargets(nextCycleIndex, currentRoundForSet);
-        const durMins = (state.setRewardCycle.durationMs / 60000).toFixed(1);
-        console.log(`[10-SET REWARD ENGINE] 🔄 ${cycleExpired ? '90-100 min timer expired!' : 'Initialized'} Resetting session reward cycle #${nextCycleIndex} for session ${sessionId}. Timer duration: ${durMins}m. Starting round: ${currentRoundForSet}. Scheduled relative targets:`, state.setRewardCycle.targets);
-      }
+    if (!globalSetRewardCycle || globalCycleExpired) {
+      const nextCycleIndex = globalSetRewardCycle ? globalSetRewardCycle.cycleIndex + 1 : 1;
+      globalSetRewardCycle = generateSetRewardTargets(nextCycleIndex, backendRoundCounter);
+      const durMins = (globalSetRewardCycle.durationMs / 60000).toFixed(1);
+      console.log(`[GLOBAL 10-SET REWARD ENGINE] 🔄 ${globalCycleExpired ? '90-100 min timer expired!' : 'Initialized'} Resetting global room reward cycle #${nextCycleIndex}. Timer duration: ${durMins}m. Starting global round: ${backendRoundCounter}. Scheduled relative targets:`, globalSetRewardCycle.targets);
     }
 
-    const rewardCycle = state ? state.setRewardCycle : null;
-    const setRelativeRound = rewardCycle ? (currentRoundForSet - rewardCycle.startRound + 1) : currentRoundForSet;
-    const isSetRewardRound = rewardCycle ? rewardCycle.targets.includes(setRelativeRound) : false;
+    const setRelativeRound = backendRoundCounter - globalSetRewardCycle.startRound + 1;
+    const isSetRewardRound = globalSetRewardCycle.targets.includes(setRelativeRound);
 
     // Branching decisions for target crash point
     if (state && state.sessionRoundCounter === 2) {
@@ -1449,8 +1452,8 @@ async function runSecurityFullstackServer() {
     } else if (isSetRewardRound) {
       // 10-Set Reward Rule: 11.00x to 12.01x on scheduled rounds (Sets 1-10 across 25..29, 50..58, ..., 250..290)
       targetCrashPoint = parseFloat((11.00 + Math.random() * 1.01).toFixed(2));
-      const activeCycleIdx = rewardCycle ? rewardCycle.cycleIndex : 1;
-      console.log(`[10-SET REWARD ACTIVE] 🎁 Scheduled Set Reward Triggered! Cycle #${activeCycleIdx} Relative Round ${setRelativeRound}: Flying to ${targetCrashPoint}x (Range 11.00x - 12.01x)`);
+      const activeCycleIdx = globalSetRewardCycle ? globalSetRewardCycle.cycleIndex : 1;
+      console.log(`[10-SET REWARD ACTIVE] 🎁 Scheduled Set Reward Triggered! Global Cycle #${activeCycleIdx} Relative Round ${setRelativeRound}: Flying to ${targetCrashPoint}x (Range 11.00x - 12.01x)`);
     } else if (backendRoundCounter === 1) {
       // Rule: First Game Force [1.08x - 1.10x] 100% chance
       targetCrashPoint = parseFloat((1.08 + Math.random() * (1.10 - 1.08)).toFixed(2));

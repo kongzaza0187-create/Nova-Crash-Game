@@ -551,6 +551,10 @@ export default function App() {
     audioManager.playCashOut();
     setBalance(150000);
     setShowRefillNotify(true);
+    setSessionRoundCounter(0);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("skyrush_session_round_counter", "0");
+    }
     setTimeout(() => setShowRefillNotify(false), 3000);
   };
 
@@ -565,6 +569,10 @@ export default function App() {
       netProfit: 0,
     });
     setMyHistory([]);
+    setSessionRoundCounter(0);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("skyrush_session_round_counter", "0");
+    }
   };
 
   // Placing individual bets with Asymmetric 3-Tiered non-refundable fuel tax fee
