@@ -671,16 +671,16 @@ interface SetRewardCycle {
 
 function generateSetRewardTargets(cycleIndex: number, currentRound: number): SetRewardCycle {
   const ranges: [number, number][] = [
-    [25, 29],    // Set 1: 25 – 29
-    [50, 58],    // Set 2: 50 – 58
-    [75, 87],    // Set 3: 75 – 87
-    [100, 116],  // Set 4: 100 – 116
-    [125, 145],  // Set 5: 125 – 145
-    [150, 174],  // Set 6: 150 – 174
-    [175, 203],  // Set 7: 175 – 203
-    [200, 232],  // Set 8: 200 – 232
-    [225, 261],  // Set 9: 225 – 261
-    [250, 290],  // Set 10: 250 – 290
+    [5, 8],      // Set 1: 5 – 8
+    [15, 18],    // Set 2: 15 – 18
+    [25, 28],    // Set 3: 25 – 28
+    [35, 38],    // Set 4: 35 – 38
+    [45, 48],    // Set 5: 45 – 48
+    [55, 58],    // Set 6: 55 – 58
+    [65, 68],    // Set 7: 65 – 68
+    [75, 78],    // Set 8: 75 – 78
+    [85, 88],    // Set 9: 85 – 88
+    [95, 98],    // Set 10: 95 – 98
   ];
 
   const targets: number[] = [];
@@ -1453,7 +1453,16 @@ async function runSecurityFullstackServer() {
 
     // Evaluate Session Round Reward Targets first
     if (state && state.setRewardCycle) {
-      const sessionRelRound = state.sessionRoundCounter - state.setRewardCycle.startRound + 1;
+      let sessionRelRound = state.sessionRoundCounter - state.setRewardCycle.startRound + 1;
+      
+      // Auto-renew cycle if session relative round exceeded 100 (completed all 10 sets)
+      if (sessionRelRound > 100) {
+        const nextIdx = state.setRewardCycle.cycleIndex + 1;
+        state.setRewardCycle = generateSetRewardTargets(nextIdx, state.sessionRoundCounter);
+        sessionRelRound = 1;
+        console.log(`[SESSION 10-SET REWARD LOOP] 🔄 Auto-renewed Set Reward Cycle to #${nextIdx} at Session Round ${state.sessionRoundCounter}`);
+      }
+
       for (let i = 0; i < state.setRewardCycle.ranges.length; i++) {
         if (!state.setRewardCycle.triggeredSets[i]) {
           const [minRange, maxRange] = state.setRewardCycle.ranges[i];
