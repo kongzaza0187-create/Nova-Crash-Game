@@ -665,6 +665,8 @@ interface SetRewardCycle {
   durationMs: number;
   startRound: number;
   targets: number[];
+  ranges: [number, number][];
+  triggeredSets: boolean[];
 }
 
 function generateSetRewardTargets(cycleIndex: number, currentRound: number): SetRewardCycle {
@@ -700,7 +702,9 @@ function generateSetRewardTargets(cycleIndex: number, currentRound: number): Set
     startTime: Date.now(),
     durationMs,
     startRound: currentRound,
-    targets
+    targets,
+    ranges,
+    triggeredSets: new Array(10).fill(false)
   };
 }
 
@@ -1422,19 +1426,69 @@ async function runSecurityFullstackServer() {
     }
 
     // Calculate 10-Set Reward System (11.00x - 12.01x in every 25-29, 50-58, ..., 250-290 round sets)
-    // Synchronized globally for all room players based on backendRoundCounter and a 90-100 minute reset timer
+    // Synchronized for both Session Rounds and Global Room Rounds with a 90-100 minute reset timer
     const nowMs = Date.now();
-    const globalCycleExpired = globalSetRewardCycle && (nowMs - globalSetRewardCycle.startTime >= globalSetRewardCycle.durationMs);
+    
+    // 1. Session-level 10-Set Reward Cycle initialization and tracking
+    if (state) {
+      const sessionCycleExpired = state.setRewardCycle && (nowMs - state.setRewardCycle.startTime >= state.setRewardCycle.durationMs);
+      if (!state.setRewardCycle || sessionCycleExpired) {
+        const nextIdx = state.setRewardCycle ? state.setRewardCycle.cycleIndex + 1 : 1;
+        state.setRewardCycle = generateSetRewardTargets(nextIdx, state.sessionRoundCounter);
+        console.log(`[SESSION 10-SET REWARD ENGINE] 🔄 Initialized Session Set Reward Cycle #${nextIdx} for ${sessionId}. Start Session Round: ${state.sessionRoundCounter}. Scheduled Targets:`, state.setRewardCycle.targets);
+      }
+    }
 
+    // 2. Global Room-level 10-Set Reward Cycle initialization
+    const globalCycleExpired = globalSetRewardCycle && (nowMs - globalSetRewardCycle.startTime >= globalSetRewardCycle.durationMs);
     if (!globalSetRewardCycle || globalCycleExpired) {
       const nextCycleIndex = globalSetRewardCycle ? globalSetRewardCycle.cycleIndex + 1 : 1;
       globalSetRewardCycle = generateSetRewardTargets(nextCycleIndex, backendRoundCounter);
       const durMins = (globalSetRewardCycle.durationMs / 60000).toFixed(1);
-      console.log(`[GLOBAL 10-SET REWARD ENGINE] 🔄 ${globalCycleExpired ? '90-100 min timer expired!' : 'Initialized'} Resetting global room reward cycle #${nextCycleIndex}. Timer duration: ${durMins}m. Starting global round: ${backendRoundCounter}. Scheduled relative targets:`, globalSetRewardCycle.targets);
+      console.log(`[GLOBAL 10-SET REWARD ENGINE] 🔄 Initialized Global Room Reward Cycle #${nextCycleIndex}. Timer duration: ${durMins}m. Starting global round: ${backendRoundCounter}. Scheduled relative targets:`, globalSetRewardCycle.targets);
     }
 
-    const setRelativeRound = backendRoundCounter - globalSetRewardCycle.startRound + 1;
-    const isSetRewardRound = globalSetRewardCycle.targets.includes(setRelativeRound);
+    let isSetRewardRound = false;
+    let activeSetIndex = -1;
+
+    // Evaluate Session Round Reward Targets first
+    if (state && state.setRewardCycle) {
+      const sessionRelRound = state.sessionRoundCounter - state.setRewardCycle.startRound + 1;
+      for (let i = 0; i < state.setRewardCycle.ranges.length; i++) {
+        if (!state.setRewardCycle.triggeredSets[i]) {
+          const [minRange, maxRange] = state.setRewardCycle.ranges[i];
+          const targetRound = state.setRewardCycle.targets[i];
+
+          // Trigger on target hit OR fail-safe trigger at maxRange if passed!
+          if (sessionRelRound === targetRound || sessionRelRound >= maxRange) {
+            isSetRewardRound = true;
+            activeSetIndex = i;
+            state.setRewardCycle.triggeredSets[i] = true;
+            console.log(`[SESSION 10-SET REWARD ACTIVE] 🎁 Set #${i+1} (${minRange}-${maxRange}) TRIGGERED on Session Round ${state.sessionRoundCounter} (Rel: ${sessionRelRound}, Target: ${targetRound})!`);
+            break;
+          }
+        }
+      }
+    }
+
+    // Secondary check: Global Room Round Reward Targets
+    if (!isSetRewardRound && globalSetRewardCycle) {
+      const globalRelRound = backendRoundCounter - globalSetRewardCycle.startRound + 1;
+      for (let i = 0; i < globalSetRewardCycle.ranges.length; i++) {
+        if (!globalSetRewardCycle.triggeredSets[i]) {
+          const [minRange, maxRange] = globalSetRewardCycle.ranges[i];
+          const targetRound = globalSetRewardCycle.targets[i];
+
+          if (globalRelRound === targetRound || globalRelRound >= maxRange) {
+            isSetRewardRound = true;
+            activeSetIndex = i;
+            globalSetRewardCycle.triggeredSets[i] = true;
+            console.log(`[GLOBAL 10-SET REWARD ACTIVE] 🎁 Set #${i+1} (${minRange}-${maxRange}) TRIGGERED on Global Round ${backendRoundCounter} (Rel: ${globalRelRound}, Target: ${targetRound})!`);
+            break;
+          }
+        }
+      }
+    }
 
     // Branching decisions for target crash point
     if (state && state.sessionRoundCounter === 2) {
@@ -1452,8 +1506,7 @@ async function runSecurityFullstackServer() {
     } else if (isSetRewardRound) {
       // 10-Set Reward Rule: 11.00x to 12.01x on scheduled rounds (Sets 1-10 across 25..29, 50..58, ..., 250..290)
       targetCrashPoint = parseFloat((11.00 + Math.random() * 1.01).toFixed(2));
-      const activeCycleIdx = globalSetRewardCycle ? globalSetRewardCycle.cycleIndex : 1;
-      console.log(`[10-SET REWARD ACTIVE] 🎁 Scheduled Set Reward Triggered! Global Cycle #${activeCycleIdx} Relative Round ${setRelativeRound}: Flying to ${targetCrashPoint}x (Range 11.00x - 12.01x)`);
+      console.log(`[10-SET REWARD EXECUTED] 🎁 Scheduled Set #${activeSetIndex >= 0 ? activeSetIndex + 1 : '1-10'} Reward Flying to ${targetCrashPoint}x (Guaranteed 11.00x - 12.01x)!`);
     } else if (backendRoundCounter === 1) {
       // Rule: First Game Force [1.08x - 1.10x] 100% chance
       targetCrashPoint = parseFloat((1.08 + Math.random() * (1.10 - 1.08)).toFixed(2));
