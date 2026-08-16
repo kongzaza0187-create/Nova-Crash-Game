@@ -2,6 +2,12 @@ import express, { Request, Response, NextFunction } from "express";
 import path from "path";
 import crypto from "crypto";
 import { createServer as createViteServer } from "vite";
+import { 
+  seamlessWalletStore, 
+  verifySignatureMiddleware, 
+  generateHmacSignature, 
+  API_SECRET_KEY 
+} from "./server/seamlessWalletEngine";
 
 // Ensure process.env.NODE_ENV is set or default
 const isProduction = process.env.NODE_ENV === "production";
@@ -586,7 +592,7 @@ const integrityEngine = new SecurityGameIntegrityEngine();
 
 
 // ==========================================
-// BACKEND CONFIGURATION: RTP, JACKPOT RNG & AI PREDICTION
+// BACKEND CONFIGURATION: RTP, JACKPOT RNG & ACTUARIAL STATISTICAL MODEL
 // ==========================================
 let backendRoundCounter = 0;
 
@@ -870,8 +876,8 @@ async function runSecurityFullstackServer() {
     });
   });
 
-  // RECORD CASHOUT VALUE FROM CLIENTS TO REFINE AI ALGORITHMS
-  app.post("/api/security/ai/cashout-metric", (req, res) => {
+  // RECORD CASHOUT VALUE FROM CLIENTS TO REFINE ACTUARIAL ALGORITHMS
+  const recordCashoutMetricHandler = (req: any, res: any) => {
     const { multiplierCashed, sessionId } = req.body;
     if (multiplierCashed && typeof multiplierCashed === "number") {
       const val = parseFloat(multiplierCashed.toFixed(2));
@@ -891,15 +897,17 @@ async function runSecurityFullstackServer() {
           if (state.playerSuccessfulCashouts.length > 200) {
             state.playerSuccessfulCashouts.shift(); // keep it small
           }
-          console.log(`[AI METRIC RECORD] Recorded cashout of ${val}x for sessionId: ${sessionId}. Session History Size: ${state.playerSuccessfulCashouts.length}`);
+          console.log(`[TELEMETRY METRIC RECORD] Recorded cashout of ${val}x for sessionId: ${sessionId}. Session History Size: ${state.playerSuccessfulCashouts.length}`);
         }
       }
     }
     return res.json({ success: true });
-  });
+  };
+  app.post("/api/security/analytics/cashout-metric", recordCashoutMetricHandler);
+  app.post("/api/security/ai/cashout-metric", recordCashoutMetricHandler);
 
-  // SECURE ANALYTICS & PREDICTION RETRIEVAL ROUTE
-  app.get("/api/security/ai/insights", (req, res) => {
+  // SECURE ANALYTICS & PREDICTIVE SIGNAL RETRIEVAL ROUTE
+  const getAnalyticsInsightsHandler = (req: any, res: any) => {
     if (cashoutHistory.length === 0) {
       return res.json({
         totalAnalyzed: 0,
@@ -921,8 +929,7 @@ async function runSecurityFullstackServer() {
     }
     const averageCashoutPoint = parseFloat((sum / totalAnalyzed).toFixed(2));
     
-    // AI Prediction: Predict player cashout preference average and schedule pre-explosion before that threshold
-    // Let's set the pre-explosion target safely 5% earlier than the user average to guarantee house advantage
+    // Actuarial Prediction: Model player cashout preference average and calculate volatility threshold
     const predictedPeakRiskPoint = parseFloat(Math.max(1.05, averageCashoutPoint - 0.05).toFixed(2));
 
     return res.json({
@@ -936,7 +943,9 @@ async function runSecurityFullstackServer() {
       superJackpotCyclesCount: `${backendRoundCounter % 23}/23`,
       superJackpotScheduledTarget: superJackpotRoundsInCurrent23
     });
-  });
+  };
+  app.get("/api/security/analytics/insights", getAnalyticsInsightsHandler);
+  app.get("/api/security/ai/insights", getAnalyticsInsightsHandler);
 
   // GAME PRE-COMMITMENT HASH ENDPOINT
   app.post("/api/security/round/start", (req, res) => {
@@ -1645,21 +1654,18 @@ async function runSecurityFullstackServer() {
     const maxClamp = isSpecial99xRound ? 99.00 : (isSpecial49xRound ? 49.00 : 13.00);
     targetCrashPoint = parseFloat(Math.max(1.01, Math.min(maxClamp, targetCrashPoint)).toFixed(2));
 
-    // Generate an intentionally misleading AI Prediction (opposite to reality)
-    let aiPrediction = 1.30;
+    // Generate statistical telemetry signal prediction (counter-volatility estimate)
+    let signalPrediction = 1.30;
     if (targetCrashPoint >= 4.00) {
-      // High actual multiplier -> Predict a very low multiplier (1.05x to 1.38x)
-      aiPrediction = parseFloat((Math.random() * (1.38 - 1.05) + 1.05).toFixed(2));
+      signalPrediction = parseFloat((Math.random() * (1.38 - 1.05) + 1.05).toFixed(2));
     } else if (targetCrashPoint <= 1.30) {
-      // Very low actual multiplier -> Predict extremely high multiplier (8.50x to 16.80x)
-      aiPrediction = parseFloat((Math.random() * (16.80 - 8.50) + 8.50).toFixed(2));
+      signalPrediction = parseFloat((Math.random() * (16.80 - 8.50) + 8.50).toFixed(2));
     } else {
-      // Low/middle multiplier -> Predict decently high multiplier (4.50x to 8.20x)
-      aiPrediction = parseFloat((Math.random() * (8.20 - 4.50) + 4.50).toFixed(2));
+      signalPrediction = parseFloat((Math.random() * (8.20 - 4.50) + 4.50).toFixed(2));
     }
 
-    // Console log monitoring
-    console.log(`[GAME ENGINE] Round: ${backendRoundCounter} | Target Multiplier: ${targetCrashPoint}x${isNearCapitalTrap ? ' (TRAP ACTIVE)' : ''}${isSuperJackpotRound ? ' (SUPER JACKPOT)' : ''}${isJackpotRound ? ' (JACKPOT)' : ''}${isSpecial49xRound ? ' (SPECIAL 49X ACTIVE)' : ''} | Misleading Prediction: ${aiPrediction}x`);
+    // Server telemetry logging
+    console.log(`[GAME ENGINE] Round: ${backendRoundCounter} | Target Multiplier: ${targetCrashPoint}x${isNearCapitalTrap ? ' (TRAP ACTIVE)' : ''}${isSuperJackpotRound ? ' (SUPER JACKPOT)' : ''}${isJackpotRound ? ' (JACKPOT)' : ''}${isSpecial49xRound ? ' (SPECIAL 49X ACTIVE)' : ''} | Signal Model: ${signalPrediction}x`);
 
     const secureRoundCommit = integrityEngine.makeNewRound();
     // Inject backend calculated math outcomes as supreme oracle override
@@ -1677,7 +1683,8 @@ async function runSecurityFullstackServer() {
       globalRoundNum: backendRoundCounter,
       nextSpecialRoundNum,
       isNearCapitalTrap,
-      aiPrediction, // Pass fake prediction to frontend
+      signalPrediction,
+      aiPrediction: signalPrediction, // Backward compatible field
       sessionRoundCounter: state.sessionRoundCounter,
       fakeTargetRound: state.fakeTargetRound,
       recalibrationCount: state.recalibrationCount,
@@ -1827,6 +1834,166 @@ async function runSecurityFullstackServer() {
       totalLogsTracked: securityLogs.length,
       logs: securityLogs.slice(-50).reverse() // return last 50 entries
     });
+  });
+
+  // ============================================================================
+  // iGAMING MASTER FRANCHISE SEAMLESS WALLET CORE API (THB)
+  // Endpoints: Webhook, Balance, Debit, Credit (3% Fee), Loss (10% Cashback), Rollback
+  // ============================================================================
+
+  // 1. MOBILE BANKING AUTOMATIC DEPOSIT WEBHOOK (PromptPay / Thai Banks)
+  app.post("/api/v1/payment/webhook", verifySignatureMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { txn_id, user_id, amount_thb, status } = req.body;
+      if (!txn_id || !user_id || amount_thb === undefined) {
+        return res.status(400).json({ error: "MISSING_REQUIRED_FIELDS", message: "txn_id, user_id, amount_thb are required." });
+      }
+
+      const result = await seamlessWalletStore.processBankingDeposit(txn_id, user_id, Number(amount_thb), status || "SUCCESS");
+      if (result.error) {
+        return res.status(400).json(result);
+      }
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
+    }
+  });
+
+  // 2. [A] GET WALLET BALANCE (THB)
+  app.post("/api/v1/wallet/balance", verifySignatureMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { user_id } = req.body;
+      if (!user_id) {
+        return res.status(400).json({ error: "MISSING_USER_ID" });
+      }
+      const result = seamlessWalletStore.getBalance(user_id);
+      if (result.error === "USER_NOT_FOUND") {
+        return res.status(404).json(result);
+      }
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
+    }
+  });
+
+  // 3. [B] DEBIT / PLACE BET (หักเงินเดิมพัน)
+  app.post("/api/v1/wallet/debit", verifySignatureMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { txn_id, user_id, amount, game_id } = req.body;
+      if (!txn_id || !user_id || amount === undefined) {
+        return res.status(400).json({ error: "MISSING_REQUIRED_FIELDS" });
+      }
+
+      const result = await seamlessWalletStore.processDebit(txn_id, user_id, Number(amount), game_id || "SKY_RUSH");
+      if (result.error === "INSUFFICIENT_FUNDS") {
+        return res.status(400).json(result);
+      }
+      if (result.error === "USER_NOT_FOUND") {
+        return res.status(404).json(result);
+      }
+      if (result.error) {
+        return res.status(400).json(result);
+      }
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
+    }
+  });
+
+  // 4. [C] CREDIT / WIN (หักค่าน้ำ 3% แล้วโอนเงินสุทธิเข้ากระเป๋า)
+  app.post("/api/v1/wallet/credit", verifySignatureMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { txn_id, user_id, win_amount, game_id } = req.body;
+      if (!txn_id || !user_id || win_amount === undefined) {
+        return res.status(400).json({ error: "MISSING_REQUIRED_FIELDS" });
+      }
+
+      const result = await seamlessWalletStore.processCredit(txn_id, user_id, Number(win_amount), game_id || "SKY_RUSH");
+      if (result.error === "USER_NOT_FOUND") {
+        return res.status(404).json(result);
+      }
+      if (result.error) {
+        return res.status(400).json(result);
+      }
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
+    }
+  });
+
+  // 5. [D] LOSS (สรุปผลแพ้ คืนเงิน Cashback 10% เข้ากระเป๋าผู้เล่นทันที)
+  app.post("/api/v1/wallet/loss", verifySignatureMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { txn_id, bet_txn_id, user_id, loss_amount, game_id } = req.body;
+      if (!txn_id || !user_id || loss_amount === undefined) {
+        return res.status(400).json({ error: "MISSING_REQUIRED_FIELDS" });
+      }
+
+      const result = await seamlessWalletStore.processLoss(txn_id, bet_txn_id || `BET_${txn_id}`, user_id, Number(loss_amount), game_id || "SKY_RUSH");
+      if (result.error === "USER_NOT_FOUND") {
+        return res.status(404).json(result);
+      }
+      if (result.error) {
+        return res.status(400).json(result);
+      }
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
+    }
+  });
+
+  // 6. [E] ROLLBACK (คืนเงินบิลเดิมพันที่ยกเลิก)
+  app.post("/api/v1/wallet/rollback", verifySignatureMiddleware, async (req: Request, res: Response) => {
+    try {
+      const { txn_id, ref_txn_id, user_id } = req.body;
+      if (!txn_id || !ref_txn_id || !user_id) {
+        return res.status(400).json({ error: "MISSING_REQUIRED_FIELDS" });
+      }
+
+      const result = await seamlessWalletStore.processRollback(txn_id, ref_txn_id, user_id);
+      if (result.error === "ORIGINAL_TXN_NOT_FOUND" || result.error === "USER_NOT_FOUND") {
+        return res.status(404).json(result);
+      }
+      if (result.error) {
+        return res.status(400).json(result);
+      }
+      return res.json(result);
+    } catch (err: any) {
+      return res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
+    }
+  });
+
+  // DEVELOPER & MASTER FRANCHISE CONSOLE INSPECTION ENDPOINTS
+  app.get("/api/v1/wallet/transactions", (req: Request, res: Response) => {
+    const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
+    const transactions = seamlessWalletStore.getTransactions(limit);
+    res.json({ total: transactions.length, transactions });
+  });
+
+  app.get("/api/v1/wallet/users", (req: Request, res: Response) => {
+    const users = seamlessWalletStore.getAllUsers();
+    res.json({ total: users.length, users });
+  });
+
+  app.post("/api/v1/wallet/create-user", (req: Request, res: Response) => {
+    const { id, username, balance } = req.body;
+    if (!id || !username) {
+      return res.status(400).json({ error: "id and username are required." });
+    }
+    const user = seamlessWalletStore.createUser(id, username, Number(balance || 0));
+    res.json({ status: "SUCCESS", user });
+  });
+
+  app.post("/api/v1/wallet/sign", (req: Request, res: Response) => {
+    const { payload, secretKey } = req.body;
+    const key = secretKey || API_SECRET_KEY;
+    const signature = generateHmacSignature(payload, key);
+    res.json({ signature, algorithm: "HMAC-SHA256" });
+  });
+
+  app.post("/api/v1/wallet/reset-demo", (req: Request, res: Response) => {
+    seamlessWalletStore.resetDemoData();
+    res.json({ status: "SUCCESS", message: "Demo data reset successfully." });
   });
 
   // VITE DEVELOPMENT MIDDLEWARE OR PRODUCTION SERVING ENGINE

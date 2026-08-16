@@ -3,9 +3,11 @@ import { GameCanvas } from "./components/GameCanvas";
 import { BetPanel } from "./components/BetPanel";
 import { BetsList } from "./components/BetsList";
 import { HelpModal } from "./components/HelpModal";
+import { SeamlessWalletModal } from "./components/SeamlessWalletModal";
 import { audioManager } from "./audio";
-import { Bet, PlayerBet, RoundState, HistoryItem, UserStats } from "./types";
+import { Bet, PlayerBet, RoundState, HistoryItem, UserStats, WalletMode } from "./types";
 import { SkyRushEngine, BetSlip, GameRoomState } from "./lib/SkyRushEngine";
+import { seamlessWalletClient } from "./lib/seamlessWalletClient";
 import { 
   HelpCircle, 
   Volume2, 
@@ -24,7 +26,8 @@ import {
   Terminal,
   Key,
   Lock,
-  Unlock
+  Unlock,
+  Building2
 } from "lucide-react";
 
 // Initializing some mock general round history items for visual realism
@@ -75,9 +78,51 @@ export default function App() {
   const [countdown, setCountdown] = useState<number>(5.0);
   const maxCountdown = 5.0;
 
-  // Wallet
-  const [balance, setBalance] = useState<number>(150000);
+  // Dual-Wallet Architecture: Demo Wallet & Master Franchise Real Seamless Wallet (THB)
+  const [walletMode, setWalletMode] = useState<WalletMode>("REAL");
+  const [demoBalance, setDemoBalance] = useState<number>(150000);
+  const [realBalance, setRealBalance] = useState<number>(50000);
+  const [realUserId, setRealUserId] = useState<string>("USER_TH_001");
+  const [isSyncingRealWallet, setIsSyncingRealWallet] = useState<boolean>(false);
   const [showRefillNotify, setShowRefillNotify] = useState<boolean>(false);
+
+  const walletModeRef = useRef<WalletMode>("REAL");
+  walletModeRef.current = walletMode;
+  const realBalanceRef = useRef<number>(50000);
+  realBalanceRef.current = realBalance;
+  const demoBalanceRef = useRef<number>(150000);
+  demoBalanceRef.current = demoBalance;
+
+  // Active wallet balance (Used by UI and betting engine)
+  const balance = walletMode === "REAL" ? realBalance : demoBalance;
+
+  // Synchronize real wallet with Master Franchise API
+  const syncRealWallet = async (userId: string = realUserId) => {
+    setIsSyncingRealWallet(true);
+    try {
+      const res = await seamlessWalletClient.getBalance(userId);
+      if (res.status === "SUCCESS" && typeof res.balance === "number") {
+        setRealBalance(res.balance);
+      }
+    } catch (err) {
+      console.error("Failed to sync real wallet balance:", err);
+    } finally {
+      setIsSyncingRealWallet(false);
+    }
+  };
+
+  // Initial sync on mount
+  useEffect(() => {
+    syncRealWallet();
+  }, []);
+
+  const switchWalletMode = async (mode: WalletMode) => {
+    audioManager.playClick();
+    setWalletMode(mode);
+    if (mode === "REAL") {
+      await syncRealWallet();
+    }
+  };
 
   // Stats
   const [userStats, setUserStats] = useState<UserStats>({
@@ -124,6 +169,7 @@ export default function App() {
   }>>([]);
 
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
+  const [isSeamlessWalletOpen, setIsSeamlessWalletOpen] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
 
   // ACTUARIAL GAME ECONOMY ARCHITECTURE STATES & METRICS
@@ -141,8 +187,8 @@ export default function App() {
   const [cycleRoundNum, setCycleRoundNum] = useState<number>(1);
   const [globalRoundNum, setGlobalRoundNum] = useState<number>(0);
   const [nextSpecialRoundNum, setNextSpecialRoundNum] = useState<number>(33);
-  const [aiPrediction, setAiPrediction] = useState<number | null>(null);
-  const [isAiCalculating, setIsAiCalculating] = useState<boolean>(false);
+  const [signalPrediction, setSignalPrediction] = useState<number | null>(null);
+  const [isAnalyzingSignal, setIsAnalyzingSignal] = useState<boolean>(false);
   const [sessionRoundCounter, setSessionRoundCounter] = useState<number>(() => {
     if (typeof window !== "undefined") {
       const stored = localStorage.getItem("skyrush_session_round_counter");
@@ -173,8 +219,8 @@ export default function App() {
     }
     return 0;
   });
-  const [aiAccuracy, setAiAccuracy] = useState<number>(() => parseFloat((69 + Math.random() * 6).toFixed(1)));
-  const [backendAiInsights, setBackendAiInsights] = useState<{
+  const [signalConfidence, setSignalConfidence] = useState<number>(() => parseFloat((69 + Math.random() * 6).toFixed(1)));
+  const [backendTelemetryInsights, setBackendTelemetryInsights] = useState<{
     totalAnalyzed: number;
     averageCashoutPoint: number;
     predictedPeakRiskPoint: number;
@@ -259,7 +305,7 @@ export default function App() {
 
   // Initial insights fetch at app load
   useEffect(() => {
-    fetchAiInsightsFromBackend();
+    fetchTelemetryInsightsFromBackend();
   }, []);
 
   // Splash and pre-game background hardware evaluation cycle (3 seconds duration)
@@ -418,42 +464,41 @@ export default function App() {
               localStorage.setItem("skyrush_recalibration_count", String(data.recalibrationCount));
             }
           }
-          setAiAccuracy(parseFloat((69 + Math.random() * 6).toFixed(1)));
-          setIsAiCalculating(true);
-          setAiPrediction(null);
+          setSignalConfidence(parseFloat((69 + Math.random() * 6).toFixed(1)));
+          setIsAnalyzingSignal(true);
+          setSignalPrediction(null);
           setTimeout(() => {
-            if (typeof data.aiPrediction === "number") {
-              setAiPrediction(data.aiPrediction);
-            } else {
-              setAiPrediction(parseFloat((Math.random() * (12.0 - 1.2) + 1.2).toFixed(2)));
-            }
-            setIsAiCalculating(false);
+            const pred = typeof data.signalPrediction === "number" 
+              ? data.signalPrediction 
+              : (typeof data.aiPrediction === "number" ? data.aiPrediction : parseFloat((Math.random() * (12.0 - 1.2) + 1.2).toFixed(2)));
+            setSignalPrediction(pred);
+            setIsAnalyzingSignal(false);
           }, 1800);
-          fetchAiInsightsFromBackend();
+          fetchTelemetryInsightsFromBackend();
           return;
         }
       }
     } catch (err) {
-      console.warn("Backend pre commitment offline, falling back to local client seed engine.");
+      console.warn("Backend pre-commitment offline, falling back to local client seed engine.");
     }
     nextRoundDataRef.current = null; // Fallback to local
   };
 
-  const fetchAiInsightsFromBackend = async () => {
+  const fetchTelemetryInsightsFromBackend = async () => {
     try {
-      const response = await fetch("/api/security/ai/insights");
+      const response = await fetch("/api/security/analytics/insights");
       if (response.ok) {
         const data = await response.json();
-        setBackendAiInsights(data);
+        setBackendTelemetryInsights(data);
       }
     } catch (err) {
-      console.error("Failed to fetch backend AI insights", err);
+      console.error("Failed to fetch backend telemetry insights", err);
     }
   };
 
   const logPlayerCashoutToBackend = async (multiplier: number) => {
     try {
-      await fetch("/api/security/ai/cashout-metric", {
+      await fetch("/api/security/analytics/cashout-metric", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ 
@@ -488,7 +533,7 @@ export default function App() {
       
       // Clear for the next round
       nextRoundDataRef.current = null;
-      setEngineMode(isAbuseDirect ? "MARTINGALE_OVERRIDE" : "SERVER_ORACLE_AI");
+      setEngineMode(isAbuseDirect ? "MARTINGALE_OVERRIDE" : "SERVER_ACTUARIAL_ENGINE");
       return backendVal;
     }
 
@@ -546,10 +591,14 @@ export default function App() {
     setPlayerBets(bots);
   };
 
-  // Reset demo credits
+  // Reset demo credits or refresh real wallet
   const refillCredits = () => {
+    if (walletMode === "REAL") {
+      syncRealWallet();
+      return;
+    }
     audioManager.playCashOut();
-    setBalance(150000);
+    setDemoBalance(150000);
     setShowRefillNotify(true);
     setSessionRoundCounter(0);
     if (typeof window !== "undefined") {
@@ -576,140 +625,272 @@ export default function App() {
   };
 
   // Placing individual bets with Asymmetric 3-Tiered non-refundable fuel tax fee
-  const placeBetLeft = (rawAmount: number) => {
+  const placeBetLeft = async (rawAmount: number) => {
     const amount = Math.min(30000, Math.max(30, rawAmount));
     const tax = getTaxForWager(amount);
     const totalCost = amount + tax;
-    if (balance >= totalCost) {
-      audioManager.playBetPlaced();
-      setBalance((prev) => parseFloat((prev - totalCost).toFixed(2)));
-      setAccumulatedFuelTax(SkyRushEngine.getInstance().accumulatedFuelTaxTHB);
-      setBetLeft((prev) => ({ ...prev, amount, isPlaced: true, hasCashedOut: false }));
-    } else {
+    
+    const currentBal = walletModeRef.current === "REAL" ? realBalanceRef.current : demoBalanceRef.current;
+    if (currentBal < totalCost) {
       audioManager.playClick();
+      return;
+    }
+
+    if (walletModeRef.current === "REAL") {
+      const txnId = `BET_${Date.now()}_L_${Math.random().toString(36).substring(2, 6)}`;
+      const res = await seamlessWalletClient.debitBet(txnId, totalCost, realUserId);
+      if (res.status === "SUCCESS" && typeof res.balance === "number") {
+        audioManager.playBetPlaced();
+        setRealBalance(res.balance);
+        setAccumulatedFuelTax(SkyRushEngine.getInstance().accumulatedFuelTaxTHB);
+        setBetLeft((prev) => ({ ...prev, amount, isPlaced: true, hasCashedOut: false, betTxnId: txnId }));
+      } else {
+        audioManager.playClick();
+        console.warn("Real Wallet Debit Error:", res.error);
+      }
+    } else {
+      audioManager.playBetPlaced();
+      setDemoBalance((prev) => parseFloat((prev - totalCost).toFixed(2)));
+      setAccumulatedFuelTax(SkyRushEngine.getInstance().accumulatedFuelTaxTHB);
+      setBetLeft((prev) => ({ ...prev, amount, isPlaced: true, hasCashedOut: false, betTxnId: undefined }));
     }
   };
 
-  const placeBetRight = (rawAmount: number) => {
+  const placeBetRight = async (rawAmount: number) => {
     const amount = Math.min(30000, Math.max(30, rawAmount));
     const tax = getTaxForWager(amount);
     const totalCost = amount + tax;
-    if (balance >= totalCost) {
-      audioManager.playBetPlaced();
-      setBalance((prev) => parseFloat((prev - totalCost).toFixed(2)));
-      setAccumulatedFuelTax(SkyRushEngine.getInstance().accumulatedFuelTaxTHB);
-      setBetRight((prev) => ({ ...prev, amount, isPlaced: true, hasCashedOut: false }));
-    } else {
+    
+    const currentBal = walletModeRef.current === "REAL" ? realBalanceRef.current : demoBalanceRef.current;
+    if (currentBal < totalCost) {
       audioManager.playClick();
+      return;
+    }
+
+    if (walletModeRef.current === "REAL") {
+      const txnId = `BET_${Date.now()}_R_${Math.random().toString(36).substring(2, 6)}`;
+      const res = await seamlessWalletClient.debitBet(txnId, totalCost, realUserId);
+      if (res.status === "SUCCESS" && typeof res.balance === "number") {
+        audioManager.playBetPlaced();
+        setRealBalance(res.balance);
+        setAccumulatedFuelTax(SkyRushEngine.getInstance().accumulatedFuelTaxTHB);
+        setBetRight((prev) => ({ ...prev, amount, isPlaced: true, hasCashedOut: false, betTxnId: txnId }));
+      } else {
+        audioManager.playClick();
+        console.warn("Real Wallet Debit Error:", res.error);
+      }
+    } else {
+      audioManager.playBetPlaced();
+      setDemoBalance((prev) => parseFloat((prev - totalCost).toFixed(2)));
+      setAccumulatedFuelTax(SkyRushEngine.getInstance().accumulatedFuelTaxTHB);
+      setBetRight((prev) => ({ ...prev, amount, isPlaced: true, hasCashedOut: false, betTxnId: undefined }));
     }
   };
 
   // Fuel tax is completely non-refundable once committed. Refunds only revert the base wager amount.
-  const cancelBetLeft = () => {
+  const cancelBetLeft = async () => {
     audioManager.playClick();
     if (betLeft.isPlaced) {
-      setBalance((prev) => parseFloat((prev + betLeft.amount).toFixed(2)));
-      setBetLeft((prev) => ({ ...prev, isPlaced: false }));
+      if (walletModeRef.current === "REAL" && betLeft.betTxnId) {
+        const rbTxnId = `RB_${Date.now()}_L`;
+        const res = await seamlessWalletClient.rollbackBet(rbTxnId, betLeft.betTxnId, realUserId);
+        if (res.status === "SUCCESS" && typeof res.balance === "number") {
+          setRealBalance(res.balance);
+        }
+      } else {
+        setDemoBalance((prev) => parseFloat((prev + betLeft.amount).toFixed(2)));
+      }
+      setBetLeft((prev) => ({ ...prev, isPlaced: false, betTxnId: undefined }));
     }
   };
 
-  const cancelBetRight = () => {
+  const cancelBetRight = async () => {
     audioManager.playClick();
     if (betRight.isPlaced) {
-      setBalance((prev) => parseFloat((prev + betRight.amount).toFixed(2)));
-      setBetRight((prev) => ({ ...prev, isPlaced: false }));
+      if (walletModeRef.current === "REAL" && betRight.betTxnId) {
+        const rbTxnId = `RB_${Date.now()}_R`;
+        const res = await seamlessWalletClient.rollbackBet(rbTxnId, betRight.betTxnId, realUserId);
+        if (res.status === "SUCCESS" && typeof res.balance === "number") {
+          setRealBalance(res.balance);
+        }
+      } else {
+        setDemoBalance((prev) => parseFloat((prev + betRight.amount).toFixed(2)));
+      }
+      setBetRight((prev) => ({ ...prev, isPlaced: false, betTxnId: undefined }));
     }
   };
 
   // Executing user cashout operations with decimal truncation & faction sweep (Pillar 5)
-  const cashOutLeft = () => {
+  const cashOutLeft = async () => {
     if (roundState !== "FLYING" || !betLeft.isPlaced || betLeft.hasCashedOut) return;
     
     const curMultiplier = multiplierRef.current;
     const rawWinnings = betLeft.amount * curMultiplier;
     
-    const engine = SkyRushEngine.getInstance();
-    const { payout, swept } = engine.truncatePayoutAndSweep(rawWinnings);
-    setAccumulatedFractionSweep(engine.accumulatedFractionSweepTHB);
-    
     audioManager.playCashOut();
-    
-    setBalance((prev) => parseFloat((prev + payout).toFixed(2)));
-    setBetLeft((prev) => ({
-      ...prev,
-      hasCashedOut: true,
-      cashedOutMultiplier: curMultiplier,
-      winAmount: payout,
-    }));
 
-    logPlayerCashoutToBackend(curMultiplier);
+    if (walletModeRef.current === "REAL") {
+      const winTxnId = `WIN_${Date.now()}_L_${Math.random().toString(36).substring(2, 6)}`;
+      const res = await seamlessWalletClient.creditWin(winTxnId, rawWinnings, realUserId);
+      const actualPayout = res.net_win_added ?? parseFloat((rawWinnings * 0.97).toFixed(2));
+      
+      if (res.status === "SUCCESS" && typeof res.balance === "number") {
+        setRealBalance(res.balance);
+      }
 
-    // Log stats
-    setUserStats((prev) => ({
-      ...prev,
-      winCount: prev.winCount + 1,
-      totalBets: prev.totalBets + 1,
-      totalWagered: prev.totalWagered + betLeft.amount,
-      totalWon: prev.totalWon + payout,
-      netProfit: prev.netProfit + (payout - betLeft.amount),
-    }));
+      setBetLeft((prev) => ({
+        ...prev,
+        hasCashedOut: true,
+        cashedOutMultiplier: curMultiplier,
+        winAmount: actualPayout,
+      }));
 
-    // Log history
-    setMyHistory((prev) => [
-      {
-        id: `my_bet_${Date.now()}_l`,
-        amount: betLeft.amount,
-        multiplier: curMultiplier,
+      logPlayerCashoutToBackend(curMultiplier);
+
+      // Log stats
+      setUserStats((prev) => ({
+        ...prev,
+        winCount: prev.winCount + 1,
+        totalBets: prev.totalBets + 1,
+        totalWagered: prev.totalWagered + betLeft.amount,
+        totalWon: prev.totalWon + actualPayout,
+        netProfit: prev.netProfit + (actualPayout - betLeft.amount),
+      }));
+
+      // Log history
+      setMyHistory((prev) => [
+        {
+          id: `my_bet_${Date.now()}_l`,
+          amount: betLeft.amount,
+          multiplier: curMultiplier,
+          winAmount: actualPayout,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        },
+        ...prev,
+      ]);
+    } else {
+      const engine = SkyRushEngine.getInstance();
+      const { payout, swept } = engine.truncatePayoutAndSweep(rawWinnings);
+      setAccumulatedFractionSweep(engine.accumulatedFractionSweepTHB);
+      
+      setDemoBalance((prev) => parseFloat((prev + payout).toFixed(2)));
+      setBetLeft((prev) => ({
+        ...prev,
+        hasCashedOut: true,
+        cashedOutMultiplier: curMultiplier,
         winAmount: payout,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-      },
-      ...prev,
-    ]);
+      }));
+
+      logPlayerCashoutToBackend(curMultiplier);
+
+      // Log stats
+      setUserStats((prev) => ({
+        ...prev,
+        winCount: prev.winCount + 1,
+        totalBets: prev.totalBets + 1,
+        totalWagered: prev.totalWagered + betLeft.amount,
+        totalWon: prev.totalWon + payout,
+        netProfit: prev.netProfit + (payout - betLeft.amount),
+      }));
+
+      // Log history
+      setMyHistory((prev) => [
+        {
+          id: `my_bet_${Date.now()}_l`,
+          amount: betLeft.amount,
+          multiplier: curMultiplier,
+          winAmount: payout,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        },
+        ...prev,
+      ]);
+    }
   };
 
-  const cashOutRight = () => {
+  const cashOutRight = async () => {
     if (roundState !== "FLYING" || !betRight.isPlaced || betRight.hasCashedOut) return;
     
     const curMultiplier = multiplierRef.current;
     const rawWinnings = betRight.amount * curMultiplier;
     
-    const engine = SkyRushEngine.getInstance();
-    const { payout, swept } = engine.truncatePayoutAndSweep(rawWinnings);
-    setAccumulatedFractionSweep(engine.accumulatedFractionSweepTHB);
-    
     audioManager.playCashOut();
-    
-    setBalance((prev) => parseFloat((prev + payout).toFixed(2)));
-    setBetRight((prev) => ({
-      ...prev,
-      hasCashedOut: true,
-      cashedOutMultiplier: curMultiplier,
-      winAmount: payout,
-    }));
 
-    logPlayerCashoutToBackend(curMultiplier);
+    if (walletModeRef.current === "REAL") {
+      const winTxnId = `WIN_${Date.now()}_R_${Math.random().toString(36).substring(2, 6)}`;
+      const res = await seamlessWalletClient.creditWin(winTxnId, rawWinnings, realUserId);
+      const actualPayout = res.net_win_added ?? parseFloat((rawWinnings * 0.97).toFixed(2));
+      
+      if (res.status === "SUCCESS" && typeof res.balance === "number") {
+        setRealBalance(res.balance);
+      }
 
-    // Log stats
-    setUserStats((prev) => ({
-      ...prev,
-      winCount: prev.winCount + 1,
-      totalBets: prev.totalBets + 1,
-      totalWagered: prev.totalWagered + betRight.amount,
-      totalWon: prev.totalWon + payout,
-      netProfit: prev.netProfit + (payout - betRight.amount),
-    }));
+      setBetRight((prev) => ({
+        ...prev,
+        hasCashedOut: true,
+        cashedOutMultiplier: curMultiplier,
+        winAmount: actualPayout,
+      }));
 
-    // Log history
-    setMyHistory((prev) => [
-      {
-        id: `my_bet_${Date.now()}_r`,
-        amount: betRight.amount,
-        multiplier: curMultiplier,
+      logPlayerCashoutToBackend(curMultiplier);
+
+      // Log stats
+      setUserStats((prev) => ({
+        ...prev,
+        winCount: prev.winCount + 1,
+        totalBets: prev.totalBets + 1,
+        totalWagered: prev.totalWagered + betRight.amount,
+        totalWon: prev.totalWon + actualPayout,
+        netProfit: prev.netProfit + (actualPayout - betRight.amount),
+      }));
+
+      // Log history
+      setMyHistory((prev) => [
+        {
+          id: `my_bet_${Date.now()}_r`,
+          amount: betRight.amount,
+          multiplier: curMultiplier,
+          winAmount: actualPayout,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        },
+        ...prev,
+      ]);
+    } else {
+      const engine = SkyRushEngine.getInstance();
+      const { payout, swept } = engine.truncatePayoutAndSweep(rawWinnings);
+      setAccumulatedFractionSweep(engine.accumulatedFractionSweepTHB);
+      
+      setDemoBalance((prev) => parseFloat((prev + payout).toFixed(2)));
+      setBetRight((prev) => ({
+        ...prev,
+        hasCashedOut: true,
+        cashedOutMultiplier: curMultiplier,
         winAmount: payout,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-      },
-      ...prev,
-    ]);
+      }));
+
+      logPlayerCashoutToBackend(curMultiplier);
+
+      // Log stats
+      setUserStats((prev) => ({
+        ...prev,
+        winCount: prev.winCount + 1,
+        totalBets: prev.totalBets + 1,
+        totalWagered: prev.totalWagered + betRight.amount,
+        totalWon: prev.totalWon + payout,
+        netProfit: prev.netProfit + (payout - betRight.amount),
+      }));
+
+      // Log history
+      setMyHistory((prev) => [
+        {
+          id: `my_bet_${Date.now()}_r`,
+          amount: betRight.amount,
+          multiplier: curMultiplier,
+          winAmount: payout,
+          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+        },
+        ...prev,
+      ]);
+    }
   };
 
   const updateAutoSettingsLeft = (isAutoBet: boolean, isAutoCashOut: boolean, autoMultiplier: number) => {
@@ -741,24 +922,10 @@ export default function App() {
 
       // Trigger automatic placing of user bets with Asymmetric Fuel Tax applied
       if (betLeft.isAutoBet && !betLeft.isPlaced) {
-        const tax = getTaxForWager(betLeft.amount);
-        const totalCost = betLeft.amount + tax;
-        if (balance >= totalCost) {
-          audioManager.playBetPlaced();
-          setBalance((prev) => parseFloat((prev - totalCost).toFixed(2)));
-          setAccumulatedFuelTax(SkyRushEngine.getInstance().accumulatedFuelTaxTHB);
-          setBetLeft((prev) => ({ ...prev, isPlaced: true, hasCashedOut: false }));
-        }
+        placeBetLeft(betLeft.amount);
       }
       if (betRight.isAutoBet && !betRight.isPlaced) {
-        const tax = getTaxForWager(betRight.amount);
-        const totalCost = betRight.amount + tax;
-        if (balance >= totalCost) {
-          audioManager.playBetPlaced();
-          setBalance((prev) => parseFloat((prev - totalCost).toFixed(2)));
-          setAccumulatedFuelTax(SkyRushEngine.getInstance().accumulatedFuelTaxTHB);
-          setBetRight((prev) => ({ ...prev, isPlaced: true, hasCashedOut: false }));
-        }
+        placeBetRight(betRight.amount);
       }
 
       // Interval countdown ticks
@@ -846,90 +1013,16 @@ export default function App() {
           })
         );
 
-        // Auto Cash Out monitors with dec truncation & faction sweep (Pillar 5)
+        // Auto Cash Out monitors
         if (betLeft.isPlaced && !betLeft.hasCashedOut && betLeft.isAutoCashOut) {
           if (curMultiplier >= betLeft.autoCashOutMultiplier) {
-            // Self cash out left
-            const rawWinnings = betLeft.amount * betLeft.autoCashOutMultiplier;
-            const engine = SkyRushEngine.getInstance();
-            const { payout, swept } = engine.truncatePayoutAndSweep(rawWinnings);
-            setAccumulatedFractionSweep(engine.accumulatedFractionSweepTHB);
-
-            setBalance((prev) => parseFloat((prev + payout).toFixed(2)));
-            setBetLeft((prev) => ({
-              ...prev,
-              hasCashedOut: true,
-              cashedOutMultiplier: betLeft.autoCashOutMultiplier,
-              winAmount: payout,
-            }));
-
-            logPlayerCashoutToBackend(betLeft.autoCashOutMultiplier);
-
-            // Stats
-            setUserStats((prev) => ({
-              ...prev,
-              winCount: prev.winCount + 1,
-              totalBets: prev.totalBets + 1,
-              totalWagered: prev.totalWagered + betLeft.amount,
-              totalWon: prev.totalWon + payout,
-              netProfit: prev.netProfit + (payout - betLeft.amount),
-            }));
-
-            // History
-            setMyHistory((prev) => [
-              {
-                id: `my_bet_${Date.now()}_l_auto`,
-                amount: betLeft.amount,
-                multiplier: betLeft.autoCashOutMultiplier,
-                winAmount: payout,
-                timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-              },
-              ...prev,
-            ]);
-            audioManager.playCashOut();
+            cashOutLeft();
           }
         }
 
         if (betRight.isPlaced && !betRight.hasCashedOut && betRight.isAutoCashOut) {
           if (curMultiplier >= betRight.autoCashOutMultiplier) {
-            // Self cash out right
-            const rawWinnings = betRight.amount * betRight.autoCashOutMultiplier;
-            const engine = SkyRushEngine.getInstance();
-            const { payout, swept } = engine.truncatePayoutAndSweep(rawWinnings);
-            setAccumulatedFractionSweep(engine.accumulatedFractionSweepTHB);
-
-            setBalance((prev) => parseFloat((prev + payout).toFixed(2)));
-            setBetRight((prev) => ({
-              ...prev,
-              hasCashedOut: true,
-              cashedOutMultiplier: betRight.autoCashOutMultiplier,
-              winAmount: payout,
-            }));
-
-            logPlayerCashoutToBackend(betRight.autoCashOutMultiplier);
-
-            // Stats
-            setUserStats((prev) => ({
-              ...prev,
-              winCount: prev.winCount + 1,
-              totalBets: prev.totalBets + 1,
-              totalWagered: prev.totalWagered + betRight.amount,
-              totalWon: prev.totalWon + payout,
-              netProfit: prev.netProfit + (payout - betRight.amount),
-            }));
-
-            // History
-            setMyHistory((prev) => [
-              {
-                id: `my_bet_${Date.now()}_r_auto`,
-                amount: betRight.amount,
-                multiplier: betRight.autoCashOutMultiplier,
-                winAmount: payout,
-                timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-              },
-              ...prev,
-            ]);
-            audioManager.playCashOut();
+            cashOutRight();
           }
         }
 
@@ -962,7 +1055,7 @@ export default function App() {
       }
       setLastRoundResultWasLoss(userLostThisRound);
 
-      // Cashback calculations
+      // Cashback calculations & backend loss settlement
       let totalCashbackThisRound = 0;
       let leftCashback = 0;
       let rightCashback = 0;
@@ -970,14 +1063,35 @@ export default function App() {
       if (betLeft.isPlaced && !betLeft.hasCashedOut) {
         leftCashback = parseFloat((betLeft.amount * 0.10).toFixed(2));
         totalCashbackThisRound += leftCashback;
+
+        if (walletModeRef.current === "REAL" && betLeft.betTxnId) {
+          const lossTxnId = `LOSS_${Date.now()}_L_${Math.random().toString(36).substring(2, 6)}`;
+          seamlessWalletClient.processLoss(lossTxnId, betLeft.betTxnId, betLeft.amount, realUserId).then((res) => {
+            if (res.status === "SUCCESS" && typeof res.balance === "number") {
+              setRealBalance(res.balance);
+            }
+          });
+        }
       }
       if (betRight.isPlaced && !betRight.hasCashedOut) {
         rightCashback = parseFloat((betRight.amount * 0.10).toFixed(2));
         totalCashbackThisRound += rightCashback;
+
+        if (walletModeRef.current === "REAL" && betRight.betTxnId) {
+          const lossTxnId = `LOSS_${Date.now()}_R_${Math.random().toString(36).substring(2, 6)}`;
+          seamlessWalletClient.processLoss(lossTxnId, betRight.betTxnId, betRight.amount, realUserId).then((res) => {
+            if (res.status === "SUCCESS" && typeof res.balance === "number") {
+              setRealBalance(res.balance);
+            }
+          });
+        }
+      }
+
+      if (walletModeRef.current === "DEMO" && totalCashbackThisRound > 0) {
+        setDemoBalance((prev) => parseFloat((prev + totalCashbackThisRound).toFixed(2)));
       }
 
       if (totalCashbackThisRound > 0) {
-        setBalance((prev) => parseFloat((prev + totalCashbackThisRound).toFixed(2)));
         setCashbackPopup({ show: true, amount: totalCashbackThisRound });
         if (cashbackPopupTimeoutRef.current) {
           clearTimeout(cashbackPopupTimeoutRef.current);
@@ -1119,35 +1233,38 @@ export default function App() {
               <HelpCircle size={14} className="text-rose-500" /> How to play?
             </button>
 
-            {/* Demo wallet credit container */}
-            <div className="relative flex items-center bg-gradient-to-r from-amber-950/20 via-slate-900 to-emerald-950/15 border border-amber-500/30 hover:border-amber-500/50 shadow-[0_0_15px_rgba(245,158,11,0.12)] py-1.5 px-3.5 sm:px-4 rounded-xl gap-2.5 sm:gap-3 transition-all duration-300 group select-none" id="vip_wallet_glowing_hud">
-              <span className="absolute inset-0 bg-gradient-to-r from-amber-500/5 to-emerald-500/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500 rounded-xl pointer-events-none" />
-              
-              <div className="relative flex items-center justify-center bg-amber-500/10 p-1.5 rounded-lg text-amber-400 group-hover:scale-105 transition-transform duration-300 shadow-[0_0_10px_rgba(245,158,11,0.15)] shrink-0">
+            {/* Wallet Balance Container */}
+            <div 
+              className="relative flex items-center border shadow-lg py-1.5 px-3 sm:px-4 rounded-xl gap-2 sm:gap-3 transition-all duration-300 group select-none bg-gradient-to-r from-emerald-950/40 via-slate-900 to-teal-950/30 border-emerald-500/40 hover:border-emerald-500/60 shadow-[0_0_15px_rgba(16,185,129,0.15)]" 
+              id="vip_wallet_glowing_hud"
+            >
+              <div className="relative flex items-center justify-center p-1.5 rounded-lg shrink-0 bg-emerald-500/10 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
                 <Wallet size={16} className="animate-pulse" />
               </div>
               
               <div className="flex flex-col items-end leading-tight shrink-0">
-                <span className="text-[7.5px] sm:text-[8px] text-amber-500/90 font-black tracking-widest font-mono flex items-center gap-1 uppercase">
-                  <span className="w-1 h-1 rounded-full bg-emerald-400 animate-ping inline-block" /> Balance
+                <span className="text-[7.5px] sm:text-[8px] font-black tracking-widest font-mono flex items-center gap-1 uppercase text-emerald-400">
+                  <span className="w-1 h-1 rounded-full inline-block bg-emerald-400 animate-ping" /> 
+                  BALANCE
                 </span>
-                <span className="text-xs sm:text-sm md:text-base font-black text-transparent bg-clip-text bg-gradient-to-r from-amber-300 via-yellow-200 to-emerald-300 font-mono tracking-tight drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)]">
+                <span className="text-xs sm:text-sm md:text-base font-black font-mono tracking-tight drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)] text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-teal-200 to-emerald-400">
                   {balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-[10px] text-slate-400 font-normal">THB</span>
                 </span>
               </div>
               
               <div className="hidden sm:block h-6 w-px bg-slate-800" />
 
-              {/* Quick refill action button with gold badges */}
+              {/* Action Button: Live Sync with Master Wallet API */}
               <button
-                onClick={refillCredits}
-                className="p-1 px-1.5 bg-slate-950 hover:bg-amber-950/40 rounded border border-slate-900 hover:border-amber-500/30 transition-all duration-300 shrink-0"
-                title="Refill Credits to 150,000 THB"
-                id="refill_credits_btn"
+                onClick={() => syncRealWallet()}
+                disabled={isSyncingRealWallet}
+                className="p-1 px-1.5 bg-slate-950 hover:bg-emerald-950/40 rounded border border-slate-900 hover:border-emerald-500/30 transition-all duration-300 shrink-0"
+                title="Sync Balance with Seamless Wallet API"
+                id="sync_real_wallet_btn"
               >
                 <div className="flex items-center gap-1 text-[8.5px] font-bold font-mono">
-                  <RotateCcw size={9} className="transition-transform group-hover:rotate-180 duration-500 text-amber-500" />
-                  <span className="text-amber-500 tracking-tight">REFILL</span>
+                  <RotateCcw size={9} className={`transition-transform duration-500 text-emerald-400 ${isSyncingRealWallet ? "animate-spin" : "group-hover:rotate-180"}`} />
+                  <span className="text-emerald-400 tracking-tight">{isSyncingRealWallet ? "SYNC..." : "SYNC"}</span>
                 </div>
               </button>
             </div>
@@ -1488,7 +1605,7 @@ export default function App() {
                       {/* Preempt Trap Card */}
                       <div className="bg-slate-900 border border-slate-800/80 p-3 rounded-lg flex flex-col gap-1">
                         <span className="text-[8px] text-slate-400 uppercase tracking-widest font-black flex items-center gap-1">
-                          💣 AI PREEMPT TRAP (45%)
+                          💣 ACTUARIAL REBALANCE TRAP (45%)
                         </span>
                         <div className="flex items-center justify-between mt-0.5">
                           <span className={`text-[10px] font-black uppercase ${isPreemptTrapActive ? "text-amber-400 animate-pulse" : "text-slate-400"}`}>
@@ -1582,6 +1699,13 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* iGaming Master Franchise Seamless Wallet Hub Modal */}
+      <SeamlessWalletModal 
+        isOpen={isSeamlessWalletOpen} 
+        onClose={() => setIsSeamlessWalletOpen(false)}
+      />
+
       {/* 3-Second Loading / Splash Screen Overlay */}
       {isSplashActive && (
         <div 

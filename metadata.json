@@ -1,6 +1,6 @@
 {
   "name": "SKY RUSH",
-  "description": "An incredibly realistic, interactive, and highly polished simulation of the popular Aviator crash game. Features dual-panel betting, auto-cashout multipliers, real-time multiplayer bots, session profit stats, and real-time audio cues.",
+  "description": "An interactive casino simulation featuring the Sky Rush crash game and a complete iGaming Master Franchise Seamless Wallet API suite in THB. Includes Mobile Banking Webhook, 10% instant loss cashback, 3% win house fee deduction, HMAC-SHA256 signatures, row-locking (SELECT ... FOR UPDATE), idempotency, and PostgreSQL schema.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

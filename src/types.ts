@@ -1,4 +1,5 @@
 export type RoundState = "WAITING" | "FLYING" | "FLEW_AWAY";
+export type WalletMode = "DEMO" | "REAL";
 
 export interface GameState {
   multiplier: number;
@@ -18,6 +19,7 @@ export interface Bet {
   hasCashedOut: boolean;
   cashedOutMultiplier?: number;
   winAmount?: number;
+  betTxnId?: string;
 }
 
 export interface PlayerBet {
