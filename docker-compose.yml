@@ -1,0 +1,71 @@
+version: "3.8"
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: game_api_service
+    restart: always
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - TZ=Europe/Malta
+      - HMAC_SECRET_KEY=sec_master_hmac_key_prod_998877_secure
+      - API_BEARER_TOKEN=sec_bearer_token_production_access_key_998877
+      - ALLOWED_ORIGINS=*
+      - DATABASE_URL=postgresql://game_user:secure_db_pass_123@postgres:5432/game_wallet?sslmode=disable
+      - DB_POOL_MIN=5
+      - DB_POOL_MAX=50
+      - REDIS_URL=redis://redis:6379/0
+    ports:
+      - "3000:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: game_postgres_db
+    restart: always
+    environment:
+      - POSTGRES_USER=game_user
+      - POSTGRES_PASSWORD=secure_db_pass_123
+      - POSTGRES_DB=game_wallet
+      - TZ=Europe/Malta
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U game_user -d game_wallet"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: game_redis_cache
+    restart: always
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "256mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redisdata:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+volumes:
+  pgdata:
+  redisdata:

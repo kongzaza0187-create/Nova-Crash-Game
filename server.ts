@@ -8,6 +8,7 @@ import {
   generateHmacSignature, 
   API_SECRET_KEY 
 } from "./server/seamlessWalletEngine";
+import { riskAssuranceEngine } from "./src/modules/game/riskAssuranceEngine";
 
 // Ensure process.env.NODE_ENV is set or default
 const isProduction = process.env.NODE_ENV === "production";
@@ -20,46 +21,50 @@ interface SecurityLogEntry {
   id: string;
   type: string;
   timestamp: string;
-  ip: string;
-  userId?: string;
   details: string;
 }
 
-// Stores logs separate from main database
+// Stores sanitized event logs
 const securityLogs: SecurityLogEntry[] = [];
 
-function logSecurityEvent(entry: Omit<SecurityLogEntry, "id">) {
-  const logId = "log_" + crypto.randomUUID();
-  const fullEntry = { id: logId, ...entry };
-  securityLogs.push(fullEntry);
-  console.log(`[SECURITY EVENT][${entry.type}] ${entry.details} (IP: ${entry.ip})`);
+function sanitizeClientToken(raw?: string): string {
+  if (!raw) return "anonymous";
+  return crypto.createHash("sha256").update(raw).digest("hex").slice(0, 12);
 }
 
-function logSuspiciousActivity(payload: { type: string; userId?: string; details: string; ip?: string }) {
+function logSecurityEvent(entry: { type: string; details: string; timestamp?: string; ip?: string; userId?: string }) {
+  const logId = "evt_" + crypto.randomUUID();
+  const fullEntry: SecurityLogEntry = {
+    id: logId,
+    type: entry.type,
+    timestamp: entry.timestamp || new Date().toISOString(),
+    details: entry.details
+  };
+  securityLogs.push(fullEntry);
+  if (securityLogs.length > 500) securityLogs.shift();
+  console.log(`[EVENT][${fullEntry.type}] ${fullEntry.details}`);
+}
+
+function logSuspiciousActivity(payload: { type: string; details: string; ip?: string; userId?: string }) {
+  const token = sanitizeClientToken(payload.ip || payload.userId);
   logSecurityEvent({
     type: payload.type,
-    ip: payload.ip || "unknown",
-    userId: payload.userId,
-    timestamp: new Date().toISOString(),
-    details: `🚨 SUSPICIOUS ACTIVITY: ${payload.details}`
+    details: `Security rule evaluated for token [${token}]: ${payload.details}`
   });
 }
 
-function logFailedValidation(payload: { timestamp: string; ip: string; details: string }) {
+function logFailedValidation(payload: { timestamp: string; details: string; ip?: string }) {
   logSecurityEvent({
     type: "FAILED_VALIDATION",
-    ip: payload.ip,
     timestamp: payload.timestamp,
-    details: `Input validation failed: ${payload.details}`
+    details: `Schema validation failed: ${payload.details}`
   });
 }
 
 function logDbError(errorMessage: string) {
   logSecurityEvent({
     type: "DATABASE_ERROR",
-    ip: "system",
-    timestamp: new Date().toISOString(),
-    details: `Database Internal Error: ${errorMessage}`
+    details: `Storage operation error: ${errorMessage}`
   });
 }
 
@@ -195,19 +200,17 @@ class SecurityRateLimiter {
     
     logSecurityEvent({
       type: "RATE_LIMIT_VIOLATION",
-      ip,
       timestamp: new Date().toISOString(),
-      details: `Violation: ${reason}. Total violation count: ${current}`
+      details: `Rate threshold exceeded [${sanitizeClientToken(ip)}]: ${reason} (count: ${current})`
     });
 
-    // Block IP automatically after 3 consecutive violations
+    // Block token automatically after 3 consecutive violations
     if (current >= 3) {
       this.blockedIPs.add(ip);
       logSecurityEvent({
-        type: "IP_BLOCKED",
-        ip,
+        type: "CLIENT_BLOCKED",
         timestamp: new Date().toISOString(),
-        details: "IP automatically permanently blocked from the system due to 3 active rate limit violations"
+        details: `Client token [${sanitizeClientToken(ip)}] temporarily blocked due to repeated rate limit violations.`
       });
     }
   }
@@ -224,10 +227,11 @@ class SecurityRateLimiter {
   }
 
   public handleRequest(ip: string): boolean {
+    if (ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1" || ip === "localhost") return true;
     if (this.isBlocked(ip)) return false;
-    const ok = this.checkLimit(this.ipBuckets, ip, 100, 60000); // Max 100 requests per minute per IP
+    const ok = this.checkLimit(this.ipBuckets, ip, 10000, 60000); // High throughput allowed for wallet integrations
     if (!ok) {
-      this.trackViolation(ip, "Max global application endpoint requests (100 req/min) exceeded");
+      this.trackViolation(ip, "Max global application endpoint requests exceeded");
     }
     return ok;
   }
@@ -913,8 +917,8 @@ async function runSecurityFullstackServer() {
         totalAnalyzed: 0,
         averageCashoutPoint: 1.50,
         predictedPeakRiskPoint: 1.45,
-        targetRtpPercent: 60,
-        houseEdgePercent: 40,
+        targetRtpPercent: 63,
+        houseEdgePercent: 37,
         jackpotCyclesCount: `${backendRoundCounter % 100}/100`,
         jackpotsScheduledThisCycle: jackpotRoundsInCurrent100,
         superJackpotCyclesCount: `${backendRoundCounter % 23}/23`,
@@ -936,8 +940,8 @@ async function runSecurityFullstackServer() {
       totalAnalyzed,
       averageCashoutPoint,
       predictedPeakRiskPoint,
-      targetRtpPercent: 60,
-      houseEdgePercent: 40,
+      targetRtpPercent: 63,
+      houseEdgePercent: 37,
       jackpotCyclesCount: `${backendRoundCounter % 100}/100`,
       jackpotsScheduledThisCycle: jackpotRoundsInCurrent100,
       superJackpotCyclesCount: `${backendRoundCounter % 23}/23`,
@@ -1296,25 +1300,31 @@ async function runSecurityFullstackServer() {
         return val;
       }
 
-      // Roll based on new requested RNG probabilities:
-      // - 1.01 - 2.49x (45% probability)
-      // - 2.50 - 4.39x (35% probability)
-      // - 4.40 - 10.00x (20% probability)
+      // Roll based on requested 63% RTP / 37% House Edge distribution:
+      // - 1.01 - 1.35x (37% probability - House Edge capture)
+      // - 1.36 - 2.40x (38% probability - Low-Mid flow)
+      // - 2.41 - 4.50x (18% probability - Solid win range)
+      // - 4.51 - 9.50x (7% probability - High excitement range)
       const roll = Math.random();
-      if (roll < 0.45) {
-        // 1.01 - 2.49x
-        const val = parseFloat((1.01 + Math.random() * (2.49 - 1.01)).toFixed(2));
-        console.log(`[RNG SYSTEM] 🎰 Rolled low-range [1.01-2.49x] (45% chance) -> ${val}x`);
+      if (roll < 0.37) {
+        // 1.01 - 1.35x
+        const val = parseFloat((1.01 + Math.random() * (1.35 - 1.01)).toFixed(2));
+        console.log(`[RNG SYSTEM] 🎰 Rolled house-edge range [1.01-1.35x] (37% chance) -> ${val}x`);
         return val;
-      } else if (roll < 0.80) { // 0.45 + 0.35 = 0.80
-        // 2.50 - 4.39x
-        const val = parseFloat((2.50 + Math.random() * (4.39 - 2.50)).toFixed(2));
-        console.log(`[RNG SYSTEM] 🎰 Rolled mid-range [2.50-4.39x] (35% chance) -> ${val}x`);
+      } else if (roll < 0.75) { // 0.37 + 0.38 = 0.75
+        // 1.36 - 2.40x
+        const val = parseFloat((1.36 + Math.random() * (2.40 - 1.36)).toFixed(2));
+        console.log(`[RNG SYSTEM] 🎰 Rolled low-mid range [1.36-2.40x] (38% chance) -> ${val}x`);
         return val;
-      } else { // 20%
-        // 4.40 - 10.00x
-        const val = parseFloat((4.40 + Math.random() * (10.00 - 4.40)).toFixed(2));
-        console.log(`[RNG SYSTEM] 🎰 Rolled high-range [4.40-10.00x] (20% chance) -> ${val}x`);
+      } else if (roll < 0.93) { // 0.75 + 0.18 = 0.93
+        // 2.41 - 4.50x
+        const val = parseFloat((2.41 + Math.random() * (4.50 - 2.41)).toFixed(2));
+        console.log(`[RNG SYSTEM] 🎰 Rolled mid-range [2.41-4.50x] (18% chance) -> ${val}x`);
+        return val;
+      } else { // 7%
+        // 4.51 - 9.50x
+        const val = parseFloat((4.51 + Math.random() * (9.50 - 4.51)).toFixed(2));
+        console.log(`[RNG SYSTEM] 🎰 Rolled high-range [4.51-9.50x] (7% chance) -> ${val}x`);
         return val;
       }
     };
@@ -1841,15 +1851,48 @@ async function runSecurityFullstackServer() {
   // Endpoints: Webhook, Balance, Debit, Credit (3% Fee), Loss (10% Cashback), Rollback
   // ============================================================================
 
+  // ============================================================================
+  // iGAMING GLOBAL SEAMLESS WALLET CORE API (MULTI-OPERATOR / CURRENCY-AGNOSTIC)
+  // Endpoints: Authenticate, Balance, Bet/Debit, Win/Credit, Loss, Rollback/Refund, Operators
+  // ============================================================================
+
+  // 0. OPERATOR AUTHENTICATE / HANDSHAKE
+  const handleAuth = async (req: Request, res: Response) => {
+    try {
+      const { operator_id, token, user_id } = req.body;
+      const effectiveUser = user_id || "USER_TH_001";
+      const user = seamlessWalletStore.getBalance(effectiveUser);
+      if (user.error === "USER_NOT_FOUND") {
+        return res.status(404).json({ status: "FAILED", error: "USER_NOT_FOUND" });
+      }
+      return res.json({
+        status: "SUCCESS",
+        operator_id: operator_id || "OP_BOLLY_MAIN",
+        user_id: effectiveUser,
+        username: user.username,
+        balance: user.balance,
+        currency: "THB",
+        session_token: "sess_" + crypto.randomBytes(16).toString("hex"),
+        authenticated_at: new Date().toISOString()
+      });
+    } catch (err: any) {
+      return res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
+    }
+  };
+  app.post("/api/v1/wallet/authenticate", verifySignatureMiddleware, handleAuth);
+  app.post("/api/wallet/v1/authenticate", verifySignatureMiddleware, handleAuth);
+  app.post("/api/wallet/v1/auth", verifySignatureMiddleware, handleAuth);
+
   // 1. MOBILE BANKING AUTOMATIC DEPOSIT WEBHOOK (PromptPay / Thai Banks)
   app.post("/api/v1/payment/webhook", verifySignatureMiddleware, async (req: Request, res: Response) => {
     try {
-      const { txn_id, user_id, amount_thb, status } = req.body;
-      if (!txn_id || !user_id || amount_thb === undefined) {
-        return res.status(400).json({ error: "MISSING_REQUIRED_FIELDS", message: "txn_id, user_id, amount_thb are required." });
+      const { txn_id, user_id, amount_thb, amount, status } = req.body;
+      const depositAmt = amount_thb !== undefined ? amount_thb : amount;
+      if (!txn_id || !user_id || depositAmt === undefined) {
+        return res.status(400).json({ error: "MISSING_REQUIRED_FIELDS", message: "txn_id, user_id, amount are required." });
       }
 
-      const result = await seamlessWalletStore.processBankingDeposit(txn_id, user_id, Number(amount_thb), status || "SUCCESS");
+      const result = await seamlessWalletStore.processBankingDeposit(txn_id, user_id, Number(depositAmt), status || "SUCCESS");
       if (result.error) {
         return res.status(400).json(result);
       }
@@ -1859,8 +1902,8 @@ async function runSecurityFullstackServer() {
     }
   });
 
-  // 2. [A] GET WALLET BALANCE (THB)
-  app.post("/api/v1/wallet/balance", verifySignatureMiddleware, async (req: Request, res: Response) => {
+  // 2. [A] GET WALLET BALANCE
+  const handleBalance = async (req: Request, res: Response) => {
     try {
       const { user_id } = req.body;
       if (!user_id) {
@@ -1874,17 +1917,26 @@ async function runSecurityFullstackServer() {
     } catch (err: any) {
       return res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
     }
-  });
+  };
+  app.post("/api/v1/wallet/balance", verifySignatureMiddleware, handleBalance);
+  app.post("/api/wallet/v1/balance", verifySignatureMiddleware, handleBalance);
 
-  // 3. [B] DEBIT / PLACE BET (หักเงินเดิมพัน)
-  app.post("/api/v1/wallet/debit", verifySignatureMiddleware, async (req: Request, res: Response) => {
+  // 3. [B] DEBIT / PLACE BET (หักเงินเดิมพัน / Idempotent Debit)
+  const handleDebit = async (req: Request, res: Response) => {
     try {
-      const { txn_id, user_id, amount, game_id } = req.body;
-      if (!txn_id || !user_id || amount === undefined) {
+      const { txn_id, user_id, amount, bet_amount, game_id, operator_id } = req.body;
+      const betAmt = amount !== undefined ? amount : bet_amount;
+      if (!txn_id || !user_id || betAmt === undefined) {
         return res.status(400).json({ error: "MISSING_REQUIRED_FIELDS" });
       }
 
-      const result = await seamlessWalletStore.processDebit(txn_id, user_id, Number(amount), game_id || "SKY_RUSH");
+      const result = await seamlessWalletStore.processDebit(
+        txn_id, 
+        user_id, 
+        Number(betAmt), 
+        game_id || "SKY_RUSH",
+        operator_id || "OP_BOLLY_MAIN"
+      );
       if (result.error === "INSUFFICIENT_FUNDS") {
         return res.status(400).json(result);
       }
@@ -1898,17 +1950,27 @@ async function runSecurityFullstackServer() {
     } catch (err: any) {
       return res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
     }
-  });
+  };
+  app.post("/api/v1/wallet/debit", verifySignatureMiddleware, handleDebit);
+  app.post("/api/wallet/v1/debit", verifySignatureMiddleware, handleDebit);
+  app.post("/api/wallet/v1/bet", verifySignatureMiddleware, handleDebit);
 
   // 4. [C] CREDIT / WIN (หักค่าน้ำ 3% แล้วโอนเงินสุทธิเข้ากระเป๋า)
-  app.post("/api/v1/wallet/credit", verifySignatureMiddleware, async (req: Request, res: Response) => {
+  const handleCredit = async (req: Request, res: Response) => {
     try {
-      const { txn_id, user_id, win_amount, game_id } = req.body;
-      if (!txn_id || !user_id || win_amount === undefined) {
+      const { txn_id, user_id, win_amount, amount, game_id, operator_id } = req.body;
+      const winAmt = win_amount !== undefined ? win_amount : amount;
+      if (!txn_id || !user_id || winAmt === undefined) {
         return res.status(400).json({ error: "MISSING_REQUIRED_FIELDS" });
       }
 
-      const result = await seamlessWalletStore.processCredit(txn_id, user_id, Number(win_amount), game_id || "SKY_RUSH");
+      const result = await seamlessWalletStore.processCredit(
+        txn_id, 
+        user_id, 
+        Number(winAmt), 
+        game_id || "SKY_RUSH",
+        operator_id || "OP_BOLLY_MAIN"
+      );
       if (result.error === "USER_NOT_FOUND") {
         return res.status(404).json(result);
       }
@@ -1919,17 +1981,28 @@ async function runSecurityFullstackServer() {
     } catch (err: any) {
       return res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
     }
-  });
+  };
+  app.post("/api/v1/wallet/credit", verifySignatureMiddleware, handleCredit);
+  app.post("/api/wallet/v1/credit", verifySignatureMiddleware, handleCredit);
+  app.post("/api/wallet/v1/win", verifySignatureMiddleware, handleCredit);
 
   // 5. [D] LOSS (สรุปผลแพ้ คืนเงิน Cashback 10% เข้ากระเป๋าผู้เล่นทันที)
-  app.post("/api/v1/wallet/loss", verifySignatureMiddleware, async (req: Request, res: Response) => {
+  const handleLoss = async (req: Request, res: Response) => {
     try {
-      const { txn_id, bet_txn_id, user_id, loss_amount, game_id } = req.body;
-      if (!txn_id || !user_id || loss_amount === undefined) {
+      const { txn_id, bet_txn_id, user_id, loss_amount, amount, game_id, operator_id } = req.body;
+      const lossAmt = loss_amount !== undefined ? loss_amount : amount;
+      if (!txn_id || !user_id || lossAmt === undefined) {
         return res.status(400).json({ error: "MISSING_REQUIRED_FIELDS" });
       }
 
-      const result = await seamlessWalletStore.processLoss(txn_id, bet_txn_id || `BET_${txn_id}`, user_id, Number(loss_amount), game_id || "SKY_RUSH");
+      const result = await seamlessWalletStore.processLoss(
+        txn_id, 
+        bet_txn_id || `BET_${txn_id}`, 
+        user_id, 
+        Number(lossAmt), 
+        game_id || "SKY_RUSH",
+        operator_id || "OP_BOLLY_MAIN"
+      );
       if (result.error === "USER_NOT_FOUND") {
         return res.status(404).json(result);
       }
@@ -1940,17 +2013,24 @@ async function runSecurityFullstackServer() {
     } catch (err: any) {
       return res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
     }
-  });
+  };
+  app.post("/api/v1/wallet/loss", verifySignatureMiddleware, handleLoss);
+  app.post("/api/wallet/v1/loss", verifySignatureMiddleware, handleLoss);
 
-  // 6. [E] ROLLBACK (คืนเงินบิลเดิมพันที่ยกเลิก)
-  app.post("/api/v1/wallet/rollback", verifySignatureMiddleware, async (req: Request, res: Response) => {
+  // 6. [E] ROLLBACK / REFUND (คืนเงินบิลเดิมพันที่ยกเลิก)
+  const handleRollback = async (req: Request, res: Response) => {
     try {
-      const { txn_id, ref_txn_id, user_id } = req.body;
+      const { txn_id, ref_txn_id, user_id, operator_id } = req.body;
       if (!txn_id || !ref_txn_id || !user_id) {
         return res.status(400).json({ error: "MISSING_REQUIRED_FIELDS" });
       }
 
-      const result = await seamlessWalletStore.processRollback(txn_id, ref_txn_id, user_id);
+      const result = await seamlessWalletStore.processRollback(
+        txn_id, 
+        ref_txn_id, 
+        user_id,
+        operator_id || "OP_BOLLY_MAIN"
+      );
       if (result.error === "ORIGINAL_TXN_NOT_FOUND" || result.error === "USER_NOT_FOUND") {
         return res.status(404).json(result);
       }
@@ -1961,6 +2041,320 @@ async function runSecurityFullstackServer() {
     } catch (err: any) {
       return res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
     }
+  };
+  app.post("/api/v1/wallet/rollback", verifySignatureMiddleware, handleRollback);
+  app.post("/api/wallet/v1/rollback", verifySignatureMiddleware, handleRollback);
+  app.post("/api/wallet/v1/refund", verifySignatureMiddleware, handleRollback);
+
+  // 7. OPERATORS MULTI-TENANT MANAGEMENT
+  app.get("/api/wallet/v1/operators", (req: Request, res: Response) => {
+    const operators = seamlessWalletStore.getAllOperators();
+    res.json({ total: operators.length, operators });
+  });
+
+  app.post("/api/wallet/v1/operators/register", (req: Request, res: Response) => {
+    const { operator_id, operator_name, platform_url, api_secret } = req.body;
+    if (!operator_id || !operator_name) {
+      return res.status(400).json({ error: "operator_id and operator_name are required." });
+    }
+    const op = seamlessWalletStore.registerOperator(
+      operator_id, 
+      operator_name, 
+      platform_url || "https://example.com", 
+      api_secret || API_SECRET_KEY
+    );
+    res.json({ status: "SUCCESS", operator: op });
+  });
+
+  // 8. RISK ASSURANCE & RISK CEILING METRICS API
+  app.get("/api/risk-assurance/metrics", (req: Request, res: Response) => {
+    const metrics = riskAssuranceEngine.getMetrics();
+    res.json(metrics);
+  });
+
+  app.post("/api/risk-assurance/set-ceiling", (req: Request, res: Response) => {
+    const { ceiling_thb } = req.body;
+    if (ceiling_thb && Number(ceiling_thb) > 0) {
+      riskAssuranceEngine.setRiskCeiling(Number(ceiling_thb));
+      return res.json({ status: "SUCCESS", riskCeilingTHB: riskAssuranceEngine.riskCeilingTHB });
+    }
+    return res.status(400).json({ error: "INVALID_CEILING_AMOUNT" });
+  });
+
+  app.post("/api/risk-assurance/simulate", (req: Request, res: Response) => {
+    const { playerCount, baseWager } = req.body;
+    const result = riskAssuranceEngine.simulate100PlayerCohort({
+      playerCount: playerCount ? Number(playerCount) : 100,
+      baseWagerTHB: baseWager ? Number(baseWager) : 100
+    });
+    res.json(result);
+  });
+
+  // 9. SWAGGER / OPENAPI 3.0 SPECIFICATION
+  app.get("/api/docs/openapi.json", (req: Request, res: Response) => {
+    const openApiSpec = {
+      openapi: "3.0.3",
+      info: {
+        title: "Global iGaming Seamless Wallet & Risk Assurance API",
+        version: "1.0.0",
+        description: "Standardized High-Throughput Seamless Wallet API for Global iGaming Platforms with HMAC-SHA256 Authentication, Idempotency Locks, Risk Cushion Explosion Protocol, and 59:41 Loss/Win Macro Balancing."
+      },
+      servers: [
+        { url: "http://localhost:3000", description: "Local Dev / Sandbox Server" }
+      ],
+      paths: {
+        "/api/wallet/v1/authenticate": {
+          post: {
+            summary: "Player Handshake & Session Authentication",
+            requestBody: {
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      operator_id: { type: "string", example: "OP_BOLLY_MAIN" },
+                      user_id: { type: "string", example: "USER_TH_001" },
+                      token: { type: "string", example: "user_session_token_xyz" }
+                    }
+                  }
+                }
+              }
+            },
+            responses: {
+              200: { description: "Player authenticated successfully with live balance." }
+            }
+          }
+        },
+        "/api/wallet/v1/balance": {
+          post: {
+            summary: "Query Live Wallet Balance",
+            requestBody: {
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["user_id"],
+                    properties: {
+                      user_id: { type: "string", example: "USER_TH_001" }
+                    }
+                  }
+                }
+              }
+            },
+            responses: {
+              200: { description: "Returns current available balance." }
+            }
+          }
+        },
+        "/api/wallet/v1/bet": {
+          post: {
+            summary: "Debit / Place Bet with Idempotency",
+            requestBody: {
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["txn_id", "user_id", "amount"],
+                    properties: {
+                      txn_id: { type: "string", example: "TXN_BET_9901" },
+                      user_id: { type: "string", example: "USER_TH_001" },
+                      amount: { type: "number", example: 100.00 },
+                      game_id: { type: "string", example: "SKY_RUSH" },
+                      operator_id: { type: "string", example: "OP_BOLLY_MAIN" }
+                    }
+                  }
+                }
+              }
+            },
+            responses: {
+              200: { description: "Bet deducted and row-level locked successfully." }
+            }
+          }
+        },
+        "/api/wallet/v1/win": {
+          post: {
+            summary: "Credit / Win Settlement (with 3% house commission)",
+            requestBody: {
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["txn_id", "user_id", "win_amount"],
+                    properties: {
+                      txn_id: { type: "string", example: "TXN_WIN_9901" },
+                      user_id: { type: "string", example: "USER_TH_001" },
+                      win_amount: { type: "number", example: 250.00 },
+                      game_id: { type: "string", example: "SKY_RUSH" }
+                    }
+                  }
+                }
+              }
+            },
+            responses: {
+              200: { description: "Net win credited into user wallet." }
+            }
+          }
+        },
+        "/api/wallet/v1/loss": {
+          post: {
+            summary: "Loss Notification (with 10% instant player cashback)",
+            requestBody: {
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["txn_id", "user_id", "loss_amount"],
+                    properties: {
+                      txn_id: { type: "string", example: "TXN_LOSS_9901" },
+                      bet_txn_id: { type: "string", example: "TXN_BET_9901" },
+                      user_id: { type: "string", example: "USER_TH_001" },
+                      loss_amount: { type: "number", example: 100.00 }
+                    }
+                  }
+                }
+              }
+            },
+            responses: {
+              200: { description: "Loss recorded and cashback credited." }
+            }
+          }
+        },
+        "/api/wallet/v1/rollback": {
+          post: {
+            summary: "Rollback / Cancel Bet Wager",
+            requestBody: {
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["txn_id", "ref_txn_id", "user_id"],
+                    properties: {
+                      txn_id: { type: "string", example: "TXN_ROLLBACK_9901" },
+                      ref_txn_id: { type: "string", example: "TXN_BET_9901" },
+                      user_id: { type: "string", example: "USER_TH_001" }
+                    }
+                  }
+                }
+              }
+            },
+            responses: {
+              200: { description: "Refund applied back to player balance." }
+            }
+          }
+        }
+      }
+    };
+    res.json(openApiSpec);
+  });
+
+  // 10. POSTMAN COLLECTION v2.1.0 EXPORT
+  app.get("/api/docs/postman.json", (req: Request, res: Response) => {
+    const postmanCollection = {
+      info: {
+        name: "iGaming Seamless Wallet & Risk Engine API Collection",
+        description: "Official integration collection for global iGaming operators, aggregator networks, and casino game studios.",
+        schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+      },
+      item: [
+        {
+          name: "1. Authenticate Player",
+          request: {
+            method: "POST",
+            header: [{ key: "Content-Type", value: "application/json" }],
+            body: {
+              mode: "raw",
+              raw: JSON.stringify({ operator_id: "OP_BOLLY_MAIN", user_id: "USER_TH_001" }, null, 2)
+            },
+            url: { raw: "{{baseUrl}}/api/wallet/v1/authenticate", host: ["{{baseUrl}}"], path: ["api", "wallet", "v1", "authenticate"] }
+          }
+        },
+        {
+          name: "2. Get Balance",
+          request: {
+            method: "POST",
+            header: [{ key: "Content-Type", value: "application/json" }],
+            body: {
+              mode: "raw",
+              raw: JSON.stringify({ user_id: "USER_TH_001" }, null, 2)
+            },
+            url: { raw: "{{baseUrl}}/api/wallet/v1/balance", host: ["{{baseUrl}}"], path: ["api", "wallet", "v1", "balance"] }
+          }
+        },
+        {
+          name: "3. Debit / Place Bet",
+          request: {
+            method: "POST",
+            header: [{ key: "Content-Type", value: "application/json" }],
+            body: {
+              mode: "raw",
+              raw: JSON.stringify({
+                txn_id: "TXN_DEBIT_{{$timestamp}}",
+                user_id: "USER_TH_001",
+                amount: 100.00,
+                game_id: "SKY_RUSH",
+                operator_id: "OP_BOLLY_MAIN"
+              }, null, 2)
+            },
+            url: { raw: "{{baseUrl}}/api/wallet/v1/bet", host: ["{{baseUrl}}"], path: ["api", "wallet", "v1", "bet"] }
+          }
+        },
+        {
+          name: "4. Credit / Win (3% Comm)",
+          request: {
+            method: "POST",
+            header: [{ key: "Content-Type", value: "application/json" }],
+            body: {
+              mode: "raw",
+              raw: JSON.stringify({
+                txn_id: "TXN_CREDIT_{{$timestamp}}",
+                user_id: "USER_TH_001",
+                win_amount: 250.00,
+                game_id: "SKY_RUSH",
+                operator_id: "OP_BOLLY_MAIN"
+              }, null, 2)
+            },
+            url: { raw: "{{baseUrl}}/api/wallet/v1/win", host: ["{{baseUrl}}"], path: ["api", "wallet", "v1", "win"] }
+          }
+        },
+        {
+          name: "5. Loss Settlement (10% Cashback)",
+          request: {
+            method: "POST",
+            header: [{ key: "Content-Type", value: "application/json" }],
+            body: {
+              mode: "raw",
+              raw: JSON.stringify({
+                txn_id: "TXN_LOSS_{{$timestamp}}",
+                bet_txn_id: "TXN_DEBIT_ORIGINAL",
+                user_id: "USER_TH_001",
+                loss_amount: 100.00,
+                game_id: "SKY_RUSH",
+                operator_id: "OP_BOLLY_MAIN"
+              }, null, 2)
+            },
+            url: { raw: "{{baseUrl}}/api/wallet/v1/loss", host: ["{{baseUrl}}"], path: ["api", "wallet", "v1", "loss"] }
+          }
+        },
+        {
+          name: "6. Rollback / Cancel Bet",
+          request: {
+            method: "POST",
+            header: [{ key: "Content-Type", value: "application/json" }],
+            body: {
+              mode: "raw",
+              raw: JSON.stringify({
+                txn_id: "TXN_ROLLBACK_{{$timestamp}}",
+                ref_txn_id: "TXN_DEBIT_ORIGINAL",
+                user_id: "USER_TH_001",
+                operator_id: "OP_BOLLY_MAIN"
+              }, null, 2)
+            },
+            url: { raw: "{{baseUrl}}/api/wallet/v1/rollback", host: ["{{baseUrl}}"], path: ["api", "wallet", "v1", "rollback"] }
+          }
+        }
+      ]
+    };
+    res.json(postmanCollection);
   });
 
   // DEVELOPER & MASTER FRANCHISE CONSOLE INSPECTION ENDPOINTS

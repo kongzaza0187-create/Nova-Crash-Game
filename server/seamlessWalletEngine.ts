@@ -13,11 +13,27 @@ export interface WalletUser {
   createdAt: string;
 }
 
+export interface OperatorProfile {
+  operator_id: string;
+  operator_name: string;
+  platform_url: string;
+  api_secret: string;
+  status: "ACTIVE" | "SUSPENDED";
+  currency: string;
+  total_debit_volume: number;
+  total_credit_volume: number;
+  total_loss_cashback: number;
+  total_commission_paid: number;
+  active_players_count: number;
+  registered_at: string;
+}
+
 export interface WalletTransaction {
   id: number;
   txn_id: string;
   ref_txn_id?: string | null;
   user_id: string;
+  operator_id?: string;
   amount: number; // Net amount transacted in THB
   gross_amount?: number;
   fee?: number; // House fee (3% for WIN)
@@ -32,6 +48,7 @@ export interface WalletTransaction {
 // In-Memory Database with Row-Level Lock (FOR UPDATE) Simulation
 class SeamlessWalletStore {
   private users: Map<string, WalletUser> = new Map();
+  private operators: Map<string, OperatorProfile> = new Map();
   private transactions: Map<string, WalletTransaction> = new Map(); // Keyed by txn_id for O(1) Idempotency
   private txList: WalletTransaction[] = [];
   private userLocks: Map<string, Promise<void>> = new Map();
@@ -45,6 +62,44 @@ class SeamlessWalletStore {
     this.createUser("USER_TH_001", "KongZaza_Master", 50000.00);
     this.createUser("USER_TH_002", "LuckyPilot88", 12500.00);
     this.createUser("USER_TH_003", "SlotKing_VIP", 25000.00);
+
+    // Seed Multi-Tenant iGaming Operators
+    this.registerOperator("OP_BOLLY_MAIN", "BollyGaming Pilot Hub", "https://bollygaming.com", API_SECRET_KEY);
+    this.registerOperator("OP_BETHUB_99", "BetHub99 International", "https://bethub99.net", API_SECRET_KEY);
+    this.registerOperator("OP_ROYAL_VIP", "RoyalVIP88 Casino", "https://royalvip88.com", API_SECRET_KEY);
+    this.registerOperator("OP_SLOTX_ASIA", "SlotX Gaming Network", "https://slotx.asia", API_SECRET_KEY);
+  }
+
+  public registerOperator(
+    operatorId: string,
+    name: string,
+    platformUrl: string = "https://example.com",
+    apiSecret: string = API_SECRET_KEY
+  ): OperatorProfile {
+    const op: OperatorProfile = {
+      operator_id: operatorId,
+      operator_name: name,
+      platform_url: platformUrl,
+      api_secret: apiSecret,
+      status: "ACTIVE",
+      currency: "THB",
+      total_debit_volume: 0,
+      total_credit_volume: 0,
+      total_loss_cashback: 0,
+      total_commission_paid: 0,
+      active_players_count: 0,
+      registered_at: new Date().toISOString()
+    };
+    this.operators.set(operatorId, op);
+    return op;
+  }
+
+  public getOperator(operatorId: string): OperatorProfile | undefined {
+    return this.operators.get(operatorId);
+  }
+
+  public getAllOperators(): OperatorProfile[] {
+    return Array.from(this.operators.values());
   }
 
   // Row-Level Lock Mechanism: Simulates `SELECT ... FOR UPDATE` in Node.js Event Loop
@@ -159,12 +214,12 @@ class SeamlessWalletStore {
   }
 
   // 2. BALANCE LOOKUP
-  public getBalance(userId: string): { status: string; currency?: string; balance?: number; error?: string } {
+  public getBalance(userId: string): { status: string; currency?: string; username?: string; balance?: number; error?: string } {
     const user = this.users.get(userId);
     if (!user) {
       return { status: "FAILED", error: "USER_NOT_FOUND" };
     }
-    return { status: "SUCCESS", currency: "THB", balance: user.balance };
+    return { status: "SUCCESS", currency: "THB", username: user.username, balance: user.balance };
   }
 
   // 3. DEBIT (PLACE BET)
@@ -172,7 +227,8 @@ class SeamlessWalletStore {
     txnId: string,
     userId: string,
     amount: number,
-    gameId: string = "SKY_RUSH"
+    gameId: string = "SKY_RUSH",
+    operatorId: string = "OP_BOLLY_MAIN"
   ): Promise<{ status: string; currency?: string; balance?: number; error?: string; alreadyProcessed?: boolean }> {
     const unlock = await this.acquireUserLock(userId);
     try {
@@ -199,10 +255,17 @@ class SeamlessWalletStore {
       const newBalance = parseFloat((user.balance - betAmount).toFixed(2));
       user.balance = newBalance;
 
+      // Update operator volume stats
+      const op = this.operators.get(operatorId);
+      if (op) {
+        op.total_debit_volume = parseFloat((op.total_debit_volume + betAmount).toFixed(2));
+      }
+
       const txRecord: WalletTransaction = {
         id: this.autoIncrementId++,
         txn_id: txnId,
         user_id: userId,
+        operator_id: operatorId,
         amount: betAmount,
         gross_amount: betAmount,
         fee: 0.00,
@@ -228,7 +291,8 @@ class SeamlessWalletStore {
     txnId: string,
     userId: string,
     winAmount: number,
-    gameId: string = "SKY_RUSH"
+    gameId: string = "SKY_RUSH",
+    operatorId: string = "OP_BOLLY_MAIN"
   ): Promise<{
     status: string;
     currency?: string;
@@ -272,10 +336,18 @@ class SeamlessWalletStore {
       const newBalance = parseFloat((user.balance + netWin).toFixed(2));
       user.balance = newBalance;
 
+      // Update operator stats
+      const op = this.operators.get(operatorId);
+      if (op) {
+        op.total_credit_volume = parseFloat((op.total_credit_volume + netWin).toFixed(2));
+        op.total_commission_paid = parseFloat((op.total_commission_paid + houseFee).toFixed(2));
+      }
+
       const txRecord: WalletTransaction = {
         id: this.autoIncrementId++,
         txn_id: txnId,
         user_id: userId,
+        operator_id: operatorId,
         amount: netWin,
         gross_amount: grossWin,
         fee: houseFee,
@@ -309,7 +381,8 @@ class SeamlessWalletStore {
     betTxnId: string,
     userId: string,
     lossAmount: number,
-    gameId: string = "SKY_RUSH"
+    gameId: string = "SKY_RUSH",
+    operatorId: string = "OP_BOLLY_MAIN"
   ): Promise<{
     status: string;
     currency?: string;
@@ -349,11 +422,18 @@ class SeamlessWalletStore {
       const newBalance = parseFloat((user.balance + cashbackAmount).toFixed(2));
       user.balance = newBalance;
 
+      // Update operator stats
+      const op = this.operators.get(operatorId);
+      if (op) {
+        op.total_loss_cashback = parseFloat((op.total_loss_cashback + cashbackAmount).toFixed(2));
+      }
+
       const txRecord: WalletTransaction = {
         id: this.autoIncrementId++,
         txn_id: txnId,
         ref_txn_id: betTxnId,
         user_id: userId,
+        operator_id: operatorId,
         amount: cashbackAmount,
         gross_amount: lossVal,
         fee: 0.00,
@@ -384,7 +464,8 @@ class SeamlessWalletStore {
   public async processRollback(
     txnId: string,
     refTxnId: string,
-    userId: string
+    userId: string,
+    operatorId: string = "OP_BOLLY_MAIN"
   ): Promise<{ status: string; currency?: string; refunded_amount?: number; balance?: number; error?: string; alreadyProcessed?: boolean }> {
     const unlock = await this.acquireUserLock(userId);
     try {
@@ -409,11 +490,18 @@ class SeamlessWalletStore {
       const newBalance = parseFloat((user.balance + refundAmount).toFixed(2));
       user.balance = newBalance;
 
+      // Adjust operator debit volume
+      const op = this.operators.get(operatorId);
+      if (op) {
+        op.total_debit_volume = Math.max(0, parseFloat((op.total_debit_volume - refundAmount).toFixed(2)));
+      }
+
       const txRecord: WalletTransaction = {
         id: this.autoIncrementId++,
         txn_id: txnId,
         ref_txn_id: refTxnId,
         user_id: userId,
+        operator_id: operatorId,
         amount: refundAmount,
         gross_amount: refundAmount,
         fee: 0.00,

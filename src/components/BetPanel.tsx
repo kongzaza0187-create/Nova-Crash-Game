@@ -152,7 +152,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
           if (isLocked) {
             return {
               label: "WAITING...",
-              sub: `${betAmount.toLocaleString()} THB`,
+              sub: `${betAmount.toLocaleString()}`,
               bgColor: "bg-slate-800 text-slate-500",
               action: () => {},
               disabled: true,
@@ -160,7 +160,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
           }
           return {
             label: "BET ON NEXT ROUND",
-            sub: `${betAmount.toLocaleString()} THB`,
+            sub: `${betAmount.toLocaleString()}`,
             bgColor: "bg-emerald-700/50 hover:bg-emerald-700/80 text-emerald-100",
             action: () => onPlaceBet(Math.max(30, Math.min(30000, betAmount))),
             disabled: userBalance < betAmount || betAmount < 30,
@@ -183,7 +183,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
 
   return (
     <div
-      className={`relative flex-1 bg-slate-950/70 border p-4 rounded-xl flex flex-col gap-3 min-w-[280px] transition-all duration-300 ${
+      className={`relative flex-1 w-full min-w-0 sm:min-w-[280px] bg-slate-950/70 border p-3 sm:p-4 rounded-xl flex flex-col gap-2.5 sm:gap-3 transition-all duration-300 ${
         showCelebration 
           ? "border-amber-500/50 celebrate-glow" 
           : isLocked 
@@ -225,20 +225,20 @@ export const BetPanel: React.FC<BetPanelProps> = ({
       </div>
 
       {/* Main Betting Area */}
-      <div className="flex gap-3 min-h-[110px] h-auto items-stretch">
+      <div className="flex gap-2 sm:gap-3 min-h-[105px] h-auto items-stretch">
         {/* Stake Counter input */}
-        <div className="flex-1 flex flex-col justify-between bg-slate-900 rounded-lg p-2.5 min-w-[130px] gap-2">
+        <div className="flex-1 flex flex-col justify-between bg-slate-900 rounded-lg p-2 sm:p-2.5 min-w-0 gap-1.5 sm:gap-2">
           <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">
-            Amount THB
+            Stake Amount
           </div>
           <div className="flex items-center justify-between">
             <button
               onClick={handleHalveAmount}
               disabled={isLocked}
-              className="p-1 hover:bg-slate-850 rounded text-slate-300 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              className="p-1 sm:p-1.5 hover:bg-slate-850 rounded text-slate-300 transition disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation"
               id={`minus_amount_${id}`}
             >
-              <Minus size={16} />
+              <Minus size={15} />
             </button>
             <input
               type="number"
@@ -259,16 +259,16 @@ export const BetPanel: React.FC<BetPanelProps> = ({
                   setBetAmount(30);
                 }
               }}
-              className="w-full text-center bg-transparent border-none text-white text-base font-bold focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-70"
+              className="w-full text-center bg-transparent border-none text-white text-sm sm:text-base font-bold focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-70"
               id={`bet_input_${id}`}
             />
             <button
               onClick={handleDoubleAmount}
               disabled={isLocked}
-              className="p-1 hover:bg-slate-850 rounded text-slate-300 transition disabled:opacity-40 disabled:cursor-not-allowed"
+              className="p-1 sm:p-1.5 hover:bg-slate-850 rounded text-slate-300 transition disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation"
               id={`plus_amount_${id}`}
             >
-              <Plus size={16} />
+              <Plus size={15} />
             </button>
           </div>
 
@@ -279,7 +279,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
                 key={val}
                 disabled={isLocked}
                 onClick={() => setFixedAmount(val)}
-                className={`text-[9px] font-bold py-0.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed ${
+                className={`text-[8.5px] sm:text-[9px] font-bold py-0.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed touch-manipulation ${
                   betAmount === val
                     ? "bg-rose-900/40 text-rose-400 border border-rose-500/30"
                     : "bg-slate-850 text-slate-400 hover:text-white"
@@ -296,13 +296,13 @@ export const BetPanel: React.FC<BetPanelProps> = ({
         <button
           onClick={btn.action}
           disabled={btn.disabled}
-          className={`w-28 md:w-36 rounded-xl flex flex-col items-center justify-center transition select-none ${
+          className={`w-24 sm:w-28 md:w-36 rounded-xl flex flex-col items-center justify-center transition select-none touch-manipulation ${
             btn.bgColor
           } ${btn.disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer active:scale-95 shadow-md shadow-emerald-950/20"}`}
           id={`bet_action_btn_${id}`}
         >
-          <div className="text-xs md:text-sm font-black tracking-wide leading-tight text-center px-1">{btn.label}</div>
-          {btn.sub && <div className="text-[10px] md:text-xs opacity-90 mt-1 font-mono text-center px-1">{btn.sub}</div>}
+          <div className="text-xs sm:text-sm font-black tracking-wide leading-tight text-center px-1">{btn.label}</div>
+          {btn.sub && <div className="text-[9px] sm:text-xs opacity-90 mt-0.5 sm:mt-1 font-mono text-center px-1 truncate max-w-full">{btn.sub}</div>}
         </button>
       </div>
 
@@ -431,7 +431,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
                 {bet.cashedOutMultiplier ? bet.cashedOutMultiplier.toFixed(2) : "6.00"}+x
               </div>
               <div className="text-sm font-extrabold text-emerald-400 mt-1">
-                +{bet.winAmount ? bet.winAmount.toFixed(1) : "0.0"} THB
+                +{bet.winAmount ? bet.winAmount.toFixed(1) : "0.0"}
               </div>
               <div className="text-[9px] text-slate-500 mt-1 uppercase tracking-widest font-mono">
                 Click Panel to Close

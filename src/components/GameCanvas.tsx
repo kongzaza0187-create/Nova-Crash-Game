@@ -46,9 +46,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     const resizeObserver = new ResizeObserver((entries) => {
       for (let entry of entries) {
         const { width, height } = entry.contentRect;
-        // Make sure it has adequate height
-        const resolvedHeight = Math.max(height, 350);
-        setDimensions({ width, height: resolvedHeight });
+        // Make sure it has adequate height adapted for mobile & desktop
+        const resolvedHeight = Math.max(height, 220);
+        setDimensions({ width: Math.max(width, 280), height: resolvedHeight });
       }
     });
 
@@ -721,24 +721,28 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           ctx.translate(hudX, hudY);
           ctx.scale(scale, scale);
 
+          const hudFontSize = Math.min(64, Math.max(34, Math.floor(width * 0.085)));
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           ctx.fillStyle = multiplierColor;
-          ctx.font = "bold 64px 'Orbitron', sans-serif";
+          ctx.font = `bold ${hudFontSize}px 'Orbitron', sans-serif`;
           ctx.shadowColor = glowColor;
           ctx.shadowBlur = glowBlur;
           ctx.fillText(`${multiplier.toFixed(2)}x`, 0, 0);
           ctx.restore();
         } else if (state === "FLEW_AWAY") {
           // Large RED Flew Away status
+          const flewAwayFontSize = Math.min(46, Math.max(24, Math.floor(width * 0.06)));
+          const flewAwaySubSize = Math.min(32, Math.max(16, Math.floor(width * 0.042)));
+
           ctx.fillStyle = "#f43f5e";
-          ctx.font = "bold 46px 'Orbitron', sans-serif";
+          ctx.font = `bold ${flewAwayFontSize}px 'Orbitron', sans-serif`;
           ctx.shadowColor = "rgba(0,0,0,1)";
           ctx.shadowBlur = 10;
           ctx.fillText("FLEW AWAY", hudX, hudY - 15);
 
           ctx.fillStyle = "#9ca3af"; // silver gray
-          ctx.font = "bold 32px 'Orbitron', monospace";
+          ctx.font = `bold ${flewAwaySubSize}px 'Orbitron', monospace`;
           ctx.fillText(`${multiplier.toFixed(2)}x`, hudX, hudY + 30);
           ctx.shadowBlur = 0; // reset
         }
@@ -755,7 +759,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full min-h-[350px] bg-slate-900 overflow-hidden flex items-center justify-center rounded-xl border border-slate-800"
+      className="relative w-full h-full min-h-[220px] sm:min-h-[300px] md:min-h-[350px] bg-slate-900 overflow-hidden flex items-center justify-center rounded-xl border border-slate-800"
       id="aviator_canvas_container"
     >
       <canvas ref={canvasRef} className="block w-full h-full" id="aviator_game_canvas" />

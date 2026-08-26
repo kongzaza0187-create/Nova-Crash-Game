@@ -43,7 +43,7 @@ export const BetsList: React.FC<BetsListProps> = ({
 
   return (
     <div
-      className="w-full lg:w-80 bg-slate-950/70 border border-slate-800 rounded-xl flex flex-col h-[500px] overflow-hidden"
+      className="w-full lg:w-80 bg-slate-950/70 border border-slate-800 rounded-xl flex flex-col h-64 sm:h-72 lg:h-[500px] overflow-hidden"
       id="bets_list_container"
     >
       {/* Sidebar Tabs Header */}
@@ -96,7 +96,7 @@ export const BetsList: React.FC<BetsListProps> = ({
             <div className="flex justify-between items-center text-[10px] bg-slate-900/40 p-2 rounded-lg border border-slate-900 font-mono">
               <span className="text-slate-500 uppercase tracking-widest">Active Stakes</span>
               <span className="text-emerald-400 font-bold">
-                {totalBetsVolume.toLocaleString()} THB
+                {totalBetsVolume.toLocaleString()}
               </span>
             </div>
 
@@ -181,7 +181,7 @@ export const BetsList: React.FC<BetsListProps> = ({
                   }`}
                 >
                   {userStats.netProfit >= 0 ? "+" : ""}
-                  {userStats.netProfit.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} THB
+                  {userStats.netProfit.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
                 </span>
               </div>
               
@@ -214,11 +214,11 @@ export const BetsList: React.FC<BetsListProps> = ({
                     <div className="flex flex-col">
                       <span className="text-[10px] text-slate-500 font-mono tracking-wider">{item.timestamp}</span>
                       <span className="font-bold text-slate-300">
-                        {item.amount.toLocaleString()} THB{!item.multiplier && " — LOSS"}
+                        {item.amount.toLocaleString()}{!item.multiplier && " — LOSS"}
                       </span>
                       {item.cashbackAmount !== undefined && item.cashbackAmount > 0 && (
                         <span className="text-[11px] font-semibold font-mono text-[#32CD32] mt-1">
-                          CASHBACK +{item.cashbackAmount.toLocaleString()} THB
+                          CASHBACK +{item.cashbackAmount.toLocaleString()}
                         </span>
                       )}
                     </div>
@@ -231,7 +231,7 @@ export const BetsList: React.FC<BetsListProps> = ({
                             x{item.multiplier.toFixed(2)}
                           </span>
                           <span className="text-[9.5px] text-slate-400">
-                            +{(item.winAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })} THB
+                            +{(item.winAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </span>
                         </div>
                       ) : (
@@ -273,7 +273,7 @@ export const BetsList: React.FC<BetsListProps> = ({
                           ? "bg-slate-300 text-slate-950"
                           : index === 2
                           ? "bg-amber-700 text-slate-100"
-                          : "bg-slate-800 text-slate-400"
+                          : "bg-slate-850 text-slate-400"
                       }`}
                     >
                       {index + 1}
@@ -297,7 +297,7 @@ export const BetsList: React.FC<BetsListProps> = ({
                       x{item.multiplier.toFixed(2)}
                     </span>
                     <span className="text-[10.5px] text-slate-500 font-mono text-right w-14">
-                      {item.win.toLocaleString()} THB
+                      {item.win.toLocaleString()}
                     </span>
                   </div>
                 </div>

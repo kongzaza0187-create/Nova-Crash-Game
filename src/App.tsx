@@ -264,6 +264,13 @@ export default function App() {
   const balanceRef = useRef(balance);
   const historyRef = useRef(history);
 
+  const betLeftRef = useRef(betLeft);
+  const betRightRef = useRef(betRight);
+  const hasCashedOutLeftRef = useRef(false);
+  const hasCashedOutRightRef = useRef(false);
+  const isCashingOutLeftRef = useRef(false);
+  const isCashingOutRightRef = useRef(false);
+
   useEffect(() => {
     balanceRef.current = balance;
   }, [balance]);
@@ -271,6 +278,14 @@ export default function App() {
   useEffect(() => {
     historyRef.current = history;
   }, [history]);
+
+  useEffect(() => {
+    betLeftRef.current = betLeft;
+  }, [betLeft]);
+
+  useEffect(() => {
+    betRightRef.current = betRight;
+  }, [betRight]);
 
   // Game loop helpers – references to hold state for game-ticks
   const stateRef = useRef<RoundState>("WAITING");
@@ -626,6 +641,8 @@ export default function App() {
 
   // Placing individual bets with Asymmetric 3-Tiered non-refundable fuel tax fee
   const placeBetLeft = async (rawAmount: number) => {
+    hasCashedOutLeftRef.current = false;
+    isCashingOutLeftRef.current = false;
     const amount = Math.min(30000, Math.max(30, rawAmount));
     const tax = getTaxForWager(amount);
     const totalCost = amount + tax;
@@ -657,6 +674,8 @@ export default function App() {
   };
 
   const placeBetRight = async (rawAmount: number) => {
+    hasCashedOutRightRef.current = false;
+    isCashingOutRightRef.current = false;
     const amount = Math.min(30000, Math.max(30, rawAmount));
     const tax = getTaxForWager(amount);
     const totalCost = amount + tax;
@@ -690,6 +709,8 @@ export default function App() {
   // Fuel tax is completely non-refundable once committed. Refunds only revert the base wager amount.
   const cancelBetLeft = async () => {
     audioManager.playClick();
+    hasCashedOutLeftRef.current = false;
+    isCashingOutLeftRef.current = false;
     if (betLeft.isPlaced) {
       if (walletModeRef.current === "REAL" && betLeft.betTxnId) {
         const rbTxnId = `RB_${Date.now()}_L`;
@@ -706,6 +727,8 @@ export default function App() {
 
   const cancelBetRight = async () => {
     audioManager.playClick();
+    hasCashedOutRightRef.current = false;
+    isCashingOutRightRef.current = false;
     if (betRight.isPlaced) {
       if (walletModeRef.current === "REAL" && betRight.betTxnId) {
         const rbTxnId = `RB_${Date.now()}_R`;
@@ -720,176 +743,196 @@ export default function App() {
     }
   };
 
-  // Executing user cashout operations with decimal truncation & faction sweep (Pillar 5)
+  // Executing user cashout operations with decimal truncation & fraction sweep (Pillar 5)
   const cashOutLeft = async () => {
-    if (roundState !== "FLYING" || !betLeft.isPlaced || betLeft.hasCashedOut) return;
+    if (hasCashedOutLeftRef.current || isCashingOutLeftRef.current) return;
+    const currentBet = betLeftRef.current;
+    if (stateRef.current !== "FLYING" || !currentBet.isPlaced || currentBet.hasCashedOut) return;
     
-    const curMultiplier = multiplierRef.current;
-    const rawWinnings = betLeft.amount * curMultiplier;
-    
-    audioManager.playCashOut();
+    // Atomically claim cashout to block any concurrent intervals
+    hasCashedOutLeftRef.current = true;
+    isCashingOutLeftRef.current = true;
 
-    if (walletModeRef.current === "REAL") {
-      const winTxnId = `WIN_${Date.now()}_L_${Math.random().toString(36).substring(2, 6)}`;
-      const res = await seamlessWalletClient.creditWin(winTxnId, rawWinnings, realUserId);
-      const actualPayout = res.net_win_added ?? parseFloat((rawWinnings * 0.97).toFixed(2));
+    try {
+      const curMultiplier = multiplierRef.current;
+      const rawWinnings = currentBet.amount * curMultiplier;
       
-      if (res.status === "SUCCESS" && typeof res.balance === "number") {
-        setRealBalance(res.balance);
-      }
+      audioManager.playCashOut();
 
-      setBetLeft((prev) => ({
-        ...prev,
-        hasCashedOut: true,
-        cashedOutMultiplier: curMultiplier,
-        winAmount: actualPayout,
-      }));
+      if (walletModeRef.current === "REAL") {
+        const winTxnId = `WIN_${Date.now()}_L_${Math.random().toString(36).substring(2, 6)}`;
+        const res = await seamlessWalletClient.creditWin(winTxnId, rawWinnings, realUserId);
+        const actualPayout = res.net_win_added ?? parseFloat((rawWinnings * 0.97).toFixed(2));
+        
+        if (res.status === "SUCCESS" && typeof res.balance === "number") {
+          setRealBalance(res.balance);
+        }
 
-      logPlayerCashoutToBackend(curMultiplier);
-
-      // Log stats
-      setUserStats((prev) => ({
-        ...prev,
-        winCount: prev.winCount + 1,
-        totalBets: prev.totalBets + 1,
-        totalWagered: prev.totalWagered + betLeft.amount,
-        totalWon: prev.totalWon + actualPayout,
-        netProfit: prev.netProfit + (actualPayout - betLeft.amount),
-      }));
-
-      // Log history
-      setMyHistory((prev) => [
-        {
-          id: `my_bet_${Date.now()}_l`,
-          amount: betLeft.amount,
-          multiplier: curMultiplier,
+        setBetLeft((prev) => ({
+          ...prev,
+          hasCashedOut: true,
+          cashedOutMultiplier: curMultiplier,
           winAmount: actualPayout,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-        },
-        ...prev,
-      ]);
-    } else {
-      const engine = SkyRushEngine.getInstance();
-      const { payout, swept } = engine.truncatePayoutAndSweep(rawWinnings);
-      setAccumulatedFractionSweep(engine.accumulatedFractionSweepTHB);
-      
-      setDemoBalance((prev) => parseFloat((prev + payout).toFixed(2)));
-      setBetLeft((prev) => ({
-        ...prev,
-        hasCashedOut: true,
-        cashedOutMultiplier: curMultiplier,
-        winAmount: payout,
-      }));
+        }));
 
-      logPlayerCashoutToBackend(curMultiplier);
+        logPlayerCashoutToBackend(curMultiplier);
 
-      // Log stats
-      setUserStats((prev) => ({
-        ...prev,
-        winCount: prev.winCount + 1,
-        totalBets: prev.totalBets + 1,
-        totalWagered: prev.totalWagered + betLeft.amount,
-        totalWon: prev.totalWon + payout,
-        netProfit: prev.netProfit + (payout - betLeft.amount),
-      }));
+        // Log stats
+        setUserStats((prev) => ({
+          ...prev,
+          winCount: prev.winCount + 1,
+          totalBets: prev.totalBets + 1,
+          totalWagered: prev.totalWagered + currentBet.amount,
+          totalWon: prev.totalWon + actualPayout,
+          netProfit: prev.netProfit + (actualPayout - currentBet.amount),
+        }));
 
-      // Log history
-      setMyHistory((prev) => [
-        {
-          id: `my_bet_${Date.now()}_l`,
-          amount: betLeft.amount,
-          multiplier: curMultiplier,
+        // Log history
+        setMyHistory((prev) => [
+          {
+            id: `my_bet_${Date.now()}_l`,
+            amount: currentBet.amount,
+            multiplier: curMultiplier,
+            winAmount: actualPayout,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+          },
+          ...prev,
+        ]);
+      } else {
+        const engine = SkyRushEngine.getInstance();
+        const { payout, swept } = engine.truncatePayoutAndSweep(rawWinnings);
+        setAccumulatedFractionSweep(engine.accumulatedFractionSweepTHB);
+        
+        setDemoBalance((prev) => parseFloat((prev + payout).toFixed(2)));
+        setBetLeft((prev) => ({
+          ...prev,
+          hasCashedOut: true,
+          cashedOutMultiplier: curMultiplier,
           winAmount: payout,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-        },
-        ...prev,
-      ]);
+        }));
+
+        logPlayerCashoutToBackend(curMultiplier);
+
+        // Log stats
+        setUserStats((prev) => ({
+          ...prev,
+          winCount: prev.winCount + 1,
+          totalBets: prev.totalBets + 1,
+          totalWagered: prev.totalWagered + currentBet.amount,
+          totalWon: prev.totalWon + payout,
+          netProfit: prev.netProfit + (payout - currentBet.amount),
+        }));
+
+        // Log history
+        setMyHistory((prev) => [
+          {
+            id: `my_bet_${Date.now()}_l`,
+            amount: currentBet.amount,
+            multiplier: curMultiplier,
+            winAmount: payout,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+          },
+          ...prev,
+        ]);
+      }
+    } finally {
+      isCashingOutLeftRef.current = false;
     }
   };
 
   const cashOutRight = async () => {
-    if (roundState !== "FLYING" || !betRight.isPlaced || betRight.hasCashedOut) return;
+    if (hasCashedOutRightRef.current || isCashingOutRightRef.current) return;
+    const currentBet = betRightRef.current;
+    if (stateRef.current !== "FLYING" || !currentBet.isPlaced || currentBet.hasCashedOut) return;
     
-    const curMultiplier = multiplierRef.current;
-    const rawWinnings = betRight.amount * curMultiplier;
-    
-    audioManager.playCashOut();
+    // Atomically claim cashout to block any concurrent intervals
+    hasCashedOutRightRef.current = true;
+    isCashingOutRightRef.current = true;
 
-    if (walletModeRef.current === "REAL") {
-      const winTxnId = `WIN_${Date.now()}_R_${Math.random().toString(36).substring(2, 6)}`;
-      const res = await seamlessWalletClient.creditWin(winTxnId, rawWinnings, realUserId);
-      const actualPayout = res.net_win_added ?? parseFloat((rawWinnings * 0.97).toFixed(2));
+    try {
+      const curMultiplier = multiplierRef.current;
+      const rawWinnings = currentBet.amount * curMultiplier;
       
-      if (res.status === "SUCCESS" && typeof res.balance === "number") {
-        setRealBalance(res.balance);
-      }
+      audioManager.playCashOut();
 
-      setBetRight((prev) => ({
-        ...prev,
-        hasCashedOut: true,
-        cashedOutMultiplier: curMultiplier,
-        winAmount: actualPayout,
-      }));
+      if (walletModeRef.current === "REAL") {
+        const winTxnId = `WIN_${Date.now()}_R_${Math.random().toString(36).substring(2, 6)}`;
+        const res = await seamlessWalletClient.creditWin(winTxnId, rawWinnings, realUserId);
+        const actualPayout = res.net_win_added ?? parseFloat((rawWinnings * 0.97).toFixed(2));
+        
+        if (res.status === "SUCCESS" && typeof res.balance === "number") {
+          setRealBalance(res.balance);
+        }
 
-      logPlayerCashoutToBackend(curMultiplier);
-
-      // Log stats
-      setUserStats((prev) => ({
-        ...prev,
-        winCount: prev.winCount + 1,
-        totalBets: prev.totalBets + 1,
-        totalWagered: prev.totalWagered + betRight.amount,
-        totalWon: prev.totalWon + actualPayout,
-        netProfit: prev.netProfit + (actualPayout - betRight.amount),
-      }));
-
-      // Log history
-      setMyHistory((prev) => [
-        {
-          id: `my_bet_${Date.now()}_r`,
-          amount: betRight.amount,
-          multiplier: curMultiplier,
+        setBetRight((prev) => ({
+          ...prev,
+          hasCashedOut: true,
+          cashedOutMultiplier: curMultiplier,
           winAmount: actualPayout,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-        },
-        ...prev,
-      ]);
-    } else {
-      const engine = SkyRushEngine.getInstance();
-      const { payout, swept } = engine.truncatePayoutAndSweep(rawWinnings);
-      setAccumulatedFractionSweep(engine.accumulatedFractionSweepTHB);
-      
-      setDemoBalance((prev) => parseFloat((prev + payout).toFixed(2)));
-      setBetRight((prev) => ({
-        ...prev,
-        hasCashedOut: true,
-        cashedOutMultiplier: curMultiplier,
-        winAmount: payout,
-      }));
+        }));
 
-      logPlayerCashoutToBackend(curMultiplier);
+        logPlayerCashoutToBackend(curMultiplier);
 
-      // Log stats
-      setUserStats((prev) => ({
-        ...prev,
-        winCount: prev.winCount + 1,
-        totalBets: prev.totalBets + 1,
-        totalWagered: prev.totalWagered + betRight.amount,
-        totalWon: prev.totalWon + payout,
-        netProfit: prev.netProfit + (payout - betRight.amount),
-      }));
+        // Log stats
+        setUserStats((prev) => ({
+          ...prev,
+          winCount: prev.winCount + 1,
+          totalBets: prev.totalBets + 1,
+          totalWagered: prev.totalWagered + currentBet.amount,
+          totalWon: prev.totalWon + actualPayout,
+          netProfit: prev.netProfit + (actualPayout - currentBet.amount),
+        }));
 
-      // Log history
-      setMyHistory((prev) => [
-        {
-          id: `my_bet_${Date.now()}_r`,
-          amount: betRight.amount,
-          multiplier: curMultiplier,
+        // Log history
+        setMyHistory((prev) => [
+          {
+            id: `my_bet_${Date.now()}_r`,
+            amount: currentBet.amount,
+            multiplier: curMultiplier,
+            winAmount: actualPayout,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+          },
+          ...prev,
+        ]);
+      } else {
+        const engine = SkyRushEngine.getInstance();
+        const { payout, swept } = engine.truncatePayoutAndSweep(rawWinnings);
+        setAccumulatedFractionSweep(engine.accumulatedFractionSweepTHB);
+        
+        setDemoBalance((prev) => parseFloat((prev + payout).toFixed(2)));
+        setBetRight((prev) => ({
+          ...prev,
+          hasCashedOut: true,
+          cashedOutMultiplier: curMultiplier,
           winAmount: payout,
-          timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-        },
-        ...prev,
-      ]);
+        }));
+
+        logPlayerCashoutToBackend(curMultiplier);
+
+        // Log stats
+        setUserStats((prev) => ({
+          ...prev,
+          winCount: prev.winCount + 1,
+          totalBets: prev.totalBets + 1,
+          totalWagered: prev.totalWagered + currentBet.amount,
+          totalWon: prev.totalWon + payout,
+          netProfit: prev.netProfit + (payout - currentBet.amount),
+        }));
+
+        // Log history
+        setMyHistory((prev) => [
+          {
+            id: `my_bet_${Date.now()}_r`,
+            amount: currentBet.amount,
+            multiplier: curMultiplier,
+            winAmount: payout,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
+          },
+          ...prev,
+        ]);
+      }
+    } finally {
+      isCashingOutRightRef.current = false;
     }
   };
 
@@ -919,6 +962,12 @@ export default function App() {
       setMultiplier(1.00);
       setCountdown(maxCountdown);
       spawnSimulatedBots();
+
+      // Reset atomic single-trigger cashout locks for the upcoming round
+      hasCashedOutLeftRef.current = false;
+      hasCashedOutRightRef.current = false;
+      isCashingOutLeftRef.current = false;
+      isCashingOutRightRef.current = false;
 
       // Trigger automatic placing of user bets with Asymmetric Fuel Tax applied
       if (betLeft.isAutoBet && !betLeft.isPlaced) {
@@ -1013,15 +1062,29 @@ export default function App() {
           })
         );
 
-        // Auto Cash Out monitors
-        if (betLeft.isPlaced && !betLeft.hasCashedOut && betLeft.isAutoCashOut) {
-          if (curMultiplier >= betLeft.autoCashOutMultiplier) {
+        // Auto Cash Out monitors with atomic ref protections
+        const bLeft = betLeftRef.current;
+        if (
+          bLeft.isPlaced && 
+          !bLeft.hasCashedOut && 
+          !hasCashedOutLeftRef.current && 
+          !isCashingOutLeftRef.current && 
+          bLeft.isAutoCashOut
+        ) {
+          if (curMultiplier >= bLeft.autoCashOutMultiplier) {
             cashOutLeft();
           }
         }
 
-        if (betRight.isPlaced && !betRight.hasCashedOut && betRight.isAutoCashOut) {
-          if (curMultiplier >= betRight.autoCashOutMultiplier) {
+        const bRight = betRightRef.current;
+        if (
+          bRight.isPlaced && 
+          !bRight.hasCashedOut && 
+          !hasCashedOutRightRef.current && 
+          !isCashingOutRightRef.current && 
+          bRight.isAutoCashOut
+        ) {
+          if (curMultiplier >= bRight.autoCashOutMultiplier) {
             cashOutRight();
           }
         }
@@ -1170,29 +1233,29 @@ export default function App() {
       id="aviator_application_root"
     >
       {/* Top Banner Header */}
-      <header className="bg-slate-950/80 border-b border-slate-900/60 p-4 sticky top-0 z-10 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row gap-3 sm:gap-4 items-center justify-between">
+      <header className="bg-slate-950/80 border-b border-slate-900/60 p-3 sm:p-4 sticky top-0 z-10 backdrop-blur-md">
+        <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
           
           {/* Logo Name & Icon */}
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-rose-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-rose-950/30">
-              <Plane size={22} className="rotate-0 transition-transform active:rotate-12 duration-300" />
+          <div className="flex items-center gap-2 sm:gap-3">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-rose-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-rose-950/30 shrink-0">
+              <Plane size={18} className="sm:w-[22px] sm:h-[22px] rotate-0 transition-transform active:rotate-12 duration-300" />
             </div>
             <div>
-              <div className="flex items-center gap-1.5 leading-tight font-display">
-                <span className="text-xl font-black italic uppercase tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-white via-rose-100 to-rose-400">
+              <div className="flex items-center gap-1 sm:gap-1.5 leading-tight font-display">
+                <span className="text-base sm:text-xl font-black italic uppercase tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-white via-rose-100 to-rose-400">
                   SKY RUSH
                 </span>
-                <span className="text-[10px] bg-rose-600/20 text-rose-400 font-extrabold px-1.5 py-0.5 rounded-full border border-rose-500/10">
+                <span className="text-[8.5px] sm:text-[10px] bg-rose-600/20 text-rose-400 font-extrabold px-1 sm:px-1.5 py-0.5 rounded-full border border-rose-500/10">
                   CRASH
                 </span>
               </div>
-              <p className="text-[10px] text-slate-500 font-medium tracking-wide">BollyGaming Pilot Hub</p>
+              <p className="text-[8.5px] sm:text-[10px] text-slate-500 font-medium tracking-wide hidden xs:block">BollyGaming Pilot Hub</p>
             </div>
           </div>
 
           {/* Controls: Audio, Help info, Wallet balance */}
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-1.5 sm:gap-3">
             
             {/* Audio speaker toggle */}
             <button
@@ -1201,7 +1264,7 @@ export default function App() {
               title={isMuted ? "Unmute Sound" : "Mute Sound"}
               id="audio_toggle_btn"
             >
-              {isMuted ? <VolumeX size={18} /> : <Volume2 size={18} />}
+              {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
             </button>
 
             {/* Admin Ops Terminal Trigger */}
@@ -1218,7 +1281,7 @@ export default function App() {
               title="Actuary Ops Terminal (Credentials Required)"
               id="admin_ops_trigger_btn"
             >
-              <Key size={16} />
+              <Key size={15} />
             </button>
 
             {/* Help guidelines modal trigger */}
@@ -1227,32 +1290,34 @@ export default function App() {
                 audioManager.playClick();
                 setIsHelpOpen(true);
               }}
-              className="px-3 py-1.5 text-xs text-slate-400 hover:text-white hover:bg-slate-900 rounded-lg border border-slate-900 flex items-center gap-1.5 font-semibold transition"
+              className="p-1.5 sm:px-3 sm:py-1.5 text-xs text-slate-400 hover:text-white hover:bg-slate-900 rounded-lg border border-slate-900 flex items-center gap-1 sm:gap-1.5 font-semibold transition"
               id="how_to_play_trigger"
+              title="How to play?"
             >
-              <HelpCircle size={14} className="text-rose-500" /> How to play?
+              <HelpCircle size={14} className="text-rose-500 shrink-0" />
+              <span className="hidden sm:inline">How to play?</span>
             </button>
 
             {/* Wallet Balance Container */}
             <div 
-              className="relative flex items-center border shadow-lg py-1.5 px-3 sm:px-4 rounded-xl gap-2 sm:gap-3 transition-all duration-300 group select-none bg-gradient-to-r from-emerald-950/40 via-slate-900 to-teal-950/30 border-emerald-500/40 hover:border-emerald-500/60 shadow-[0_0_15px_rgba(16,185,129,0.15)]" 
+              className="relative flex items-center border shadow-lg py-1 sm:py-1.5 px-2.5 sm:px-4 rounded-xl gap-1.5 sm:gap-3 transition-all duration-300 group select-none bg-gradient-to-r from-emerald-950/40 via-slate-900 to-teal-950/30 border-emerald-500/40 hover:border-emerald-500/60 shadow-[0_0_15px_rgba(16,185,129,0.15)]" 
               id="vip_wallet_glowing_hud"
             >
-              <div className="relative flex items-center justify-center p-1.5 rounded-lg shrink-0 bg-emerald-500/10 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
-                <Wallet size={16} className="animate-pulse" />
+              <div className="relative flex items-center justify-center p-1 sm:p-1.5 rounded-lg shrink-0 bg-emerald-500/10 text-emerald-400 shadow-[0_0_10px_rgba(16,185,129,0.2)]">
+                <Wallet size={14} className="sm:w-4 sm:h-4 animate-pulse" />
               </div>
               
               <div className="flex flex-col items-end leading-tight shrink-0">
-                <span className="text-[7.5px] sm:text-[8px] font-black tracking-widest font-mono flex items-center gap-1 uppercase text-emerald-400">
+                <span className="text-[7px] sm:text-[8px] font-black tracking-widest font-mono flex items-center gap-1 uppercase text-emerald-400">
                   <span className="w-1 h-1 rounded-full inline-block bg-emerald-400 animate-ping" /> 
-                  BALANCE
+                  WALLET BALANCE
                 </span>
                 <span className="text-xs sm:text-sm md:text-base font-black font-mono tracking-tight drop-shadow-[0_1px_1px_rgba(0,0,0,0.8)] text-transparent bg-clip-text bg-gradient-to-r from-emerald-300 via-teal-200 to-emerald-400">
-                  {balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span className="text-[10px] text-slate-400 font-normal">THB</span>
+                  {balance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </span>
               </div>
               
-              <div className="hidden sm:block h-6 w-px bg-slate-800" />
+              <div className="hidden sm:block h-5 w-px bg-slate-800" />
 
               {/* Action Button: Live Sync with Master Wallet API */}
               <button
@@ -1262,9 +1327,9 @@ export default function App() {
                 title="Sync Balance with Seamless Wallet API"
                 id="sync_real_wallet_btn"
               >
-                <div className="flex items-center gap-1 text-[8.5px] font-bold font-mono">
+                <div className="flex items-center gap-1 text-[8px] sm:text-[8.5px] font-bold font-mono">
                   <RotateCcw size={9} className={`transition-transform duration-500 text-emerald-400 ${isSyncingRealWallet ? "animate-spin" : "group-hover:rotate-180"}`} />
-                  <span className="text-emerald-400 tracking-tight">{isSyncingRealWallet ? "SYNC..." : "SYNC"}</span>
+                  <span className="text-emerald-400 tracking-tight hidden xs:inline">{isSyncingRealWallet ? "SYNC..." : "SYNC"}</span>
                 </div>
               </button>
             </div>
@@ -1275,7 +1340,7 @@ export default function App() {
 
       {/* Pre-Game Diagnostics Warnings (only renders after 3 seconds loader finishes) */}
       {!isSplashActive && failedChecks.length > 0 && (
-        <div className="bg-rose-950/80 border-b border-rose-500/30 text-rose-300 py-3 px-4 text-xs font-mono flex items-center justify-between gap-3 backdrop-blur-sm shadow-lg animate-pulse" id="system_check_warning_banner">
+        <div className="bg-rose-950/80 border-b border-rose-500/30 text-rose-300 py-2.5 px-4 text-xs font-mono flex items-center justify-between gap-3 backdrop-blur-sm shadow-lg animate-pulse" id="system_check_warning_banner">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping shrink-0" />
             <span className="font-bold uppercase tracking-wider">SYSTEM WARNING: PRE-GAME TESTS COMPLETED WITH FAILURES</span>
@@ -1294,7 +1359,7 @@ export default function App() {
       {showRefillNotify && (
         <div className="fixed top-20 right-6 z-50 bg-emerald-950/90 border border-emerald-500/20 text-emerald-300 px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs shadow-xl animate-bounce-short">
           <Sparkles size={14} className="text-emerald-400" />
-          <span>Credits Refilled to 150,000 THB!</span>
+          <span>Credits Refilled to 150,000!</span>
         </div>
       )}
 
@@ -1314,7 +1379,7 @@ export default function App() {
           </span>
         </div>
         <div className="text-[14px] font-black text-[#32CD32] font-mono leading-tight">
-          +{cashbackPopup.amount.toLocaleString(undefined, { minimumFractionDigits: 1 })} THB
+          +{cashbackPopup.amount.toLocaleString(undefined, { minimumFractionDigits: 1 })}
         </div>
         <div className="text-[10px] text-slate-400 font-medium">
           added to your balance
@@ -1322,18 +1387,18 @@ export default function App() {
       </div>
 
       {/* Main Content Layout */}
-      <main className="flex-1 max-w-7xl mx-auto w-full p-4 flex flex-col gap-4 min-h-0">
+      <main className="flex-1 max-w-7xl mx-auto w-full p-2.5 sm:p-4 flex flex-col gap-3 sm:gap-4 min-h-0">
         
         {/* Horizontal scrollbar of past round coefficient payouts */}
-        <div className="flex items-center gap-2 overflow-x-auto py-2.5 px-3.5 bg-slate-950/40 border border-slate-900/60 rounded-xl select-none scrollbar-none w-full" id="history_bar">
-          <div className="text-[9.5px] text-slate-500 font-bold uppercase tracking-wider shrink-0 flex items-center gap-1 font-mono">
+        <div className="flex items-center gap-2 overflow-x-auto py-2 sm:py-2.5 px-3 sm:px-3.5 bg-slate-950/40 border border-slate-900/60 rounded-xl select-none scrollbar-none w-full" id="history_bar">
+          <div className="text-[9px] sm:text-[9.5px] text-slate-500 font-bold uppercase tracking-wider shrink-0 flex items-center gap-1 font-mono">
             <TrendingUp size={11} className="text-slate-500" /> History:
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
             {history.map((item, idx) => (
               <span
                 key={item.id}
-                className={`text-[10px] font-black px-2 py-0.5 rounded font-mono border ${
+                className={`text-[9.5px] sm:text-[10px] font-black px-2 py-0.5 rounded font-mono border ${
                   item.val >= 10.0
                     ? "bg-fuchsia-950/50 text-fuchsia-400 border-fuchsia-500/20"
                     : item.val >= 2.0
@@ -1348,28 +1413,26 @@ export default function App() {
           </div>
         </div>
 
-
-
-
-
         {/* Dashboard Panels Split */}
-        <div className="flex-1 flex flex-col lg:flex-row gap-4 min-h-0">
+        <div className="flex-1 flex flex-col lg:flex-row gap-3 sm:gap-4 min-h-0">
           
-          {/* Left panel: Active social participants / Stats */}
-          <BetsList
-            playerBets={playerBets}
-            myHistory={myHistory}
-            roundState={roundState}
-            multiplier={multiplier}
-            userStats={userStats}
-            onResetStats={handleResetStats}
-          />
+          {/* Active social participants / Stats (order-2 on mobile, order-1 on desktop) */}
+          <div className="order-2 lg:order-1 w-full lg:w-80 shrink-0">
+            <BetsList
+              playerBets={playerBets}
+              myHistory={myHistory}
+              roundState={roundState}
+              multiplier={multiplier}
+              userStats={userStats}
+              onResetStats={handleResetStats}
+            />
+          </div>
 
-          {/* Right panel: Flying graphics and double Bet controls */}
-          <div className="flex-1 flex flex-col gap-4">
+          {/* Flying graphics and double Bet controls (order-1 on mobile, order-2 on desktop) */}
+          <div className="flex-1 flex flex-col gap-3 sm:gap-4 order-1 lg:order-2 min-w-0">
             
-            {/* The interactive SVG/Canvas Flying screen */}
-            <div className="flex-1 relative min-h-[350px]">
+            {/* The interactive Canvas Flying screen */}
+            <div className="flex-1 relative min-h-[220px] sm:min-h-[300px] md:min-h-[350px]">
               <GameCanvas
                 multiplier={multiplier}
                 state={roundState}
@@ -1379,7 +1442,7 @@ export default function App() {
             </div>
 
             {/* Independent Dual Betting Input blocks */}
-            <div className="flex flex-col md:flex-row gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
               <BetPanel
                 id="left"
                 bet={betLeft}
@@ -1406,7 +1469,7 @@ export default function App() {
 
             {/* Custom Promo/Banner Image Container */}
             <div 
-              className="w-full bg-[#0a0a1a] rounded-[12px] border border-[rgba(255,255,255,0.1)] p-[10px] mt-[10px] overflow-hidden"
+              className="w-full bg-[#0a0a1a] rounded-[12px] border border-[rgba(255,255,255,0.1)] p-2 sm:p-[10px] mt-1 sm:mt-[10px] overflow-hidden"
               id="bet_panel_promo_image_container"
             >
               <img 

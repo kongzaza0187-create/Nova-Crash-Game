@@ -1,6 +1,6 @@
 {
   "name": "SKY RUSH",
-  "description": "An interactive casino simulation featuring the Sky Rush crash game and a complete iGaming Master Franchise Seamless Wallet API suite in THB. Includes Mobile Banking Webhook, 10% instant loss cashback, 3% win house fee deduction, HMAC-SHA256 signatures, row-locking (SELECT ... FOR UPDATE), idempotency, and PostgreSQL schema.",
+  "description": "An interactive crash game and global iGaming Seamless Wallet API sandbox featuring currency-agnostic wallet balance, HMAC-SHA256 signatures, ACID row-locking idempotency, 3% house margin, 10% instant loss cashback, 59:41 Risk Assurance Protocol with 1.02x-1.05x explosion cushions, OpenAPI 3.0 & Postman collections, and high-concurrency load testing.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

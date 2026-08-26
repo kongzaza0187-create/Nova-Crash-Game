@@ -1,5 +1,5 @@
 import React from "react";
-import { X, HelpCircle, Shield, Award, Sparkles, BookOpen } from "lucide-react";
+import { X, Award, Sparkles, BookOpen, ShieldCheck } from "lucide-react";
 
 interface HelpModalProps {
   isOpen: boolean;
@@ -25,8 +25,8 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
               <BookOpen size={18} />
             </div>
             <div>
-              <h2 className="text-base font-bold tracking-tight">How to Play? / วิธีเล่นเกม</h2>
-              <p className="text-[11px] text-slate-500 font-medium">BollyGaming Aviator Guide</p>
+              <h2 className="text-base font-bold tracking-tight">Game Rules & Guide</h2>
+              <p className="text-[11px] text-slate-500 font-medium">Standard Crash Game Operations</p>
             </div>
           </div>
           <button
@@ -45,25 +45,25 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-slate-950 p-4 rounded-xl border border-slate-850 flex flex-col gap-1.5">
               <div className="flex items-center gap-1.5 text-rose-400 font-bold text-xs uppercase tracking-wider">
-                <Sparkles size={14} /> English Guide
+                <Sparkles size={14} /> Basic Gameplay
               </div>
               <ul className="text-xs text-slate-400 list-disc list-inside flex flex-col gap-1">
-                <li>Choose a stake and place your bet before takeoff.</li>
-                <li>The plane ascends and multiplier rises.</li>
-                <li>Press <strong className="text-white">CASH OUT</strong> at any moment to lock-in profits.</li>
-                <li>If the plane flies away before you cash out, you lose!</li>
+                <li>Choose your wager amount and place bet before round takeoff.</li>
+                <li>The flight ascends and the payout multiplier increases.</li>
+                <li>Press <strong className="text-white">CASH OUT</strong> at any moment to secure winnings.</li>
+                <li>If the flight crashes before you cash out, the wager is lost.</li>
               </ul>
             </div>
 
             <div className="bg-slate-950 p-4 rounded-xl border border-slate-850 flex flex-col gap-1.5">
               <div className="flex items-center gap-1.5 text-rose-400 font-bold text-xs uppercase tracking-wider">
-                <Sparkles size={14} /> วิธีการเล่น (ภาษาไทย)
+                <ShieldCheck size={14} /> Key Financial Rules
               </div>
               <ul className="text-xs text-slate-400 list-disc list-inside flex flex-col gap-1">
-                <li>เลือกจำนวนเงินเดิมพัน และกดยืนยันตัวเลขก่อนเครื่องขึ้น</li>
-                <li>เครื่องบินจะทะยานขึ้นไปพร้อมตัวคูณที่สูงขึ้น</li>
-                <li>กดปุ่ม <strong className="text-white">CASH OUT</strong> เพื่อรับเงินรางวัลตามตัวคูณปัจจุบัน</li>
-                <li>หากเครื่องบิน "หนีหาย (FLEW AWAY)" ก่อนกดถอน เงินเดิมพันจะค้างทันที!</li>
+                <li><strong className="text-white">10% Instant Cashback:</strong> Automatically credited on lost rounds.</li>
+                <li><strong className="text-white">3% House Commission:</strong> Automatically deducted from gross winnings.</li>
+                <li><strong className="text-white">Dual Bet Panels:</strong> Play with two independent bet slips simultaneously.</li>
+                <li><strong className="text-white">Auto Controls:</strong> Set automated bet repetition and cashout multipliers.</li>
               </ul>
             </div>
           </div>
@@ -71,60 +71,43 @@ export const HelpModal: React.FC<HelpModalProps> = ({ isOpen, onClose }) => {
           {/* Gameplay steps details */}
           <div className="flex flex-col gap-3">
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-2">
-              <Award size={14} className="text-rose-500" /> Core Mechanisms / ระบบเกณฑ์รางวัล
+              <Award size={14} className="text-rose-500" /> Core Mechanics
             </h3>
             <div className="border border-slate-850 rounded-xl overflow-hidden text-xs">
               <div className="grid grid-cols-3 gap-2 bg-slate-950/80 p-2 text-slate-400 font-bold border-b border-slate-850">
-                <div>Feature / คุณสมบัติ</div>
-                <div className="col-span-2">How it works / อธิบายเพิ่มเติม</div>
+                <div>Feature</div>
+                <div className="col-span-2">Description</div>
               </div>
               <div className="grid grid-cols-3 gap-2 p-2.5 border-b border-slate-850/60">
                 <div className="font-bold text-white">Dual Bets</div>
                 <div className="col-span-2 text-slate-400">
-                  Place up to two independent bets! Play with different strategies (e.g. cash out one early at 1.50x and let the other fly higher).
+                  Place up to two independent bets per round to execute split strategies (e.g. cash out one bet early at 1.50x and let the second fly higher).
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2 p-2.5 border-b border-slate-850/60">
                 <div className="font-bold text-white">Auto Bet</div>
                 <div className="col-span-2 text-slate-400">
-                  Enable Auto Bet in Auto Settings to automatically replicate your bet amount for every new round.
+                  Automatically re-submits your chosen bet amount at the start of each subsequent round.
                 </div>
               </div>
               <div className="grid grid-cols-3 gap-2 p-2.5">
                 <div className="font-bold text-white">Auto Cash Out</div>
                 <div className="col-span-2 text-slate-400">
-                  Set a threshold (e.g. 2.0x). The engine will withdraw your credits automatically if the plane passes that target coefficient.
+                  Configure a target multiplier (e.g. 2.00x). The engine automatically settles your winnings when the flight coefficient reaches or exceeds that threshold.
                 </div>
               </div>
             </div>
           </div>
-
-          {/* Provably Fair Safety */}
-          <div className="bg-rose-950/20 p-4 rounded-xl border border-rose-500/10 flex gap-3 text-xs">
-            <div className="text-rose-500 shrink-0">
-              <Shield size={24} />
-            </div>
-            <div className="flex flex-col gap-1">
-              <h4 className="font-bold text-rose-400">Provably Fair Algorithm / อัลกอริทึมที่ยุติธรรม</h4>
-              <p className="text-slate-400">
-                The escape crash point is generated via a cryptographically secure random sweep at the exact beginning of each round. Payout coordinates are completely transparent and cannot be altered or predicted mid-flight.
-              </p>
-              <p className="text-slate-500 italic mt-1">
-                พิกัดการสิ้นสุดของเที่ยวบินถูกสุ่มขึ้นล่วงหน้าด้วยความโปร่งใสทางคณิตศาสตร์ ไม่สามารถแก้ไขหรือแทรกแซงในขณะบินได้
-              </p>
-            </div>
-          </div>
-
         </div>
 
         {/* Footer */}
-        <div className="p-4 bg-slate-950/80 border-t border-slate-850 flex justify-end">
+        <div className="p-4 bg-slate-950 border-t border-slate-850 flex justify-end">
           <button
             onClick={onClose}
-            className="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-rose-950/20 active:scale-95 transition"
-            id="help_modal_close_footer"
+            className="px-5 py-2 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl transition"
+            id="help_modal_got_it_btn"
           >
-            Acknowledge / เข้าใจแล้ว
+            Understood
           </button>
         </div>
       </div>
