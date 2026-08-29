@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import { Request, Response, NextFunction } from "express";
+import { b2bPostgresLogs, b2bRedis } from "./b2bArchitectureEngine.js";
 
 // Secret Key for HMAC-SHA256 Digital Signatures (Shared between Operator & Master Franchise)
 export const API_SECRET_KEY = process.env.SEAMLESS_WALLET_SECRET_KEY || "YOUR_SUPER_SECRET_HMAC_KEY";
@@ -280,6 +281,17 @@ class SeamlessWalletStore {
       this.transactions.set(txnId, txRecord);
       this.txList.push(txRecord);
 
+      // Record to Partitioned PostgreSQL Transactional Logs
+      b2bPostgresLogs.insertLog({
+        merchant_id: operatorId,
+        ext_user_id: userId,
+        game_id: gameId,
+        round_id: `rnd_${txnId.replace(/\D/g, "") || Math.floor(Math.random() * 9000000 + 1000000)}`,
+        transaction_type: "BET",
+        amount: betAmount,
+        created_at: txRecord.created_at
+      });
+
       return { status: "SUCCESS", currency: "THB", balance: newBalance };
     } finally {
       unlock();
@@ -361,6 +373,17 @@ class SeamlessWalletStore {
 
       this.transactions.set(txnId, txRecord);
       this.txList.push(txRecord);
+
+      // Record to Partitioned PostgreSQL Transactional Logs
+      b2bPostgresLogs.insertLog({
+        merchant_id: operatorId,
+        ext_user_id: userId,
+        game_id: gameId,
+        round_id: `rnd_${txnId.replace(/\D/g, "") || Math.floor(Math.random() * 9000000 + 1000000)}`,
+        transaction_type: "WIN",
+        amount: netWin,
+        created_at: txRecord.created_at
+      });
 
       return {
         status: "SUCCESS",
@@ -514,6 +537,17 @@ class SeamlessWalletStore {
 
       this.transactions.set(txnId, txRecord);
       this.txList.push(txRecord);
+
+      // Record to Partitioned PostgreSQL Transactional Logs
+      b2bPostgresLogs.insertLog({
+        merchant_id: operatorId,
+        ext_user_id: userId,
+        game_id: origTx.game_id || "SKY_RUSH",
+        round_id: `rnd_${refTxnId.replace(/\D/g, "") || Math.floor(Math.random() * 9000000 + 1000000)}`,
+        transaction_type: "ROLLBACK",
+        amount: refundAmount,
+        created_at: txRecord.created_at
+      });
 
       return { status: "SUCCESS", currency: "THB", refunded_amount: refundAmount, balance: newBalance };
     } finally {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, memo } from "react";
 import { Bet, RoundState } from "../types";
 import { Plus, Minus, Coins, TrendingUp } from "lucide-react";
 import { audioManager } from "../audio";
@@ -15,7 +15,7 @@ interface BetPanelProps {
   onUpdateAutoSettings: (isAutoBet: boolean, isAutoCashOut: boolean, autoCashOutMultiplier: number) => void;
 }
 
-export const BetPanel: React.FC<BetPanelProps> = ({
+export const BetPanel: React.FC<BetPanelProps> = memo(({
   id,
   bet,
   roundState,
@@ -29,8 +29,8 @@ export const BetPanel: React.FC<BetPanelProps> = ({
   const [selectedTab, setSelectedTab] = useState<"MANUAL" | "AUTO">("MANUAL");
   const [betAmount, setBetAmount] = useState<number>(100);
   
-  // Rule check: Lock starts the instant the round state is FLYING
-  const isLocked = roundState === "FLYING";
+  // Rule check: Lock betting inputs if round is FLYING, FLEW_AWAY, or if bet is already placed
+  const isLocked = roundState === "FLYING" || roundState === "FLEW_AWAY" || bet.isPlaced;
   
   // Auto configs
   const [isAutoBet, setIsAutoBet] = useState<boolean>(bet.isAutoBet);
@@ -114,7 +114,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
       } else {
         return {
           label: "BET",
-          sub: `${betAmount.toLocaleString()} THB`,
+          sub: `${betAmount.toLocaleString()}`,
           bgColor: "bg-emerald-600 hover:bg-emerald-500",
           action: () => onPlaceBet(Math.max(30, Math.min(30000, betAmount))),
           disabled: userBalance < betAmount || betAmount < 30,
@@ -125,7 +125,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
         const cashValue = (bet.amount * multiplier).toFixed(2);
         return {
           label: "CASH OUT",
-          sub: `${cashValue} THB`,
+          sub: `${cashValue}`,
           bgColor: "bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold",
           action: onCashOut,
           disabled: false,
@@ -133,7 +133,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
       } else if (bet.isPlaced && bet.hasCashedOut) {
         return {
           label: "CASHED OUT",
-          sub: `+${(bet.winAmount || 0).toFixed(1)} THB`,
+          sub: `+${(bet.winAmount || 0).toFixed(2)}`,
           bgColor: "bg-slate-800 text-emerald-400 font-medium",
           action: () => {},
           disabled: true,
@@ -142,26 +142,17 @@ export const BetPanel: React.FC<BetPanelProps> = ({
         // Enqueueing bet for next round
         if (bet.isAutoBet) {
           return {
-            label: "BET PLACED",
+            label: "AUTO BET ACTIVE",
             sub: "Next Round",
-            bgColor: "bg-slate-800 text-slate-400 font-medium",
+            bgColor: "bg-rose-950/60 border border-rose-500/30 text-rose-300 font-medium",
             action: () => {},
             disabled: true,
           };
         } else {
-          if (isLocked) {
-            return {
-              label: "WAITING...",
-              sub: `${betAmount.toLocaleString()}`,
-              bgColor: "bg-slate-800 text-slate-500",
-              action: () => {},
-              disabled: true,
-            };
-          }
           return {
             label: "BET ON NEXT ROUND",
             sub: `${betAmount.toLocaleString()}`,
-            bgColor: "bg-emerald-700/50 hover:bg-emerald-700/80 text-emerald-100",
+            bgColor: "bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-400 hover:via-yellow-300 hover:to-amber-500 text-slate-950 font-black shadow-[0_0_20px_rgba(245,158,11,0.4)] border border-yellow-300/60",
             action: () => onPlaceBet(Math.max(30, Math.min(30000, betAmount))),
             disabled: userBalance < betAmount || betAmount < 30,
           };
@@ -169,9 +160,18 @@ export const BetPanel: React.FC<BetPanelProps> = ({
       }
     } else {
       // FLEW AWAY state
+      if (bet.isAutoBet) {
+        return {
+          label: "AUTO BET ACTIVE",
+          sub: "Starting soon...",
+          bgColor: "bg-rose-950/60 border border-rose-500/30 text-rose-300 font-medium",
+          action: () => {},
+          disabled: true,
+        };
+      }
       return {
         label: "ROUND OVER",
-        sub: "",
+        sub: "Starting soon...",
         bgColor: "bg-slate-800 text-slate-500",
         action: () => {},
         disabled: true,
@@ -187,7 +187,7 @@ export const BetPanel: React.FC<BetPanelProps> = ({
         showCelebration 
           ? "border-amber-500/50 celebrate-glow" 
           : isLocked 
-            ? "border-slate-800 opacity-50" 
+            ? "border-slate-800 opacity-75" 
             : "border-slate-800"
       }`}
       id={`bet_panel_${id}`}
@@ -226,10 +226,10 @@ export const BetPanel: React.FC<BetPanelProps> = ({
 
       {/* Main Betting Area */}
       <div className="flex gap-2 sm:gap-3 min-h-[105px] h-auto items-stretch">
-        {/* Stake Counter input */}
+        {/* Bet Amount Counter input */}
         <div className="flex-1 flex flex-col justify-between bg-slate-900 rounded-lg p-2 sm:p-2.5 min-w-0 gap-1.5 sm:gap-2">
           <div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">
-            Stake Amount
+            Bet Amount
           </div>
           <div className="flex items-center justify-between">
             <button
@@ -466,4 +466,5 @@ export const BetPanel: React.FC<BetPanelProps> = ({
       )}
     </div>
   );
-};
+});
+

@@ -9,6 +9,7 @@ import {
   API_SECRET_KEY 
 } from "./server/seamlessWalletEngine";
 import { riskAssuranceEngine } from "./src/modules/game/riskAssuranceEngine";
+import { b2bRedis, b2bPostgresLogs } from "./server/b2bArchitectureEngine";
 
 // Ensure process.env.NODE_ENV is set or default
 const isProduction = process.env.NODE_ENV === "production";
@@ -2090,6 +2091,220 @@ async function runSecurityFullstackServer() {
     res.json(result);
   });
 
+  // ============================================================================
+  // 8.1. B2B REDIS MULTI-MERCHANT & DYNAMIC SESSION API
+  // ============================================================================
+  
+  // Rate Limiting per Merchant's User (Composite Key: "ratelimit:<merchant_id>:<ext_user_id>")
+  app.post("/api/b2b/redis/ratelimit", (req: Request, res: Response) => {
+    try {
+      const { merchant_id, ext_user_id } = req.body;
+      const mId = merchant_id || "mch_alpha";
+      const uId = ext_user_id || "ext_usr_998877";
+      const key = `ratelimit:${mId}:${uId}`;
+      const result = b2bRedis.incrWithExpire(key, 1);
+      
+      const isRateLimited = result.count > 10; // >10 req/sec threshold
+      res.json({
+        status: isRateLimited ? "RATE_LIMITED" : "ALLOWED",
+        redis_command: `INCR "${key}"`,
+        expire_command: `EXPIRE "${key}" 1`,
+        composite_key: key,
+        request_count_per_second: result.count,
+        ttl_seconds: result.ttl,
+        is_blocked: isRateLimited,
+        message: isRateLimited 
+          ? `Rate limit exceeded for composite key ${key}. Request throttled.` 
+          : `Request permitted (${result.count}/10 per second).`
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
+    }
+  });
+
+  // Seamless Wallet Token Cache (Temporary Session mapping for API Validation)
+  app.post("/api/b2b/redis/session", (req: Request, res: Response) => {
+    try {
+      const { token, merchant_id, ext_user_id, ttl_seconds } = req.body;
+      const sessionToken = token || `token_${crypto.randomBytes(8).toString("hex")}`;
+      const mId = merchant_id || "mch_alpha";
+      const uId = ext_user_id || "ext_usr_998877";
+      const ttl = ttl_seconds || 3600;
+      const key = `b2b:session:${sessionToken}`;
+
+      const sessionPayload = {
+        merchant_id: mId,
+        ext_user_id: uId,
+        created_at: new Date().toISOString()
+      };
+
+      b2bRedis.setEx(key, ttl, JSON.stringify(sessionPayload));
+
+      res.json({
+        status: "SUCCESS",
+        redis_command: `SETEX "${key}" ${ttl} '${JSON.stringify(sessionPayload)}'`,
+        session_token: sessionToken,
+        cached_data: sessionPayload,
+        ttl_seconds: ttl,
+        lookup_test: JSON.parse(b2bRedis.get(key) || "{}")
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
+    }
+  });
+
+  // Real-time High Win Feed (Anonymous Leaderboard for Operators)
+  app.get("/api/b2b/redis/leaderboard", (req: Request, res: Response) => {
+    try {
+      const start = req.query.start ? parseInt(req.query.start as string, 10) : 0;
+      const stop = req.query.stop ? parseInt(req.query.stop as string, 10) : 9;
+      const key = "leaderboard:global_wins";
+      const entries = b2bRedis.zRevRangeWithScores(key, start, stop);
+
+      res.json({
+        status: "SUCCESS",
+        redis_command: `ZREVRANGE "${key}" ${start} ${stop} WITHSCORES`,
+        key,
+        total_top_entries: entries.length,
+        leaderboard: entries
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
+    }
+  });
+
+  app.post("/api/b2b/redis/leaderboard/add", (req: Request, res: Response) => {
+    try {
+      const { merchant_id, ext_user_id, win_amount } = req.body;
+      const mId = merchant_id || "mch_alpha";
+      const uId = ext_user_id || "ext_usr_998877";
+      const score = parseFloat(Number(win_amount || 4500.50).toFixed(2));
+      const member = `${mId}:${uId}`;
+      const key = "leaderboard:global_wins";
+
+      b2bRedis.zAdd(key, score, member);
+
+      res.json({
+        status: "SUCCESS",
+        redis_command: `ZADD "${key}" ${score} "${member}"`,
+        score,
+        member,
+        top_entries: b2bRedis.zRevRangeWithScores(key, 0, 9)
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
+    }
+  });
+
+  // ============================================================================
+  // 8.2. POSTGRESQL TRANSACTIONAL LOGS & PARTITIONS API
+  // ============================================================================
+
+  // Get active partitions and recent partitioned logs
+  app.get("/api/b2b/logs/partitions", (req: Request, res: Response) => {
+    try {
+      const partitions = b2bPostgresLogs.getPartitionSummaries();
+      const recentLogs = b2bPostgresLogs.getRecentLogs(30);
+      res.json({
+        status: "SUCCESS",
+        table_name: "b2b_transaction_logs",
+        partition_strategy: "PARTITION BY RANGE (created_at)",
+        active_partitions: partitions,
+        recent_logs: recentLogs
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
+    }
+  });
+
+  // Idempotent Insert Log API
+  app.post("/api/b2b/logs/insert", (req: Request, res: Response) => {
+    try {
+      const { merchant_id, ext_user_id, game_id, round_id, transaction_type, amount } = req.body;
+      if (!merchant_id || !ext_user_id || !game_id || !round_id || !transaction_type || amount === undefined) {
+        return res.status(400).json({ error: "MISSING_REQUIRED_FIELDS" });
+      }
+
+      const result = b2bPostgresLogs.insertLog({
+        merchant_id,
+        ext_user_id,
+        game_id,
+        round_id,
+        transaction_type,
+        amount: Number(amount)
+      });
+
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
+    }
+  });
+
+  // ============================================================================
+  // 8.3. B2B ANALYTICS & MERCHANT REVENUE METRICS (3 SQL Queries)
+  // ============================================================================
+
+  // QUERY 1: RTP Calculation per Game Across All Merchants
+  app.get("/api/b2b/analytics/rtp-by-game", (req: Request, res: Response) => {
+    try {
+      const hours = req.query.hours ? parseInt(req.query.hours as string, 10) : 24;
+      const data = b2bPostgresLogs.queryRtpPerGame(hours);
+      res.json({
+        status: "SUCCESS",
+        query_sql: `SELECT game_id, COUNT(DISTINCT round_id) AS total_rounds, SUM(CASE WHEN transaction_type = 'BET' THEN amount ELSE 0 END) AS total_bets, SUM(CASE WHEN transaction_type = 'WIN' THEN amount ELSE 0 END) AS total_wins, ROUND((SUM(CASE WHEN transaction_type = 'WIN' THEN amount ELSE 0 END) / NULLIF(SUM(CASE WHEN transaction_type = 'BET' THEN amount ELSE 0 END), 0)) * 100, 2) AS actual_rtp_percentage FROM b2b_transaction_logs WHERE created_at >= NOW() - INTERVAL '${hours} hours' GROUP BY game_id;`,
+        time_window_hours: hours,
+        results: data
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
+    }
+  });
+
+  // QUERY 2: Account-Level Frequency Analysis (Cross-Merchant Bot Detection)
+  app.get("/api/b2b/analytics/bot-detection", (req: Request, res: Response) => {
+    try {
+      const threshold = req.query.threshold ? parseInt(req.query.threshold as string, 10) : 25;
+      const windowMinutes = req.query.window_minutes ? parseInt(req.query.window_minutes as string, 10) : 5;
+      const data = b2bPostgresLogs.queryAccountFrequencyAnomalies(threshold, windowMinutes);
+      res.json({
+        status: "SUCCESS",
+        query_sql: `SELECT merchant_id, ext_user_id, COUNT(*) AS action_count, MIN(created_at) AS start_time, MAX(created_at) AS end_time FROM b2b_transaction_logs WHERE created_at >= NOW() - INTERVAL '${windowMinutes} minutes' GROUP BY merchant_id, ext_user_id, date_trunc('minute', created_at) HAVING COUNT(*) > ${threshold};`,
+        anomaly_count: data.length,
+        anomalies: data
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
+    }
+  });
+
+  // QUERY 3: Revenue Settlement Breakdown by Merchant (GGR per Operator)
+  app.get("/api/b2b/analytics/merchant-ggr", (req: Request, res: Response) => {
+    try {
+      const days = req.query.days ? parseInt(req.query.days as string, 10) : 30;
+      const data = b2bPostgresLogs.queryMerchantRevenueGgr(days);
+      res.json({
+        status: "SUCCESS",
+        query_sql: `SELECT merchant_id, DATE(created_at) AS report_date, SUM(CASE WHEN transaction_type = 'BET' THEN amount ELSE 0 END) - SUM(CASE WHEN transaction_type = 'WIN' THEN amount ELSE 0 END) AS merchant_ggr FROM b2b_transaction_logs WHERE created_at >= NOW() - INTERVAL '${days} days' GROUP BY merchant_id, DATE(created_at) ORDER BY report_date DESC, merchant_ggr DESC;`,
+        report_days: days,
+        records_count: data.length,
+        settlements: data
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
+    }
+  });
+
+  // Seed sample traffic
+  app.post("/api/b2b/logs/seed", (req: Request, res: Response) => {
+    try {
+      const count = req.body.count ? parseInt(req.body.count, 10) : 100;
+      b2bPostgresLogs.seedRealisticData(count);
+      res.json({ status: "SUCCESS", message: `Seeded ${count} transactions across multi-merchant partitions.` });
+    } catch (err: any) {
+      res.status(500).json({ error: "INTERNAL_ERROR", message: err.message });
+    }
+  });
+
   // 9. SWAGGER / OPENAPI 3.0 SPECIFICATION
   app.get("/api/docs/openapi.json", (req: Request, res: Response) => {
     const openApiSpec = {
@@ -2097,7 +2312,7 @@ async function runSecurityFullstackServer() {
       info: {
         title: "Global iGaming Seamless Wallet & Risk Assurance API",
         version: "1.0.0",
-        description: "Standardized High-Throughput Seamless Wallet API for Global iGaming Platforms with HMAC-SHA256 Authentication, Idempotency Locks, Risk Cushion Explosion Protocol, and 59:41 Loss/Win Macro Balancing."
+        description: "Standardized High-Throughput Seamless Wallet API for Global iGaming Platforms with HMAC-SHA256 Authentication, Idempotency Locks, Risk Cushion Explosion Protocol, calibrated 75.0% RTP / 25.0% House Edge, and positive long-term house EV."
       },
       servers: [
         { url: "http://localhost:3000", description: "Local Dev / Sandbox Server" }

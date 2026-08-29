@@ -1,13 +1,17 @@
 import { useState, useEffect, useRef } from "react";
 import { GameCanvas } from "./components/GameCanvas";
 import { BetPanel } from "./components/BetPanel";
-import { BetsList } from "./components/BetsList";
+import { BetsList, TopBetRecord } from "./components/BetsList";
+import { LivePerformanceLoop } from "./components/LivePerformanceLoop";
 import { HelpModal } from "./components/HelpModal";
 import { SeamlessWalletModal } from "./components/SeamlessWalletModal";
+import { ResponsibleGamingModal } from "./components/ResponsibleGamingModal";
 import { audioManager } from "./audio";
 import { Bet, PlayerBet, RoundState, HistoryItem, UserStats, WalletMode } from "./types";
 import { SkyRushEngine, BetSlip, GameRoomState } from "./lib/SkyRushEngine";
 import { seamlessWalletClient } from "./lib/seamlessWalletClient";
+import { generateRandomBotPool, formatToStandardUser } from "./utils/userTransform";
+import { getMultiplierColorTier } from "./utils/multiplierColor";
 import { 
   HelpCircle, 
   Volume2, 
@@ -95,6 +99,18 @@ export default function App() {
 
   // Active wallet balance (Used by UI and betting engine)
   const balance = walletMode === "REAL" ? realBalance : demoBalance;
+
+  // Real-time dynamic Top winners leaderboard state
+  const [topBetsHistory, setTopBetsHistory] = useState<TopBetRecord[]>([
+    { id: "top_init_1", name: "user_89401824901", multiplier: 154.20, amount: 2500, win: 385500, timestamp: "Just now", isBot: true },
+    { id: "top_init_2", name: "user_71829401842", multiplier: 88.45, amount: 4000, win: 353800, timestamp: "2m ago", isBot: true },
+    { id: "top_init_3", name: "user_49102849102", multiplier: 45.10, amount: 7500, win: 338250, timestamp: "5m ago", isBot: true },
+    { id: "top_init_4", name: "user_19401829481", multiplier: 32.12, amount: 10000, win: 321200, timestamp: "8m ago", isBot: true },
+    { id: "top_init_5", name: "user_62019481029", multiplier: 24.50, amount: 12500, win: 306250, timestamp: "11m ago", isBot: true },
+    { id: "top_init_6", name: "user_39401829471", multiplier: 18.22, amount: 15000, win: 273300, timestamp: "15m ago", isBot: true },
+    { id: "top_init_7", name: "user_50192849102", multiplier: 12.05, amount: 20000, win: 241000, timestamp: "18m ago", isBot: true },
+    { id: "top_init_8", name: "user_98102938471", multiplier: 9.80, amount: 25000, win: 245000, timestamp: "22m ago", isBot: true },
+  ]);
 
   // Synchronize real wallet with Master Franchise API
   const syncRealWallet = async (userId: string = realUserId) => {
@@ -259,6 +275,7 @@ export default function App() {
   const [isFadeOut, setIsFadeOut] = useState<boolean>(false);
   const [splashProgress, setSplashProgress] = useState<number>(0);
   const [failedChecks, setFailedChecks] = useState<string[]>([]);
+  const [isResponsibleGamingOpen, setIsResponsibleGamingOpen] = useState<boolean>(false);
 
   // Sync state values with reference handles to bypass dependency-array resets
   const balanceRef = useRef(balance);
@@ -358,7 +375,7 @@ export default function App() {
           if (typeof rEngine.generateSecureGlobalOutcome !== "function") {
             validationFailures.push("Core Probability Engine Offline");
           } else {
-            const dummyRoom = { totalRealLiabilityTHB: 0, globalCrashMultiplier: 1.00 };
+            const dummyRoom: GameRoomState = { totalRealLiability: 0, totalRealLiabilityTHB: 0, globalCrashMultiplier: 1.00, isRealPlayerActive: false };
             const dummyOutcome = rEngine.generateSecureGlobalOutcome(dummyRoom, false, false, 0);
             if (!dummyOutcome || typeof dummyOutcome.multiplier !== "number" || isNaN(dummyOutcome.multiplier)) {
               validationFailures.push("Outcome Output Invalid Format");
@@ -413,6 +430,7 @@ export default function App() {
           setIsFadeOut(true);
           setTimeout(() => {
             setIsSplashActive(false);
+            setIsResponsibleGamingOpen(true);
           }, 800); // 800ms duration for fade animations
         }, 500);
       }
@@ -532,10 +550,10 @@ export default function App() {
     setIsMuted(nextMuted);
   };
 
-  // Helper to retrieve fuel tax rate/amount dynamically from SkyRushEngine
+  // Helper to calculate turnover platform fee (3%) dynamically from SkyRushEngine
   const getTaxForWager = (amount: number): number => {
     const engine = SkyRushEngine.getInstance();
-    return engine.processAsymmetricTax({ userId: "USER_1", betAmountTHB: amount });
+    return engine.processTurnoverCommission(amount);
   };
 
   // Pre-calculations for generating random crash targets under Server-Authoritative Math specs
@@ -552,14 +570,34 @@ export default function App() {
       return backendVal;
     }
 
-    // Otherwise, execute the classic local state system fallback
+    // Otherwise, execute the single-player private room isolated outcome generator
     let totalRealLiabilityTHB = 0;
-    if (betLeft.isPlaced) totalRealLiabilityTHB += betLeft.amount;
-    if (betRight.isPlaced) totalRealLiabilityTHB += betRight.amount;
+    let isRealPlayerActive = false;
+    let realPlayerTarget: number | undefined = undefined;
+
+    if (betLeft.isPlaced) {
+      totalRealLiabilityTHB += betLeft.amount;
+      isRealPlayerActive = true;
+      if (betLeft.isAutoCashOut && betLeft.autoCashOutMultiplier > 1.01) {
+        realPlayerTarget = betLeft.autoCashOutMultiplier;
+      }
+    }
+    if (betRight.isPlaced) {
+      totalRealLiabilityTHB += betRight.amount;
+      isRealPlayerActive = true;
+      if (betRight.isAutoCashOut && betRight.autoCashOutMultiplier > 1.01) {
+        realPlayerTarget = realPlayerTarget 
+          ? Math.min(realPlayerTarget, betRight.autoCashOutMultiplier) 
+          : betRight.autoCashOutMultiplier;
+      }
+    }
 
     const roomState: GameRoomState = {
+      totalRealLiability: totalRealLiabilityTHB,
       totalRealLiabilityTHB,
-      globalCrashMultiplier: 1.00
+      globalCrashMultiplier: 1.01,
+      isRealPlayerActive,
+      realPlayerTarget,
     };
 
     const engine = SkyRushEngine.getInstance();
@@ -573,37 +611,49 @@ export default function App() {
 
     setCurrentRoundIsJackpot(false);
     setEngineMode(result.mode);
-    return result.multiplier;
+    return Math.max(1.01, result.multiplier);
   };
 
-  // Simulated multiplayer bots builder
+  // Simulated multiplayer bots and real connected players builder
   const spawnSimulatedBots = () => {
-    const count = 10 + Math.floor(Math.random() * 10);
-    const bots: PlayerBet[] = [];
-    const shuffledNames = [...BOT_NAMES].sort(() => Math.random() - 0.5);
+    // Generate between 100 and 200 random user bots per round with strictly unique 11-digit numbers
+    const botPool = generateRandomBotPool({ minBots: 100, maxBots: 200, maxBetAmount: 30000 });
+    
+    // Inject active real user bets if committed this round
+    const combinedBets: PlayerBet[] = [];
+    const formattedRealUser = formatToStandardUser(realUserId);
 
-    for (let i = 0; i < count; i++) {
-      const name = shuffledNames[i] || `User_${Math.floor(Math.random() * 9000)}`;
-      const amount = [50, 100, 200, 300, 500, 1000, 2000, 5000][Math.floor(Math.random() * 8)];
-      
-      // Predict a target multiplier for this bot
-      // Some are highly conservative, some optimistic, some exceed current crash multiplier (leading to bust)
-      const targetPref = Math.random() < 0.35 ? 1.2 + Math.random() * 0.5 : 1.7 + Math.random() * 4;
-      const targetMultiplier = parseFloat(targetPref.toFixed(2));
-
-      bots.push({
-        id: `bot_${Date.now()}_${i}`,
-        name,
-        avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)]!,
-        avatarSeed: AVATAR_SEEDS[Math.floor(Math.random() * AVATAR_SEEDS.length)]!,
-        amount,
-        isCashedOut: false,
+    if (betLeft.isPlaced) {
+      combinedBets.push({
+        id: `real_player_l_${Date.now()}`,
+        name: formattedRealUser,
+        avatarColor: "#f59e0b", // Amber indicator for player
+        avatarSeed: "ME",
+        amount: betLeft.amount,
+        isCashedOut: betLeft.hasCashedOut,
         isBust: false,
-        // Hidden meta parameter
-        ...( { targetMultiplier } as any )
+        cashOutMultiplier: betLeft.cashedOutMultiplier,
+        ...({ isRealUser: true } as any)
       });
     }
-    setPlayerBets(bots);
+
+    if (betRight.isPlaced) {
+      combinedBets.push({
+        id: `real_player_r_${Date.now()}`,
+        name: formattedRealUser,
+        avatarColor: "#f59e0b", // Amber indicator for player
+        avatarSeed: "ME",
+        amount: betRight.amount,
+        isCashedOut: betRight.hasCashedOut,
+        isBust: false,
+        cashOutMultiplier: betRight.cashedOutMultiplier,
+        ...({ isRealUser: true } as any)
+      });
+    }
+
+    // Merge real player bets at top of active list followed by bots
+    const allBetsList = [...combinedBets, ...(botPool as unknown as PlayerBet[])];
+    setPlayerBets(allBetsList);
   };
 
   // Reset demo credits or refresh real wallet
@@ -639,8 +689,12 @@ export default function App() {
     }
   };
 
-  // Placing individual bets with Asymmetric 3-Tiered non-refundable fuel tax fee
+  // Placing individual bets with 3% turnover platform commission
   const placeBetLeft = async (rawAmount: number) => {
+    if (roundState !== "WAITING") {
+      audioManager.playClick();
+      return; // Cannot place bet into an already active flight
+    }
     hasCashedOutLeftRef.current = false;
     isCashingOutLeftRef.current = false;
     const amount = Math.min(30000, Math.max(30, rawAmount));
@@ -674,6 +728,10 @@ export default function App() {
   };
 
   const placeBetRight = async (rawAmount: number) => {
+    if (roundState !== "WAITING") {
+      audioManager.playClick();
+      return; // Cannot place bet into an already active flight
+    }
     hasCashedOutRightRef.current = false;
     isCashingOutRightRef.current = false;
     const amount = Math.min(30000, Math.max(30, rawAmount));
@@ -706,8 +764,12 @@ export default function App() {
     }
   };
 
-  // Fuel tax is completely non-refundable once committed. Refunds only revert the base wager amount.
+  // Bet cancellation is strictly only permitted during the WAITING phase. Once round starts, bets are locked!
   const cancelBetLeft = async () => {
+    if (roundState !== "WAITING") {
+      audioManager.playClick();
+      return; // Locked once round starts!
+    }
     audioManager.playClick();
     hasCashedOutLeftRef.current = false;
     isCashingOutLeftRef.current = false;
@@ -726,6 +788,10 @@ export default function App() {
   };
 
   const cancelBetRight = async () => {
+    if (roundState !== "WAITING") {
+      audioManager.playClick();
+      return; // Locked once round starts!
+    }
     audioManager.playClick();
     hasCashedOutRightRef.current = false;
     isCashingOutRightRef.current = false;
@@ -743,7 +809,7 @@ export default function App() {
     }
   };
 
-  // Executing user cashout operations with decimal truncation & fraction sweep (Pillar 5)
+  // Executing user cashout operations with exact mathematical payout (amount * multiplier)
   const cashOutLeft = async () => {
     if (hasCashedOutLeftRef.current || isCashingOutLeftRef.current) return;
     const currentBet = betLeftRef.current;
@@ -755,14 +821,15 @@ export default function App() {
 
     try {
       const curMultiplier = multiplierRef.current;
-      const rawWinnings = currentBet.amount * curMultiplier;
+      // Exact mathematical calculation: Amount * Multiplier truncated to 2 decimal places (Satang)
+      const rawWinnings = Math.floor(currentBet.amount * curMultiplier * 100) / 100;
       
       audioManager.playCashOut();
 
       if (walletModeRef.current === "REAL") {
         const winTxnId = `WIN_${Date.now()}_L_${Math.random().toString(36).substring(2, 6)}`;
         const res = await seamlessWalletClient.creditWin(winTxnId, rawWinnings, realUserId);
-        const actualPayout = res.net_win_added ?? parseFloat((rawWinnings * 0.97).toFixed(2));
+        const actualPayout = typeof res.net_win_added === "number" ? res.net_win_added : rawWinnings;
         
         if (res.status === "SUCCESS" && typeof res.balance === "number") {
           setRealBalance(res.balance);
@@ -851,14 +918,15 @@ export default function App() {
 
     try {
       const curMultiplier = multiplierRef.current;
-      const rawWinnings = currentBet.amount * curMultiplier;
+      // Exact mathematical calculation: Amount * Multiplier truncated to 2 decimal places (Satang)
+      const rawWinnings = Math.floor(currentBet.amount * curMultiplier * 100) / 100;
       
       audioManager.playCashOut();
 
       if (walletModeRef.current === "REAL") {
         const winTxnId = `WIN_${Date.now()}_R_${Math.random().toString(36).substring(2, 6)}`;
         const res = await seamlessWalletClient.creditWin(winTxnId, rawWinnings, realUserId);
-        const actualPayout = res.net_win_added ?? parseFloat((rawWinnings * 0.97).toFixed(2));
+        const actualPayout = typeof res.net_win_added === "number" ? res.net_win_added : rawWinnings;
         
         if (res.status === "SUCCESS" && typeof res.balance === "number") {
           setRealBalance(res.balance);
@@ -959,7 +1027,7 @@ export default function App() {
     // WAITING state initiator
     if (roundState === "WAITING") {
       timeElapsedRef.current = 0;
-      setMultiplier(1.00);
+      setMultiplier(1.01);
       setCountdown(maxCountdown);
       spawnSimulatedBots();
 
@@ -983,7 +1051,7 @@ export default function App() {
           if (prev <= 0.1) {
             clearInterval(intervalIdRef.current);
             // Transition into Flying state!
-            setMultiplier(1.00);
+            setMultiplier(1.01);
 
             // DETECT PROGRESSIVE DOUBLING (MARTINGALE LOGIC) (Pillar 6)
             const currentWager = (betLeft.isPlaced ? betLeft.amount : 0) + (betRight.isPlaced ? betRight.amount : 0);
@@ -1019,19 +1087,22 @@ export default function App() {
     // FLYING state loop
     if (roundState === "FLYING") {
       let startTime = Date.now();
+      let lastBotUpdate = 0;
       
       intervalIdRef.current = setInterval(() => {
         const elapsed = (Date.now() - startTime) / 1000;
         timeElapsedRef.current = elapsed;
 
-        // Smooth growth curve: starts flat for the first 3 seconds, then accelerates progressively so high targets (e.g. 49x, 99x) are reached within a reasonable, exciting time.
-        let curMultiplier = 1.00;
-        if (elapsed <= 3) {
-          curMultiplier = 1.00 + 0.05 * Math.pow(elapsed, 1.45);
+        // Calibrated smooth and relaxed progression (steady, readable, non-laggy pace)
+        let curMultiplier = 1.01;
+        if (elapsed <= 5) {
+          // Relaxed gradual start: reaches ~1.30x at 5 seconds
+          curMultiplier = 1.01 + 0.035 * Math.pow(elapsed, 1.32);
         } else {
-          const baseMultiplier = 1.00 + 0.05 * Math.pow(3, 1.45); // ~1.25x
-          const extraTime = elapsed - 3;
-          curMultiplier = baseMultiplier * Math.pow(1.35, extraTime);
+          // Graceful exponential scaling without sudden jumping
+          const baseMultiplier = 1.01 + 0.035 * Math.pow(5, 1.32); // ~1.28x
+          const extraTime = elapsed - 5;
+          curMultiplier = baseMultiplier * Math.pow(1.18, extraTime);
         }
         
         // Critical block: Crash Point reached
@@ -1046,21 +1117,25 @@ export default function App() {
         setMultiplier(curMultiplier);
         audioManager.updateEngine(curMultiplier);
 
-        // Simulated other players cashouts in real-time
-        setPlayerBets((prev) =>
-          prev.map((player: any) => {
-            if (!player.isCashedOut && !player.isBust) {
-              if (curMultiplier >= player.targetMultiplier) {
-                return {
-                  ...player,
-                  isCashedOut: true,
-                  cashOutMultiplier: player.targetMultiplier,
-                };
+        // Optimized bot cashout status update (throttled every 200ms to eliminate any UI micro-stutters)
+        const now = Date.now();
+        if (now - lastBotUpdate >= 200) {
+          lastBotUpdate = now;
+          setPlayerBets((prev) =>
+            prev.map((player: any) => {
+              if (!player.isCashedOut && !player.isBust) {
+                if (curMultiplier >= player.targetMultiplier) {
+                  return {
+                    ...player,
+                    isCashedOut: true,
+                    cashOutMultiplier: player.targetMultiplier,
+                  };
+                }
               }
-            }
-            return player;
-          })
-        );
+              return player;
+            })
+          );
+        }
 
         // Auto Cash Out monitors with atomic ref protections
         const bLeft = betLeftRef.current;
@@ -1089,7 +1164,7 @@ export default function App() {
           }
         }
 
-      }, 40); // 25 frames per second updates
+      }, 40); // 25 FPS smooth timer loop
     }
 
     // FLEW AWAY transition timers (Pillar 6)
@@ -1107,6 +1182,41 @@ export default function App() {
           return player;
         })
       );
+
+      // Collect high-multiplier bot winners from this round to dynamically update the TOP tab
+      setPlayerBets((prev) => {
+        const topWinnersThisRound = prev
+          .filter((p) => p.isCashedOut && (p.cashOutMultiplier || 0) >= 8.0)
+          .map((p, idx) => {
+            const mult = p.cashOutMultiplier || 1.0;
+            const winAmount = parseFloat((p.amount * mult).toFixed(2));
+            return {
+              id: `top_${p.id}_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`,
+              name: p.name,
+              multiplier: mult,
+              amount: p.amount,
+              win: winAmount,
+              timestamp: "Just now",
+              isBot: !(p as any).isRealUser,
+            };
+          });
+
+        if (topWinnersThisRound.length > 0) {
+          setTopBetsHistory((oldTop) => {
+            const map = new Map<string, TopBetRecord>();
+            for (const item of [...topWinnersThisRound, ...oldTop]) {
+              if (!map.has(item.id)) {
+                map.set(item.id, item);
+              }
+            }
+            const combined = Array.from(map.values());
+            const sorted = combined.sort((a, b) => b.win - a.win);
+            // Keep top 20 record entries
+            return sorted.slice(0, 20);
+          });
+        }
+        return prev;
+      });
 
       // Evaluate if player lost any committed bets this round
       let userLostThisRound = false;
@@ -1236,22 +1346,24 @@ export default function App() {
       <header className="bg-slate-950/80 border-b border-slate-900/60 p-3 sm:p-4 sticky top-0 z-10 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
           
-          {/* Logo Name & Icon */}
-          <div className="flex items-center gap-2 sm:gap-3">
-            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-tr from-rose-600 to-pink-500 flex items-center justify-center text-white shadow-lg shadow-rose-950/30 shrink-0">
-              <Plane size={18} className="sm:w-[22px] sm:h-[22px] rotate-0 transition-transform active:rotate-12 duration-300" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1 sm:gap-1.5 leading-tight font-display">
-                <span className="text-base sm:text-xl font-black italic uppercase tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-white via-rose-100 to-rose-400">
-                  SKY RUSH
-                </span>
-                <span className="text-[8.5px] sm:text-[10px] bg-rose-600/20 text-rose-400 font-extrabold px-1 sm:px-1.5 py-0.5 rounded-full border border-rose-500/10">
-                  CRASH
-                </span>
-              </div>
-              <p className="text-[8.5px] sm:text-[10px] text-slate-500 font-medium tracking-wide hidden xs:block">BollyGaming Pilot Hub</p>
-            </div>
+          {/* Brand Logo */}
+          <div className="flex items-center gap-2 sm:gap-3" id="brand_header_logo_container">
+            <a 
+              href="#" 
+              onClick={(e) => e.preventDefault()} 
+              className="flex items-center transition-transform hover:scale-105 duration-200 focus:outline-none"
+              title="LETMELMB"
+            >
+              <img 
+                src="https://i.postimg.cc/6p1Pbj3q/LETMELMB.png" 
+                alt="LETMELMB" 
+                className="h-10 sm:h-12 md:h-14 lg:h-16 w-auto max-w-[220px] sm:max-w-[300px] md:max-w-[360px] object-contain drop-shadow-[0_2px_16px_rgba(244,63,94,0.45)] transition-all duration-300"
+                loading="eager"
+                decoding="async"
+                fetchPriority="high"
+                referrerPolicy="no-referrer"
+              />
+            </a>
           </div>
 
           {/* Controls: Audio, Help info, Wallet balance */}
@@ -1395,21 +1507,27 @@ export default function App() {
             <TrendingUp size={11} className="text-slate-500" /> History:
           </div>
           <div className="flex items-center gap-1.5 shrink-0">
-            {history.map((item, idx) => (
-              <span
-                key={item.id}
-                className={`text-[9.5px] sm:text-[10px] font-black px-2 py-0.5 rounded font-mono border ${
-                  item.val >= 10.0
-                    ? "bg-fuchsia-950/50 text-fuchsia-400 border-fuchsia-500/20"
-                    : item.val >= 2.0
-                    ? "bg-violet-950/50 text-violet-400 border-violet-500/20"
-                    : "bg-slate-900 text-blue-400 border-blue-500/10"
-                } ${idx === 0 ? "scale-105 border-rose-500/20 shadow-rose-950/20 shadow animate-pinRight" : "opacity-80"}`}
-                id={`history_pill_${idx}`}
-              >
-                {item.val.toFixed(2)}x
-              </span>
-            ))}
+            {history.map((item, idx) => {
+              const tier = getMultiplierColorTier(item.val);
+              return (
+                <span
+                  key={item.id}
+                  style={{
+                    color: tier.color,
+                    borderColor: tier.borderColor,
+                    backgroundColor: tier.bgColor,
+                    boxShadow: idx === 0 ? tier.shadow : "none",
+                  }}
+                  className={`text-[9.5px] sm:text-[10px] font-black px-2 py-0.5 rounded font-mono border transition-all duration-300 ${
+                    idx === 0 ? "scale-105" : "opacity-90 hover:opacity-100"
+                  }`}
+                  title={`${tier.label}: ${item.val.toFixed(2)}x`}
+                  id={`history_pill_${idx}`}
+                >
+                  {item.val.toFixed(2)}x
+                </span>
+              );
+            })}
           </div>
         </div>
 
@@ -1425,6 +1543,7 @@ export default function App() {
               multiplier={multiplier}
               userStats={userStats}
               onResetStats={handleResetStats}
+              topBetsHistory={topBetsHistory}
             />
           </div>
 
@@ -1467,19 +1586,11 @@ export default function App() {
               />
             </div>
 
-            {/* Custom Promo/Banner Image Container */}
-            <div 
-              className="w-full bg-[#0a0a1a] rounded-[12px] border border-[rgba(255,255,255,0.1)] p-2 sm:p-[10px] mt-1 sm:mt-[10px] overflow-hidden"
-              id="bet_panel_promo_image_container"
-            >
-              <img 
-                src="https://i.postimg.cc/hGhfZN15/file-00000000bba47208bb451deb352ca2f2.webp" 
-                alt="Sky Rush Promotion Banner" 
-                className="w-full h-auto object-contain rounded-[8px] block"
-                referrerPolicy="no-referrer"
-                id="bet_panel_promo_image"
-              />
-            </div>
+            {/* Live Performance Loop Visual Curve */}
+            <LivePerformanceLoop
+              userStats={userStats}
+              myHistory={myHistory}
+            />
 
           </div>
 
@@ -1610,7 +1721,7 @@ export default function App() {
                     <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex flex-col gap-1">
                       <span className="text-[9px] text-slate-400 uppercase tracking-widest font-black">Active Room Liability</span>
                       <span className="text-sm font-black text-rose-50">
-                        {((betLeft.isPlaced ? betLeft.amount : 0) + (betRight.isPlaced ? betRight.amount : 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-400">THB</span>
+                        {((betLeft.isPlaced ? betLeft.amount : 0) + (betRight.isPlaced ? betRight.amount : 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </span>
                       <span className="text-[8px] text-slate-500 mt-1 leading-none font-sans">Sum of dual real wagers in-room</span>
                     </div>
@@ -1618,15 +1729,15 @@ export default function App() {
                     <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex flex-col gap-1">
                       <span className="text-[9px] text-slate-400 uppercase tracking-widest font-black">Commission Fee (3.5%)</span>
                       <span className="text-sm font-black text-rose-50">
-                        {accumulatedFuelTax.toLocaleString(undefined, { minimumFractionDigits: 2 })} <span className="text-[10px] text-slate-400">THB</span>
+                        {accumulatedFuelTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </span>
                       <span className="text-[8px] text-slate-500 mt-1 leading-none font-sans">Flat 3.5% fee committed at t = 0s</span>
                     </div>
 
                     <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex flex-col gap-1">
-                      <span className="text-[9px] text-slate-400 uppercase tracking-widest font-black">Swept Fractional Satangs</span>
+                      <span className="text-[9px] text-slate-400 uppercase tracking-widest font-black">Swept Fractional Balance</span>
                       <span className="text-sm font-black text-rose-50 break-all">
-                        {accumulatedFractionSweep.toLocaleString(undefined, { minimumFractionDigits: 6, maximumFractionDigits: 6 })} <span className="text-[10px] text-slate-400">THB</span>
+                        {accumulatedFractionSweep.toLocaleString(undefined, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}
                       </span>
                       <span className="text-[8px] text-slate-500 mt-1 leading-none font-sans">Rounding residuals directed to house</span>
                     </div>
@@ -1657,11 +1768,11 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* 🔒 ACTUARIAL INTEGRITY ENGAGEMENT SYSTEMS (ระบบควบคุมอุ้มชูและระบบระเบิดดักหน้า) */}
+                  {/* 🔒 ACTUARIAL INTEGRITY ENGAGEMENT SYSTEMS (Adaptive Micro-Bust & RTP Safeguards) */}
                   <div className="bg-slate-950/60 border border-indigo-950/60 p-4 rounded-xl flex flex-col gap-3">
                     <h4 className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider font-mono flex items-center gap-1.5">
                       <ShieldCheck size={12} className="text-indigo-400" />
-                      ACTUARIAL SAFES & TRAPS (โหมดผู้พัฒนา)
+                      ACTUARIAL SAFES & TRAPS (DEVELOPER MODE)
                     </h4>
                     
                     <div className="grid grid-cols-2 gap-3 font-mono">
@@ -1695,7 +1806,7 @@ export default function App() {
                           </span>
                         </div>
                         <span className="text-[8px] text-slate-500 leading-normal font-sans mt-1">
-                          Triggers 6.00x+ big payout if balance drops &le; 30% of entry capital ({sessionEntryBalance.toLocaleString()} THB).
+                          Triggers 6.00x+ big payout if balance drops &le; 30% of entry capital ({sessionEntryBalance.toLocaleString()}).
                         </span>
                       </div>
                     </div>
@@ -1767,6 +1878,12 @@ export default function App() {
       <SeamlessWalletModal 
         isOpen={isSeamlessWalletOpen} 
         onClose={() => setIsSeamlessWalletOpen(false)}
+      />
+
+      {/* Pre-Game Responsible Gaming Warning Modal */}
+      <ResponsibleGamingModal
+        isOpen={isResponsibleGamingOpen}
+        onClose={() => setIsResponsibleGamingOpen(false)}
       />
 
       {/* 3-Second Loading / Splash Screen Overlay */}

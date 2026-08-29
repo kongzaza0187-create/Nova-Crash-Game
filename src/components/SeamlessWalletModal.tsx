@@ -103,7 +103,7 @@ interface Props {
 type EndpointType = "auth" | "webhook" | "balance" | "debit" | "credit" | "loss" | "rollback";
 
 export const SeamlessWalletModal: React.FC<Props> = ({ isOpen, onClose, onBalanceUpdated }) => {
-  const [activeTab, setActiveTab] = useState<"explorer" | "docs" | "operators" | "risk" | "loadtest" | "ledger" | "users">("explorer");
+  const [activeTab, setActiveTab] = useState<"explorer" | "docs" | "operators" | "risk" | "b2b_analytics" | "loadtest" | "ledger" | "users">("explorer");
   const [selectedEndpoint, setSelectedEndpoint] = useState<EndpointType>("debit");
   
   // Test parameters
@@ -146,6 +146,20 @@ export const SeamlessWalletModal: React.FC<Props> = ({ isOpen, onClose, onBalanc
   const [simBaseWager, setSimBaseWager] = useState<number>(100);
   const [simResults, setSimResults] = useState<any>(null);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
+
+  // B2B Architecture & Analytics State
+  const [b2bSubTab, setB2bSubTab] = useState<"redis" | "partitions" | "analytics">("redis");
+  const [b2bMerchantId, setB2bMerchantId] = useState<string>("mch_alpha");
+  const [b2bExtUserId, setB2bExtUserId] = useState<string>("ext_usr_998877");
+  const [b2bWinAmount, setB2bWinAmount] = useState<string>("4500.50");
+  const [b2bRateLimitRes, setB2bRateLimitRes] = useState<any>(null);
+  const [b2bSessionRes, setB2bSessionRes] = useState<any>(null);
+  const [b2bLeaderboard, setB2bLeaderboard] = useState<any[]>([]);
+  const [b2bPartitionsData, setB2bPartitionsData] = useState<any>(null);
+  const [b2bRtpData, setB2bRtpData] = useState<any>(null);
+  const [b2bBotData, setB2bBotData] = useState<any>(null);
+  const [b2bGgrData, setB2bGgrData] = useState<any>(null);
+  const [isB2bLoading, setIsB2bLoading] = useState<boolean>(false);
 
   // Load Test Stress Runner State
   const [loadTestConcurrency, setLoadTestConcurrency] = useState<number>(50);
@@ -530,6 +544,117 @@ export const SeamlessWalletModal: React.FC<Props> = ({ isOpen, onClose, onBalanc
     }
   };
 
+  // ==========================================
+  // B2B ARCHITECTURE & ANALYTICS HANDLERS
+  // ==========================================
+  const executeRedisRateLimit = async () => {
+    setIsB2bLoading(true);
+    try {
+      const res = await fetch("/api/b2b/redis/ratelimit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ merchant_id: b2bMerchantId, ext_user_id: b2bExtUserId })
+      });
+      const data = await res.json();
+      setB2bRateLimitRes(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsB2bLoading(false);
+    }
+  };
+
+  const executeRedisSession = async () => {
+    setIsB2bLoading(true);
+    try {
+      const res = await fetch("/api/b2b/redis/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ merchant_id: b2bMerchantId, ext_user_id: b2bExtUserId, ttl_seconds: 3600 })
+      });
+      const data = await res.json();
+      setB2bSessionRes(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsB2bLoading(false);
+    }
+  };
+
+  const fetchRedisLeaderboard = async () => {
+    try {
+      const res = await fetch("/api/b2b/redis/leaderboard?start=0&stop=9");
+      const data = await res.json();
+      if (data.leaderboard) {
+        setB2bLeaderboard(data.leaderboard);
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const addRedisWinEntry = async () => {
+    setIsB2bLoading(true);
+    try {
+      await fetch("/api/b2b/redis/leaderboard/add", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ merchant_id: b2bMerchantId, ext_user_id: b2bExtUserId, win_amount: parseFloat(b2bWinAmount) })
+      });
+      await fetchRedisLeaderboard();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsB2bLoading(false);
+    }
+  };
+
+  const fetchB2bPartitions = async () => {
+    try {
+      const res = await fetch("/api/b2b/logs/partitions");
+      const data = await res.json();
+      setB2bPartitionsData(data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const fetchB2bAnalytics = async () => {
+    setIsB2bLoading(true);
+    try {
+      const [resRtp, resBot, resGgr] = await Promise.all([
+        fetch("/api/b2b/analytics/rtp-by-game?hours=24").then(r => r.json()),
+        fetch("/api/b2b/analytics/bot-detection?threshold=25&window_minutes=5").then(r => r.json()),
+        fetch("/api/b2b/analytics/merchant-ggr?days=30").then(r => r.json())
+      ]);
+      setB2bRtpData(resRtp);
+      setB2bBotData(resBot);
+      setB2bGgrData(resGgr);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsB2bLoading(false);
+    }
+  };
+
+  const seedB2bSimulationLogs = async () => {
+    setIsB2bLoading(true);
+    try {
+      await fetch("/api/b2b/logs/seed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ count: 150 })
+      });
+      await fetchB2bPartitions();
+      await fetchB2bAnalytics();
+      await fetchRedisLeaderboard();
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setIsB2bLoading(false);
+    }
+  };
+
   const copyToClipboard = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedCode(true);
@@ -691,7 +816,24 @@ export const SeamlessWalletModal: React.FC<Props> = ({ isOpen, onClose, onBalanc
             }`}
           >
             <ShieldCheck className="w-4 h-4" />
-            Risk Assurance & 59:41 Engine
+            Risk Assurance (75% RTP)
+          </button>
+
+          <button
+            onClick={() => {
+              setActiveTab("b2b_analytics");
+              fetchRedisLeaderboard();
+              fetchB2bPartitions();
+              fetchB2bAnalytics();
+            }}
+            className={`px-3.5 py-2.5 text-xs font-semibold flex items-center gap-1.5 border-b-2 whitespace-nowrap transition-all ${
+              activeTab === "b2b_analytics"
+                ? "border-emerald-500 text-emerald-300 bg-emerald-500/10"
+                : "border-transparent text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <Activity className="w-4 h-4 text-emerald-400" />
+            B2B Redis & SQL Analytics
           </button>
 
           <button
@@ -1321,7 +1463,7 @@ curl_close($ch);
             </div>
           )}
 
-          {/* TAB 4: RISK ASSURANCE & 59:41 ENGINE */}
+          {/* TAB 4: RISK ASSURANCE & 75% RTP ENGINE */}
           {activeTab === "risk" && (
             <div className="space-y-6">
               
@@ -1329,14 +1471,14 @@ curl_close($ch);
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4">
                   <div className="text-xs text-slate-400">Target House Edge (Margin)</div>
-                  <div className="text-2xl font-bold text-amber-400 mt-1">37.0%</div>
-                  <div className="text-[11px] text-slate-400 mt-1">Target RTP: 63.0%</div>
+                  <div className="text-2xl font-bold text-amber-400 mt-1">25.0%</div>
+                  <div className="text-[11px] text-slate-400 mt-1">Target RTP: 75.0% (Positive House EV)</div>
                 </div>
 
                 <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4">
                   <div className="text-xs text-slate-400">Macro Balancing Model</div>
-                  <div className="text-2xl font-bold text-rose-400 mt-1">59% Losers : 41% Winners</div>
-                  <div className="text-[11px] text-slate-400 mt-1">House revenue from 59 losers strictly dominates 41 winners</div>
+                  <div className="text-2xl font-bold text-rose-400 mt-1">~52% Losers : ~48% Winners</div>
+                  <div className="text-[11px] text-slate-400 mt-1">Long-term turnover generates asymptotic positive EV (+25%) for house</div>
                 </div>
 
                 <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4">
@@ -1420,6 +1562,535 @@ curl_close($ch);
                   </div>
                 )}
               </div>
+
+            </div>
+          )}
+
+          {/* TAB 4.5: B2B ARCHITECTURE & SQL ANALYTICS */}
+          {activeTab === "b2b_analytics" && (
+            <div className="space-y-6">
+              
+              {/* Header & Sub-Navigation */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-900/90 border border-slate-800 rounded-xl p-4">
+                <div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider flex items-center gap-2">
+                    <Database className="w-4 h-4 text-emerald-400" />
+                    B2B Multi-Merchant Architecture & Analytics Engine
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Zero-PII Redis caching, composite key rate limiting, partitioned transaction logs & automated B2B GGR settlements.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={seedB2bSimulationLogs}
+                    disabled={isB2bLoading}
+                    className="px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 rounded-lg shadow-md shadow-emerald-900/30 flex items-center gap-1.5 transition disabled:opacity-50"
+                  >
+                    {isB2bLoading ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Play className="w-3.5 h-3.5" />}
+                    Seed Multi-Merchant Logs
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      fetchRedisLeaderboard();
+                      fetchB2bPartitions();
+                      fetchB2bAnalytics();
+                    }}
+                    className="p-1.5 text-xs text-slate-400 hover:text-white bg-slate-800 border border-slate-700 rounded-lg transition"
+                    title="Refresh All Analytics"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Sub-Tabs Selector */}
+              <div className="flex border-b border-slate-800 bg-slate-950/60 rounded-lg p-1 gap-1">
+                <button
+                  onClick={() => setB2bSubTab("redis")}
+                  className={`flex-1 py-2 px-3 text-xs font-bold rounded-md transition ${
+                    b2bSubTab === "redis"
+                      ? "bg-rose-500/20 text-rose-300 border border-rose-500/40 shadow-sm"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  1. Redis Commands (Multi-Merchant & Cache)
+                </button>
+
+                <button
+                  onClick={() => { setB2bSubTab("partitions"); fetchB2bPartitions(); }}
+                  className={`flex-1 py-2 px-3 text-xs font-bold rounded-md transition ${
+                    b2bSubTab === "partitions"
+                      ? "bg-blue-500/20 text-blue-300 border border-blue-500/40 shadow-sm"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  2. PostgreSQL Logs (Range Partitioning)
+                </button>
+
+                <button
+                  onClick={() => { setB2bSubTab("analytics"); fetchB2bAnalytics(); }}
+                  className={`flex-1 py-2 px-3 text-xs font-bold rounded-md transition ${
+                    b2bSubTab === "analytics"
+                      ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shadow-sm"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  3. B2B Analytics & SQL Metrics (3 Queries)
+                </button>
+              </div>
+
+              {/* SUBTAB 1: REDIS COMMANDS */}
+              {b2bSubTab === "redis" && (
+                <div className="space-y-6">
+                  
+                  {/* Parameter Controls */}
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4">
+                    <div className="text-xs font-bold text-slate-300 uppercase tracking-wider mb-3">
+                      Redis Sandbox Parameters (Zero-PII Composite Keys)
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="text-[11px] text-slate-400 block mb-1">Merchant ID</label>
+                        <select
+                          value={b2bMerchantId}
+                          onChange={(e) => setB2bMerchantId(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono"
+                        >
+                          <option value="mch_alpha">mch_alpha (Alpha Operator)</option>
+                          <option value="mch_beta">mch_beta (BetHub Beta)</option>
+                          <option value="mch_gamma">mch_gamma (Royal Gamma)</option>
+                          <option value="mch_delta">mch_delta (Delta Gaming)</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] text-slate-400 block mb-1">External User ID (from Operator)</label>
+                        <input
+                          type="text"
+                          value={b2bExtUserId}
+                          onChange={(e) => setB2bExtUserId(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white font-mono"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[11px] text-slate-400 block mb-1">Win Amount (THB) for ZADD</label>
+                        <input
+                          type="number"
+                          value={b2bWinAmount}
+                          onChange={(e) => setB2bWinAmount(e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-amber-300 font-mono"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 3 Redis Feature Cards */}
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    
+                    {/* Feature 1: Rate Limiter */}
+                    <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 flex flex-col justify-between space-y-3">
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-rose-400 uppercase">Rate Limiting Key</span>
+                          <span className="text-[10px] bg-rose-500/20 text-rose-300 px-1.5 py-0.5 rounded font-mono">1-Sec Window</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Throttles bursts per Merchant User without capturing personal IP or hardware fingerprints.
+                        </p>
+                        <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono text-[11px] text-rose-300 mt-2 space-y-1">
+                          <div>INCR "ratelimit:{b2bMerchantId}:{b2bExtUserId}"</div>
+                          <div className="text-slate-500">EXPIRE "ratelimit:{b2bMerchantId}:{b2bExtUserId}" 1</div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                        <button
+                          onClick={executeRedisRateLimit}
+                          disabled={isB2bLoading}
+                          className="w-full py-1.5 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-lg transition"
+                        >
+                          Execute INCR & Check Limit
+                        </button>
+                        {b2bRateLimitRes && (
+                          <div className="text-[11px] font-mono p-2 bg-slate-950 rounded border border-slate-800 text-slate-300">
+                            Count: <span className="text-amber-400 font-bold">{b2bRateLimitRes.request_count_per_second} req/s</span> | Status: <span className={b2bRateLimitRes.is_blocked ? "text-rose-400 font-bold" : "text-emerald-400 font-bold"}>{b2bRateLimitRes.status}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Feature 2: Token Cache */}
+                    <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 flex flex-col justify-between space-y-3">
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-teal-400 uppercase">Session Token Cache</span>
+                          <span className="text-[10px] bg-teal-500/20 text-teal-300 px-1.5 py-0.5 rounded font-mono">TTL: 3600s</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Temporary session mapping for ultra-fast O(1) API validation between operator and game engine.
+                        </p>
+                        <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono text-[11px] text-teal-300 mt-2 space-y-1 overflow-x-auto">
+                          <div>SETEX "b2b:session:token_..." 3600</div>
+                          <div className="text-slate-500 text-[10px]">'{`{"merchant_id":"${b2bMerchantId}","ext_user_id":"${b2bExtUserId}"}`}'</div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                        <button
+                          onClick={executeRedisSession}
+                          disabled={isB2bLoading}
+                          className="w-full py-1.5 bg-teal-600 hover:bg-teal-500 text-slate-950 font-bold text-xs rounded-lg transition"
+                        >
+                          Execute SETEX Session Token
+                        </button>
+                        {b2bSessionRes && (
+                          <div className="text-[11px] font-mono p-2 bg-slate-950 rounded border border-slate-800 text-slate-300 truncate">
+                            Cached: <span className="text-teal-400">{b2bSessionRes.session_token}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Feature 3: Real-time High Win Feed */}
+                    <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 flex flex-col justify-between space-y-3">
+                      <div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-amber-400 uppercase">Real-Time Win Feed</span>
+                          <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-mono">Sorted Set</span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-1">
+                          Anonymous real-time high win ticker powered by Redis Sorted Set (ZADD & ZREVRANGE).
+                        </p>
+                        <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono text-[11px] text-amber-300 mt-2 space-y-1">
+                          <div>ZADD "leaderboard:global_wins" {b2bWinAmount} "{b2bMerchantId}:{b2bExtUserId}"</div>
+                          <div className="text-slate-500">ZREVRANGE "leaderboard:global_wins" 0 9 WITHSCORES</div>
+                        </div>
+                      </div>
+
+                      <div className="space-y-2 pt-2 border-t border-slate-800/80">
+                        <button
+                          onClick={addRedisWinEntry}
+                          disabled={isB2bLoading}
+                          className="w-full py-1.5 bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs rounded-lg transition"
+                        >
+                          Execute ZADD Win Score
+                        </button>
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* Live Top 10 High Win Feed Table */}
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                        <Flame className="w-4 h-4 text-amber-400" />
+                        Redis Sorted Set Leaderboard (ZREVRANGE 0 9 WITHSCORES)
+                      </h4>
+                      <span className="text-[11px] text-slate-400 font-mono">Key: "leaderboard:global_wins"</span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-950 text-slate-400 uppercase text-[10px]">
+                          <tr>
+                            <th className="p-2.5">Rank</th>
+                            <th className="p-2.5">Merchant ID</th>
+                            <th className="p-2.5">Anonymous Ext User</th>
+                            <th className="p-2.5">Win Score (THB)</th>
+                            <th className="p-2.5">Timestamp</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800 font-mono">
+                          {b2bLeaderboard.map((entry) => (
+                            <tr key={entry.rank} className="hover:bg-slate-800/40 text-[11px]">
+                              <td className="p-2.5">
+                                <span className={`px-2 py-0.5 rounded font-bold ${
+                                  entry.rank === 1 ? "bg-amber-500/20 text-amber-300 border border-amber-500/30" :
+                                  entry.rank === 2 ? "bg-slate-300/20 text-slate-200" :
+                                  entry.rank === 3 ? "bg-amber-700/20 text-amber-400" :
+                                  "text-slate-400"
+                                }`}>
+                                  #{entry.rank}
+                                </span>
+                              </td>
+                              <td className="p-2.5 text-teal-300 font-bold">{entry.merchant_id}</td>
+                              <td className="p-2.5 text-slate-300">{entry.ext_user_id}</td>
+                              <td className="p-2.5 font-bold text-amber-400">+{entry.score.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                              <td className="p-2.5 text-slate-500 text-[10px]">{new Date(entry.timestamp).toLocaleTimeString()}</td>
+                            </tr>
+                          ))}
+                          {b2bLeaderboard.length === 0 && (
+                            <tr>
+                              <td colSpan={5} className="p-4 text-center text-slate-500">No leaderboard entries found. Click "Execute ZADD Win Score" to populate.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                </div>
+              )}
+
+              {/* SUBTAB 2: POSTGRESQL TRANSACTION LOGS (PARTITIONED) */}
+              {b2bSubTab === "partitions" && (
+                <div className="space-y-6">
+                  
+                  {/* Partition Architecture Info */}
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-bold text-blue-400 uppercase tracking-wider">
+                        PostgreSQL Table Partitioning by Range (created_at)
+                      </span>
+                      <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded font-mono">
+                        High-Volume Partition Strategy
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mb-3">
+                      Partitions transaction logs into monthly sub-tables to ensure sub-millisecond index scans and seamless multi-million TPS scaling.
+                    </p>
+                    
+                    <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 font-mono text-xs text-blue-300 space-y-1 overflow-x-auto">
+                      <div>CREATE TABLE b2b_transaction_logs (...) PARTITION BY RANGE (created_at);</div>
+                      <div className="text-slate-500">CREATE TABLE b2b_transaction_logs_2026_08 PARTITION OF b2b_transaction_logs FOR VALUES FROM ('2026-08-01') TO ('2026-09-01');</div>
+                    </div>
+                  </div>
+
+                  {/* Active Partitions Grid */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    {b2bPartitionsData?.active_partitions?.map((p: any) => (
+                      <div key={p.partition_name} className="p-4 bg-slate-900/90 border border-slate-800 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-white font-mono">{p.partition_name}</span>
+                          <span className="px-1.5 py-0.5 text-[10px] rounded bg-blue-500/20 text-blue-300 font-bold">Active</span>
+                        </div>
+                        <div className="text-lg font-bold text-emerald-400 font-mono">
+                          {p.record_count} Records
+                        </div>
+                        <div className="text-[11px] text-slate-400">
+                          Total Volume: <span className="text-amber-400 font-bold">{p.total_volume.toLocaleString()} THB</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Recent Partitioned Transaction Logs */}
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                        <Database className="w-4 h-4 text-blue-400" />
+                        Live Partitioned Transactions (b2b_transaction_logs)
+                      </h4>
+                      <button
+                        onClick={fetchB2bPartitions}
+                        className="text-xs text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                      >
+                        <RefreshCw className="w-3 h-3" /> Refresh Logs
+                      </button>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-950 text-slate-400 uppercase text-[10px]">
+                          <tr>
+                            <th className="p-2.5">Log ID</th>
+                            <th className="p-2.5">Partition</th>
+                            <th className="p-2.5">Merchant</th>
+                            <th className="p-2.5">Ext User</th>
+                            <th className="p-2.5">Game</th>
+                            <th className="p-2.5">Round ID</th>
+                            <th className="p-2.5">Type</th>
+                            <th className="p-2.5">Amount</th>
+                            <th className="p-2.5">Created At</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800 font-mono">
+                          {b2bPartitionsData?.recent_logs?.map((l: any) => (
+                            <tr key={l.log_id} className="hover:bg-slate-800/40 text-[11px]">
+                              <td className="p-2.5 text-slate-400">#{l.log_id}</td>
+                              <td className="p-2.5 text-blue-300 text-[10px]">{l.partition_name}</td>
+                              <td className="p-2.5 text-teal-300 font-bold">{l.merchant_id}</td>
+                              <td className="p-2.5 text-slate-300">{l.ext_user_id}</td>
+                              <td className="p-2.5 text-purple-300">{l.game_id}</td>
+                              <td className="p-2.5 text-amber-300">{l.round_id}</td>
+                              <td className="p-2.5">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                  l.transaction_type === "BET" ? "bg-rose-500/20 text-rose-400" :
+                                  l.transaction_type === "WIN" ? "bg-emerald-500/20 text-emerald-400" :
+                                  "bg-cyan-500/20 text-cyan-400"
+                                }`}>
+                                  {l.transaction_type}
+                                </span>
+                              </td>
+                              <td className="p-2.5 font-bold text-white">{l.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                              <td className="p-2.5 text-slate-500 text-[10px]">{new Date(l.created_at).toLocaleTimeString()}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                </div>
+              )}
+
+              {/* SUBTAB 3: B2B SQL ANALYTICS (3 SPECIFIC QUERIES) */}
+              {b2bSubTab === "analytics" && (
+                <div className="space-y-6">
+                  
+                  {/* QUERY 1: RTP Calculation per Game Across All Merchants */}
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Percent className="w-4 h-4" />
+                        Query 1: RTP Calculation per Game Across All Merchants (Last 24 Hours)
+                      </h4>
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded font-mono">
+                        Target: 75.00% RTP / 25.00% House Edge
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono text-[11px] text-emerald-300 overflow-x-auto">
+                      {b2bRtpData?.query_sql}
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-950 text-slate-400 uppercase text-[10px]">
+                          <tr>
+                            <th className="p-2.5">Game ID</th>
+                            <th className="p-2.5">Total Distinct Rounds</th>
+                            <th className="p-2.5">Total Turnover (Bets)</th>
+                            <th className="p-2.5">Total Payouts (Wins)</th>
+                            <th className="p-2.5">Actual RTP (%)</th>
+                            <th className="p-2.5">House Margin (%)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800 font-mono">
+                          {b2bRtpData?.results?.map((r: any) => (
+                            <tr key={r.game_id} className="hover:bg-slate-800/40 text-[11px]">
+                              <td className="p-2.5 font-bold text-white">{r.game_id}</td>
+                              <td className="p-2.5 text-slate-300">{r.total_rounds}</td>
+                              <td className="p-2.5 text-rose-400 font-bold">{r.total_bets.toLocaleString(undefined, { minimumFractionDigits: 2 })} THB</td>
+                              <td className="p-2.5 text-emerald-400 font-bold">{r.total_wins.toLocaleString(undefined, { minimumFractionDigits: 2 })} THB</td>
+                              <td className="p-2.5 font-bold text-amber-400">{r.actual_rtp_percentage}%</td>
+                              <td className="p-2.5 font-bold text-purple-400">+{r.house_margin_percentage}% (+EV)</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* QUERY 2: Account-Level Frequency Analysis (Bot Detection) */}
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-rose-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4" />
+                        Query 2: Cross-Merchant Bot & Anomaly Detection (COUNT &gt; 25 in 5 min)
+                      </h4>
+                      <span className="text-[10px] bg-rose-500/20 text-rose-300 px-2 py-0.5 rounded font-mono">
+                        Zero-PII Behavioral Profiling
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono text-[11px] text-rose-300 overflow-x-auto">
+                      {b2bBotData?.query_sql}
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-950 text-slate-400 uppercase text-[10px]">
+                          <tr>
+                            <th className="p-2.5">Merchant ID</th>
+                            <th className="p-2.5">Ext User ID</th>
+                            <th className="p-2.5">Actions in 5m</th>
+                            <th className="p-2.5">Action Speed</th>
+                            <th className="p-2.5">Time Range</th>
+                            <th className="p-2.5">Flag Level</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800 font-mono">
+                          {b2bBotData?.anomalies?.map((a: any) => (
+                            <tr key={`${a.merchant_id}_${a.ext_user_id}`} className="hover:bg-slate-800/40 text-[11px]">
+                              <td className="p-2.5 text-teal-300 font-bold">{a.merchant_id}</td>
+                              <td className="p-2.5 text-slate-200">{a.ext_user_id}</td>
+                              <td className="p-2.5 font-bold text-rose-400">{a.action_count} actions</td>
+                              <td className="p-2.5 text-amber-400">{a.avg_speed_actions_per_sec} ops/sec</td>
+                              <td className="p-2.5 text-slate-400 text-[10px]">
+                                {new Date(a.start_time).toLocaleTimeString()} - {new Date(a.end_time).toLocaleTimeString()}
+                              </td>
+                              <td className="p-2.5">
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                                  a.flag_level === "SUSPICIOUS_BOT" ? "bg-rose-500/20 text-rose-400 border border-rose-500/40" :
+                                  "bg-amber-500/20 text-amber-300"
+                                }`}>
+                                  {a.flag_level}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                          {(!b2bBotData?.anomalies || b2bBotData.anomalies.length === 0) && (
+                            <tr>
+                              <td colSpan={6} className="p-4 text-center text-slate-500">No abnormal bot frequency detected in current 5-minute window.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* QUERY 3: Revenue Settlement Breakdown by Merchant (GGR per Operator) */}
+                  <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-bold text-purple-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Coins className="w-4 h-4" />
+                        Query 3: Revenue Settlement Breakdown by Merchant (GGR per Operator over 30 Days)
+                      </h4>
+                      <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded font-mono">
+                        Formula: SUM(BET) - SUM(WIN)
+                      </span>
+                    </div>
+
+                    <div className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 font-mono text-[11px] text-purple-300 overflow-x-auto">
+                      {b2bGgrData?.query_sql}
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-950 text-slate-400 uppercase text-[10px]">
+                          <tr>
+                            <th className="p-2.5">Merchant ID</th>
+                            <th className="p-2.5">Report Date</th>
+                            <th className="p-2.5">Total Bets (Turnover)</th>
+                            <th className="p-2.5">Total Wins (Payouts)</th>
+                            <th className="p-2.5">Merchant GGR</th>
+                            <th className="p-2.5">GGR Margin (%)</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800 font-mono">
+                          {b2bGgrData?.settlements?.map((s: any, idx: number) => (
+                            <tr key={`${s.merchant_id}_${s.report_date}_${idx}`} className="hover:bg-slate-800/40 text-[11px]">
+                              <td className="p-2.5 text-teal-300 font-bold">{s.merchant_id}</td>
+                              <td className="p-2.5 text-slate-300">{s.report_date}</td>
+                              <td className="p-2.5 text-slate-200">{s.total_bets.toLocaleString(undefined, { minimumFractionDigits: 2 })} THB</td>
+                              <td className="p-2.5 text-slate-400">{s.total_wins.toLocaleString(undefined, { minimumFractionDigits: 2 })} THB</td>
+                              <td className="p-2.5 font-bold text-amber-400">+{s.merchant_ggr.toLocaleString(undefined, { minimumFractionDigits: 2 })} THB</td>
+                              <td className="p-2.5 font-bold text-emerald-400">{s.ggr_margin_percent}%</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                </div>
+              )}
 
             </div>
           )}

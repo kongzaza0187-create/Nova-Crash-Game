@@ -17,7 +17,7 @@ export interface FinancialAuditLog {
   balance_after?: number;
   currency: string;
   game_id?: string;
-  ip: string;
+  ip?: string;
   duration_ms?: number;
   status: "SUCCESS" | "FAILED" | "REJECTED";
   error_message?: string;
@@ -32,7 +32,21 @@ const SENSITIVE_KEYS = [
   "signature",
   "credit_card",
   "apikey",
-  "api_key"
+  "api_key",
+  "ip",
+  "client_ip",
+  "remote_addr",
+  "x-forwarded-for",
+  "mac",
+  "mac_address",
+  "machine_id",
+  "device_id",
+  "hardware_id",
+  "imei",
+  "fingerprint",
+  "serial",
+  "email",
+  "real_ip"
 ];
 
 export function maskSensitiveData(obj: any): any {
@@ -51,7 +65,7 @@ export function maskSensitiveData(obj: any): any {
     );
 
     if (isSensitive) {
-      masked[key] = "***MASKED***";
+      masked[key] = "[PROTECTED_ANONYMIZED]";
     } else if (val && typeof val === "object") {
       masked[key] = maskSensitiveData(val);
     } else {
@@ -106,16 +120,22 @@ class StructuredLogger {
   }
 
   public logFinancialAudit(auditEntry: FinancialAuditLog) {
-    this.inMemoryAuditLedger.push(auditEntry);
+    // Zero out any IP/hardware identifier to maintain absolute privacy
+    const sanitizedEntry: FinancialAuditLog = {
+      ...auditEntry,
+      ip: "[ANONYMIZED_SECURE]"
+    };
+
+    this.inMemoryAuditLedger.push(sanitizedEntry);
     if (this.inMemoryAuditLedger.length > 5000) {
       this.inMemoryAuditLedger.shift();
     }
 
     const logPayload = {
       audit_type: "FINANCIAL_TRANSACTION",
-      level: auditEntry.status === "SUCCESS" ? "INFO" : "WARN",
+      level: sanitizedEntry.status === "SUCCESS" ? "INFO" : "WARN",
       timezone: "Europe/Malta",
-      ...auditEntry
+      ...maskSensitiveData(sanitizedEntry)
     };
     console.log(JSON.stringify(logPayload));
   }
@@ -126,3 +146,4 @@ class StructuredLogger {
 }
 
 export const logger = new StructuredLogger();
+

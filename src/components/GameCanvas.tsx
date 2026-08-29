@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { RoundState } from "../types";
+import { getMultiplierColorTier } from "../utils/multiplierColor";
 
 interface GameCanvasProps {
   multiplier: number;
@@ -75,7 +76,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
     const render = () => {
       const anim = animStateRef.current;
-      const { width, height } = dimensions;
+      const width = Math.max(dimensions.width && isFinite(dimensions.width) ? dimensions.width : 280, 280);
+      const height = Math.max(dimensions.height && isFinite(dimensions.height) ? dimensions.height : 220, 220);
 
       // Clear Canvas
       ctx.clearRect(0, 0, width, height);
@@ -184,19 +186,20 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const sY = star.yRatio * height;
         const currentAlpha = Math.max(0.15, Math.min(1, star.brightness));
 
+        const starRadius = Math.max(0.1, isFinite(star.size) ? star.size : 1);
         if (star.layer === "large") {
           ctx.save();
           ctx.fillStyle = `rgba(255, 255, 255, ${currentAlpha})`;
           ctx.shadowColor = "rgba(255, 255, 255, 0.75)";
           ctx.shadowBlur = 5;
           ctx.beginPath();
-          ctx.arc(sX, sY, star.size, 0, 2 * Math.PI);
+          ctx.arc(sX, sY, starRadius, 0, 2 * Math.PI);
           ctx.fill();
           ctx.restore();
         } else {
           ctx.fillStyle = `rgba(255, 255, 255, ${currentAlpha})`;
           ctx.beginPath();
-          ctx.arc(sX, sY, star.size, 0, 2 * Math.PI);
+          ctx.arc(sX, sY, starRadius, 0, 2 * Math.PI);
           ctx.fill();
         }
       });
@@ -215,9 +218,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
         const nebX = n.xRatio * width;
         const nebY = n.yRatio * height;
-        const nebRadius = currentRadiusRatio * Math.min(width, height);
+        const rawNebRadius = currentRadiusRatio * Math.min(width, height);
+        const nebRadius = isFinite(rawNebRadius) && rawNebRadius > 1 ? rawNebRadius : 0;
 
-        if (nebRadius > 0) {
+        if (nebRadius > 0 && isFinite(nebX) && isFinite(nebY)) {
           const cloudGrad = ctx.createRadialGradient(nebX, nebY, 0, nebX, nebY, nebRadius);
           const opacity = 0.15 + (Math.sin(n.phase) + 1) * 0.05; // range 0.15 - 0.25 opacity
           
@@ -438,41 +442,113 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.stroke();
         ctx.shadowBlur = 0; // reset glow
 
-        // Airplane inside waiting loader facing up
+        // Airplane/Rocket inside waiting loader facing up (3D stylized rocket)
         ctx.save();
         ctx.translate(centerX, centerY);
-        ctx.fillStyle = "#ffffff";
-        // Draw simple stylized mini-plane in center
+        
+        // 3D Sci-Fi Rocket - Vertical Waiting Position
+        // Engine plume spark in center
+        const idleFlame = 6 + Math.sin(Date.now() / 80) * 3;
+        const idleFlameGrad = ctx.createLinearGradient(0, 16, 0, 16 + idleFlame);
+        idleFlameGrad.addColorStop(0, "#ffffff");
+        idleFlameGrad.addColorStop(0.3, "#38bdf8");
+        idleFlameGrad.addColorStop(0.8, "#6366f1");
+        idleFlameGrad.addColorStop(1, "rgba(99, 102, 241, 0)");
+        ctx.fillStyle = idleFlameGrad;
         ctx.beginPath();
-        ctx.moveTo(0, -20);
-        ctx.lineTo(4, -8);
-        ctx.lineTo(18, -4);
-        ctx.lineTo(18, 0);
-        ctx.lineTo(4, -2);
-        ctx.lineTo(2, 10);
-        ctx.lineTo(8, 14);
-        ctx.lineTo(8, 16);
-        ctx.lineTo(0, 14);
-        ctx.lineTo(-8, 16);
-        ctx.lineTo(-8, 14);
-        ctx.lineTo(-2, 10);
-        ctx.lineTo(-4, -2);
-        ctx.lineTo(-18, 0);
-        ctx.lineTo(-18, -4);
-        ctx.lineTo(-4, -8);
+        ctx.moveTo(-4, 16);
+        ctx.lineTo(0, 16 + idleFlame);
+        ctx.lineTo(4, 16);
         ctx.closePath();
         ctx.fill();
+
+        // Left Fin (3D dark angle)
+        ctx.fillStyle = "#1e1b4b";
+        ctx.beginPath();
+        ctx.moveTo(-6, 8);
+        ctx.lineTo(-17, 18);
+        ctx.lineTo(-13, 20);
+        ctx.lineTo(-5, 15);
+        ctx.closePath();
+        ctx.fill();
+
+        // Right Fin (3D light angle)
+        ctx.fillStyle = "#312e81";
+        ctx.beginPath();
+        ctx.moveTo(6, 8);
+        ctx.lineTo(17, 18);
+        ctx.lineTo(13, 20);
+        ctx.lineTo(5, 15);
+        ctx.closePath();
+        ctx.fill();
+
+        // Left Main Rocket Body (Shadowed side)
+        const bodyGradL = ctx.createLinearGradient(-10, 0, 0, 0);
+        bodyGradL.addColorStop(0, "#cbd5e1");
+        bodyGradL.addColorStop(1, "#f8fafc");
+        ctx.fillStyle = bodyGradL;
+        ctx.beginPath();
+        ctx.moveTo(0, -24); // Sharp Nose
+        ctx.quadraticCurveTo(-8, -10, -7, 16); // Left fuselage
+        ctx.lineTo(0, 16);
+        ctx.closePath();
+        ctx.fill();
+
+        // Right Main Rocket Body (Light specular side)
+        const bodyGradR = ctx.createLinearGradient(0, 0, 10, 0);
+        bodyGradR.addColorStop(0, "#ffffff");
+        bodyGradR.addColorStop(1, "#94a3b8");
+        ctx.fillStyle = bodyGradR;
+        ctx.beginPath();
+        ctx.moveTo(0, -24);
+        ctx.quadraticCurveTo(8, -10, 7, 16);
+        ctx.lineTo(0, 16);
+        ctx.closePath();
+        ctx.fill();
+
+        // Center Spine & Nose Cone Trim (Red/Orange accent)
+        ctx.fillStyle = "#ef4444";
+        ctx.beginPath();
+        ctx.moveTo(0, -24);
+        ctx.lineTo(-3.5, -14);
+        ctx.lineTo(3.5, -14);
+        ctx.closePath();
+        ctx.fill();
+
+        // Rocket Porthole Window (Glowing Cyan)
+        ctx.fillStyle = "#0284c7";
+        ctx.beginPath();
+        ctx.arc(0, -4, 4.5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#38bdf8";
+        ctx.beginPath();
+        ctx.arc(0, -4, 3.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.arc(-1, -5, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Center Fin (Fore-facing 3D keel)
+        ctx.fillStyle = "#f43f5e";
+        ctx.beginPath();
+        ctx.moveTo(0, 2);
+        ctx.lineTo(-1.2, 16);
+        ctx.lineTo(1.2, 16);
+        ctx.closePath();
+        ctx.fill();
+
         ctx.restore();
 
         // Display Status Text
         ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 16px 'Orbitron', sans-serif";
+        ctx.font = "bold 17px 'Rajdhani', 'Chakra Petch', sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText("WAITING FOR NEXT ROUND", centerX, centerY + 90);
 
-        ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
-        ctx.font = "bold 13px 'Orbitron', sans-serif";
+        ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+        ctx.font = "600 14px 'Chakra Petch', monospace";
         ctx.fillText(`PLACING BETS (${countdown.toFixed(1)}s)`, centerX, centerY + 115);
 
       } else if (state === "FLYING" || state === "FLEW_AWAY") {
@@ -486,20 +562,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // Plane coordinates scale with multiplier
         // Max range of graph: 1.00x to 3.00x over 15 seconds
         // x-axis represents progress (0 to 1)
-        const progress = Math.min((multiplier - 1) / 4, 0.85); // caps out around 85% of graph width
-        const planeX = startX + (width -startX - 80) * progress;
+        const safeMultiplier = typeof multiplier === "number" && isFinite(multiplier) && multiplier >= 1.0 ? multiplier : 1.0;
+        const progress = Math.max(0, Math.min((safeMultiplier - 1) / 4, 0.85)); // caps out around 85% of graph width
+        const planeX = startX + Math.max(0, width - startX - 80) * progress;
         // quadratic upward rise
-        const rise = Math.pow(progress, 1.4);
-        const planeY = startY - (height - 80) * rise;
+        const rise = Math.pow(Math.max(0, progress), 1.4);
+        const safeRise = isFinite(rise) ? rise : 0;
+        const rawPlaneY = startY - Math.max(0, height - 80) * safeRise;
+        const planeY = isFinite(rawPlaneY) ? rawPlaneY : startY;
 
         // Control point represents a nice bending curve
         const cpX = startX + (planeX - startX) * 0.65;
         const cpY = startY; // pulls down curve to keep it flat initially then steep
 
-        // Gradient filled area under the curve
-        const curveGrad = ctx.createLinearGradient(0, startY, 0, planeY);
-        curveGrad.addColorStop(0, "rgba(233, 30, 99, 0.0)");
-        curveGrad.addColorStop(1, "rgba(233, 30, 99, 0.28)");
+        // Gradient filled area under the curve with fiery underglow
+        const gradEndY = isFinite(planeY) ? planeY : startY;
+        const curveGrad = ctx.createLinearGradient(0, startY, 0, gradEndY);
+        curveGrad.addColorStop(0, "rgba(239, 68, 68, 0.0)");
+        curveGrad.addColorStop(0.6, "rgba(249, 115, 22, 0.12)");
+        curveGrad.addColorStop(1, "rgba(239, 68, 68, 0.32)");
 
         ctx.beginPath();
         ctx.moveTo(startX, startY);
@@ -509,41 +590,105 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.fillStyle = curveGrad;
         ctx.fill();
 
-        // The bold glowing trace line
+        // 1. Outer Flame Aura (Broad Heat Glow)
         ctx.beginPath();
         ctx.moveTo(startX, startY);
         ctx.quadraticCurveTo(cpX, cpY, planeX, planeY);
-        ctx.strokeStyle = "#e11d48"; // vibrant rise red
-        ctx.lineWidth = 4;
-        ctx.shadowColor = "#e11d48";
+        ctx.strokeStyle = "rgba(249, 115, 22, 0.35)"; // blazing orange halo
+        ctx.lineWidth = 9;
+        ctx.shadowColor = "#f97316";
+        ctx.shadowBlur = 16;
+        ctx.stroke();
+
+        // 2. Multi-Color Fiery Plasma Gradient along the curve
+        const fireBeamGrad = ctx.createLinearGradient(startX, startY, planeX, planeY);
+        fireBeamGrad.addColorStop(0, "rgba(225, 29, 72, 0.7)");    // Crimson base
+        fireBeamGrad.addColorStop(0.45, "rgba(239, 68, 68, 0.95)"); // Fiery Red
+        fireBeamGrad.addColorStop(0.8, "rgba(249, 115, 22, 1.0)");  // Burning Orange
+        fireBeamGrad.addColorStop(0.96, "rgba(253, 224, 71, 1.0)"); // Radiant Yellow
+        fireBeamGrad.addColorStop(1, "rgba(255, 255, 255, 1.0)");   // White-hot tip
+
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.quadraticCurveTo(cpX, cpY, planeX, planeY);
+        ctx.strokeStyle = fireBeamGrad;
+        ctx.lineWidth = 4.5;
+        ctx.shadowColor = "#ef4444";
         ctx.shadowBlur = 10;
         ctx.stroke();
-        ctx.shadowBlur = 0; // reset glow
 
-        // Generate engine trail particles on flight
-        if (state === "FLYING" && Math.random() < 0.4) {
-          anim.particles.push({
-            x: planeX - 10,
-            y: planeY + 5,
-            vx: -2 - Math.random() * 2,
-            vy: 1 - Math.random() * 2 + (Math.random() - 0.5) * 2,
-            size: 2 + Math.random() * 3,
-            life: 30 + Math.random() * 30,
-            alpha: 1,
-          });
+        // 3. Inner White-Hot Laser Core along the curve
+        ctx.beginPath();
+        ctx.moveTo(startX, startY);
+        ctx.quadraticCurveTo(cpX, cpY, planeX, planeY);
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+        ctx.lineWidth = 1.6;
+        ctx.shadowBlur = 0; // reset blur for crisp core
+        ctx.stroke();
+
+        // Generate fiery sparks & trail particles along the red curve & jet exhaust
+        if (state === "FLYING") {
+          // Cap particles at 45 to guarantee 60fps zero-lag execution
+          if (anim.particles.length < 45) {
+            // Spawn flame ember along the recent segment of the curve
+            const t = 0.55 + Math.random() * 0.45; // between 55% and 100% of the curve
+            const oneMinusT = 1 - t;
+            const curveEmberX = (oneMinusT * oneMinusT * startX) + (2 * oneMinusT * t * cpX) + (t * t * planeX);
+            const curveEmberY = (oneMinusT * oneMinusT * startY) + (2 * oneMinusT * t * cpY) + (t * t * planeY);
+            
+            const emberPalette = ["#ffffff", "#fef08a", "#fbbf24", "#f97316", "#ef4444"];
+            const color = emberPalette[Math.floor(Math.random() * emberPalette.length)];
+
+            anim.particles.push({
+              x: curveEmberX + (Math.random() - 0.5) * 4,
+              y: curveEmberY + (Math.random() - 0.5) * 4,
+              vx: -0.8 - Math.random() * 1.5,
+              vy: (Math.random() - 0.3) * 1.8,
+              size: 1.5 + Math.random() * 3.5,
+              life: 25 + Math.random() * 25,
+              alpha: 1,
+              color,
+            } as any);
+
+            // Also spawn jet exhaust flame particle directly behind the nozzle
+            if (Math.random() < 0.6) {
+              anim.particles.push({
+                x: planeX - 12,
+                y: planeY + (Math.random() - 0.5) * 6,
+                vx: -2.5 - Math.random() * 2.5,
+                vy: (Math.random() - 0.5) * 1.8,
+                size: 2.2 + Math.random() * 3.8,
+                life: 20 + Math.random() * 20,
+                alpha: 1,
+                color: Math.random() < 0.5 ? "#fef08a" : "#f97316",
+              } as any);
+            }
+          }
         }
 
-        // --- DRAW PARTICLES ---
-        anim.particles = anim.particles.filter((p) => p.life > 0);
-        anim.particles.forEach((p) => {
-          p.x += p.vx;
-          p.y += p.vy;
-          p.life--;
-          p.alpha = p.life / 60;
-          ctx.fillStyle = `rgba(225, 29, 72, ${p.alpha})`; // particle matching plane color
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, p.size, 0, 2 * Math.PI);
-          ctx.fill();
+        // --- DRAW FIERY FLAME PARTICLES ---
+        anim.particles = anim.particles.filter((p) => typeof p.life === "number" && p.life > 0);
+        anim.particles.forEach((p: any) => {
+          p.x += p.vx || 0;
+          p.y += p.vy || 0;
+          p.life -= 1;
+          if (p.life <= 0) return;
+          
+          const rawLifeRatio = p.life / 35;
+          p.alpha = Math.max(0, Math.min(1, rawLifeRatio));
+          const pRadius = Math.max(0.1, (p.size || 2) * Math.max(0, rawLifeRatio));
+          
+          if (isFinite(pRadius) && pRadius > 0 && isFinite(p.x) && isFinite(p.y)) {
+            ctx.save();
+            ctx.globalAlpha = p.alpha;
+            ctx.fillStyle = p.color || "#f97316";
+            ctx.shadowColor = p.color || "#f97316";
+            ctx.shadowBlur = 4;
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, pRadius, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.restore();
+          }
         });
 
         // --- ANIMATE & RENDER THE RED PLANE ---
@@ -567,116 +712,176 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         // Tilt slightly upwards
         ctx.rotate(-0.1); 
 
-        // --- 1. ENGINE GLOW / FLICKERING JET OUTLET FLAME ---
-        const flameLen = 14 + Math.random() * 12;
-        const flameGrad = ctx.createLinearGradient(-22, 0, -22 - flameLen, 0);
-        flameGrad.addColorStop(0, "rgba(253, 224, 71, 1)"); // Yellow
-        flameGrad.addColorStop(0.3, "rgba(249, 115, 22, 0.95)"); // Orange
-        flameGrad.addColorStop(1, "rgba(239, 68, 68, 0)"); // Red fade
+        // --- 1. 3D ROCKET THRUSTER EXHAUST PLUMES (DUAL ION / FIRE BOOSTERS) ---
+        const flameLen = 18 + Math.random() * 16;
         
-        ctx.fillStyle = flameGrad;
+        // Main Central Thruster Flame
+        const flameGradCenter = ctx.createLinearGradient(-26, 0, -26 - flameLen, 0);
+        flameGradCenter.addColorStop(0, "#ffffff"); // White hot ignition
+        flameGradCenter.addColorStop(0.2, "#fef08a"); // Yellow
+        flameGradCenter.addColorStop(0.5, "#f97316"); // Orange
+        flameGradCenter.addColorStop(0.85, "#ef4444"); // Crimson
+        flameGradCenter.addColorStop(1, "rgba(239, 68, 68, 0)"); // Alpha fade
+        
+        ctx.fillStyle = flameGradCenter;
         ctx.beginPath();
-        ctx.moveTo(-22, -3.5);
-        ctx.lineTo(-22 - flameLen, 0);
-        ctx.lineTo(-22, 3.5);
+        ctx.moveTo(-26, -5);
+        ctx.lineTo(-26 - flameLen, 0);
+        ctx.lineTo(-26, 5);
         ctx.closePath();
         ctx.fill();
 
-        // Inner hot core of fire
-        ctx.fillStyle = "#ffffff";
+        // Top Booster Flame
+        const topBoosterFlame = flameLen * 0.75;
+        const flameGradTop = ctx.createLinearGradient(-22, -9, -22 - topBoosterFlame, -9);
+        flameGradTop.addColorStop(0, "#ffffff");
+        flameGradTop.addColorStop(0.3, "#38bdf8");
+        flameGradTop.addColorStop(0.8, "#6366f1");
+        flameGradTop.addColorStop(1, "rgba(99, 102, 241, 0)");
+        ctx.fillStyle = flameGradTop;
         ctx.beginPath();
-        ctx.moveTo(-22, -1.8);
-        ctx.lineTo(-22 - (flameLen * 0.45), 0);
-        ctx.lineTo(-22, 1.8);
+        ctx.moveTo(-22, -12);
+        ctx.lineTo(-22 - topBoosterFlame, -9);
+        ctx.lineTo(-22, -6);
         ctx.closePath();
         ctx.fill();
 
-        // --- 2. MAIN JET FUSELAGE WITH NEON GLOW ---
+        // Bottom Booster Flame
+        const btmBoosterFlame = flameLen * 0.75;
+        const flameGradBtm = ctx.createLinearGradient(-22, 9, -22 - btmBoosterFlame, 9);
+        flameGradBtm.addColorStop(0, "#ffffff");
+        flameGradBtm.addColorStop(0.3, "#38bdf8");
+        flameGradBtm.addColorStop(0.8, "#6366f1");
+        flameGradBtm.addColorStop(1, "rgba(99, 102, 241, 0)");
+        ctx.fillStyle = flameGradBtm;
+        ctx.beginPath();
+        ctx.moveTo(-22, 6);
+        ctx.lineTo(-22 - btmBoosterFlame, 9);
+        ctx.lineTo(-22, 12);
+        ctx.closePath();
+        ctx.fill();
+
+        // --- 2. 3D ROCKET FUSELAGE & AERODYNAMIC METALLIC BODY ---
+        // Rear Thruster Nozzle Rings (Dark Titanium)
+        ctx.fillStyle = "#1e293b";
+        ctx.beginPath();
+        ctx.roundRect(-27, -6, 5, 12, [2, 0, 0, 2]);
+        ctx.fill();
+
+        ctx.fillStyle = "#334155";
+        ctx.beginPath();
+        ctx.roundRect(-23, -13, 4, 7, [2, 0, 0, 2]);
+        ctx.roundRect(-23, 6, 4, 7, [2, 0, 0, 2]);
+        ctx.fill();
+
+        // Top Stabilizer Wing / Fin (3D Isometric Perspective)
         ctx.save();
         ctx.shadowColor = "#f43f5e";
-        ctx.shadowBlur = 12;
-
-        ctx.fillStyle = "#e11d48"; // vibrant rise red
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = "#e11d48"; // Crimson Red Fin
         ctx.beginPath();
-        ctx.moveTo(-22, -4); // exhaust top
-        ctx.quadraticCurveTo(-10, -7, 0, -7); // low profile mid body
-        ctx.lineTo(15, -3.2); // sleek windshield approach
-        ctx.quadraticCurveTo(24, -1.5, 28, 0); // sharp pointed nose tip
-        ctx.quadraticCurveTo(24, 1.5, 15, 3.2);
-        ctx.quadraticCurveTo(0, 5, -22, 4); // aircraft body bottom
+        ctx.moveTo(-10, -7);
+        ctx.lineTo(-26, -23); // Swept tip
+        ctx.lineTo(-18, -23);
+        ctx.lineTo(2, -7);
         ctx.closePath();
         ctx.fill();
         ctx.restore();
 
-        // --- 3. VERTICAL TAIL STABILIZER FIN ---
-        ctx.fillStyle = "#9f1239"; // darker maroon crimson
+        // Top Fin Specular Highlight Edge
+        ctx.fillStyle = "#fda4af";
         ctx.beginPath();
-        ctx.moveTo(-14, -6);
-        ctx.lineTo(-25, -21); // back-angled high tip
-        ctx.lineTo(-20, -21);
-        ctx.lineTo(-6, -6);
+        ctx.moveTo(-10, -7);
+        ctx.lineTo(-26, -23);
+        ctx.lineTo(-24, -23);
+        ctx.lineTo(-8, -7);
         ctx.closePath();
         ctx.fill();
 
-        // Tail fin leading edge highlight
-        ctx.fillStyle = "#fda4af"; // light rose highlight
+        // Bottom Stabilizer Wing / Fin (Shadow side)
+        ctx.fillStyle = "#881337";
         ctx.beginPath();
-        ctx.moveTo(-14, -6);
-        ctx.lineTo(-25, -21);
-        ctx.lineTo(-23, -21);
-        ctx.lineTo(-12, -6);
+        ctx.moveTo(-10, 7);
+        ctx.lineTo(-24, 21);
+        ctx.lineTo(-17, 21);
+        ctx.lineTo(2, 7);
         ctx.closePath();
         ctx.fill();
 
-        // --- 4. COCKPIT CANOPY GLASS ---
-        ctx.fillStyle = "#38bdf8"; // cyan canopy
+        // Rocket Lower Shaded Fuselage (3D Cylindrical Shadow)
+        const lowerBodyGrad = ctx.createLinearGradient(0, 0, 0, 10);
+        lowerBodyGrad.addColorStop(0, "#cbd5e1");
+        lowerBodyGrad.addColorStop(1, "#475569");
+        ctx.fillStyle = lowerBodyGrad;
         ctx.beginPath();
-        ctx.moveTo(3, -6.5);
-        ctx.quadraticCurveTo(10, -8.5, 14, -3.2);
-        ctx.lineTo(5, -3.2);
+        ctx.moveTo(-25, 0);
+        ctx.lineTo(16, 0);
+        ctx.quadraticCurveTo(28, 2, 34, 0); // Nose cone tip
+        ctx.quadraticCurveTo(24, 6, 12, 8);
+        ctx.lineTo(-25, 6);
         ctx.closePath();
         ctx.fill();
 
-        // High gloss gleam line
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
-        ctx.lineWidth = 1;
+        // Rocket Upper Specular Fuselage (3D Cylindrical Lighting)
+        const upperBodyGrad = ctx.createLinearGradient(0, -9, 0, 0);
+        upperBodyGrad.addColorStop(0, "#f8fafc"); // Bright white reflection
+        upperBodyGrad.addColorStop(0.7, "#e2e8f0");
+        upperBodyGrad.addColorStop(1, "#cbd5e1");
+        ctx.fillStyle = upperBodyGrad;
         ctx.beginPath();
-        ctx.moveTo(5, -5.8);
-        ctx.lineTo(9, -6.8);
-        ctx.stroke();
-
-        // --- 5. MILITARY SWEPT WINGS ---
-        // Underside / shadow wing (bottom-side perspective)
-        ctx.fillStyle = "#881337"; // deep navy shadow maroon
-        ctx.beginPath();
-        ctx.moveTo(-2, 3);
-        ctx.lineTo(-14, 18); // bottom swept wing tip
-        ctx.lineTo(-8, 18);
-        ctx.lineTo(8, 3);
+        ctx.moveTo(-25, 0);
+        ctx.lineTo(16, 0);
+        ctx.quadraticCurveTo(28, -2, 34, 0); // Nose cone tip
+        ctx.quadraticCurveTo(24, -6, 12, -8);
+        ctx.lineTo(-25, -6);
         ctx.closePath();
         ctx.fill();
 
-        // Main top swept wing
+        // Aerodynamic Nose Cone Trim (Rose/Crimson 3D Cap)
         ctx.save();
         ctx.shadowColor = "#f43f5e";
         ctx.shadowBlur = 8;
-        ctx.fillStyle = "#f43f5e"; // bright neon pinkish red
+        const noseGrad = ctx.createLinearGradient(16, 0, 34, 0);
+        noseGrad.addColorStop(0, "#e11d48");
+        noseGrad.addColorStop(1, "#fb7185");
+        ctx.fillStyle = noseGrad;
         ctx.beginPath();
-        ctx.moveTo(3, -4);
-        ctx.lineTo(-11, -26); // top wings tip
-        ctx.lineTo(-5, -26);
-        ctx.lineTo(13, -4);
+        ctx.moveTo(18, -6.5);
+        ctx.quadraticCurveTo(27, 0, 34, 0);
+        ctx.quadraticCurveTo(27, 0, 18, 6.5);
         ctx.closePath();
         ctx.fill();
         ctx.restore();
 
-        // Wing details panel line
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.4)";
-        ctx.lineWidth = 0.8;
+        // High-Tech Porthole / Cockpit Visor (Gloss Cyan Glass)
+        ctx.fillStyle = "#0f172a";
         ctx.beginPath();
-        ctx.moveTo(0, -5);
-        ctx.lineTo(-8, -24);
-        ctx.stroke();
+        ctx.ellipse(3, -1, 7, 4.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        const visorGrad = ctx.createLinearGradient(0, -5, 6, 3);
+        visorGrad.addColorStop(0, "#38bdf8");
+        visorGrad.addColorStop(1, "#0284c7");
+        ctx.fillStyle = visorGrad;
+        ctx.beginPath();
+        ctx.ellipse(3, -1, 5.5, 3.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Visor Glass Specular Glint
+        ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+        ctx.beginPath();
+        ctx.ellipse(1.5, -2.5, 2.5, 1, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Fore Lateral 3D Keel / Center Ridge
+        ctx.fillStyle = "#ef4444";
+        ctx.beginPath();
+        ctx.moveTo(-16, -0.8);
+        ctx.lineTo(15, -0.8);
+        ctx.lineTo(15, 0.8);
+        ctx.lineTo(-16, 0.8);
+        ctx.closePath();
+        ctx.fill();
 
         ctx.restore();
 
@@ -688,61 +893,46 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.textBaseline = "middle";
 
         if (state === "FLYING") {
-          let multiplierColor = "#ffffff";
+          const tier = getMultiplierColorTier(multiplier);
           let scale = 1.0;
-          let glowColor = "rgba(0,0,0,0.8)";
-          let glowBlur = 8;
+          let glowBlur = 12;
 
-          if (multiplier >= 1.0 && multiplier < 2.0) {
-            multiplierColor = "#32CD32";
-          } else if (multiplier >= 2.0 && multiplier < 3.0) {
-            multiplierColor = "#00CED1";
-          } else if (multiplier >= 3.0 && multiplier < 4.0) {
-            multiplierColor = "#FFD700";
-          } else if (multiplier >= 4.0 && multiplier < 6.0) {
-            multiplierColor = "#FFA500";
-          } else if (multiplier >= 6.0 && multiplier < 7.0) {
-            multiplierColor = "#FF4500";
-          } else if (multiplier >= 7.0 && multiplier < 8.0) {
-            multiplierColor = "#FF0000";
-          } else if (multiplier >= 8.0 && multiplier < 9.0) {
-            multiplierColor = "#FF00FF";
-          } else if (multiplier >= 9.0 && multiplier < 10.0) {
-            multiplierColor = "#8A2BE2";
+          if (multiplier >= 20.0) {
+            const pulse = (Math.sin((Date.now() / 400) * Math.PI * 2) + 1) / 2;
+            scale = 1.0 + pulse * 0.08;
+            glowBlur = 24;
           } else if (multiplier >= 10.0) {
-            multiplierColor = "#FFFFFF";
             const pulse = (Math.sin((Date.now() / 500) * Math.PI * 2) + 1) / 2;
             scale = 1.0 + pulse * 0.05;
-            glowColor = "#FFFFFF";
-            glowBlur = 15;
+            glowBlur = 18;
           }
 
           ctx.save();
           ctx.translate(hudX, hudY);
           ctx.scale(scale, scale);
 
-          const hudFontSize = Math.min(64, Math.max(34, Math.floor(width * 0.085)));
+          const hudFontSize = Math.min(68, Math.max(36, Math.floor(width * 0.09)));
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
-          ctx.fillStyle = multiplierColor;
-          ctx.font = `bold ${hudFontSize}px 'Orbitron', sans-serif`;
-          ctx.shadowColor = glowColor;
+          ctx.fillStyle = tier.color;
+          ctx.font = `700 ${hudFontSize}px 'Rajdhani', 'Chakra Petch', sans-serif`;
+          ctx.shadowColor = tier.color;
           ctx.shadowBlur = glowBlur;
           ctx.fillText(`${multiplier.toFixed(2)}x`, 0, 0);
           ctx.restore();
         } else if (state === "FLEW_AWAY") {
           // Large RED Flew Away status
-          const flewAwayFontSize = Math.min(46, Math.max(24, Math.floor(width * 0.06)));
-          const flewAwaySubSize = Math.min(32, Math.max(16, Math.floor(width * 0.042)));
+          const flewAwayFontSize = Math.min(48, Math.max(26, Math.floor(width * 0.065)));
+          const flewAwaySubSize = Math.min(34, Math.max(18, Math.floor(width * 0.045)));
 
           ctx.fillStyle = "#f43f5e";
-          ctx.font = `bold ${flewAwayFontSize}px 'Orbitron', sans-serif`;
+          ctx.font = `800 ${flewAwayFontSize}px 'Rajdhani', 'Chakra Petch', sans-serif`;
           ctx.shadowColor = "rgba(0,0,0,1)";
           ctx.shadowBlur = 10;
           ctx.fillText("FLEW AWAY", hudX, hudY - 15);
 
           ctx.fillStyle = "#9ca3af"; // silver gray
-          ctx.font = `bold ${flewAwaySubSize}px 'Orbitron', monospace`;
+          ctx.font = `700 ${flewAwaySubSize}px 'Chakra Petch', monospace`;
           ctx.fillText(`${multiplier.toFixed(2)}x`, hudX, hudY + 30);
           ctx.shadowBlur = 0; // reset
         }

@@ -1,6 +1,18 @@
-import React, { useState } from "react";
+import React, { useState, memo } from "react";
 import { PlayerBet, RoundState, UserStats } from "../types";
-import { Users, History, GraduationCap, Trophy, RefreshCw } from "lucide-react";
+import { Users, History, Trophy, RefreshCw, UserCheck } from "lucide-react";
+import { formatToStandardUser } from "../utils/userTransform";
+import { getMultiplierColorTier } from "../utils/multiplierColor";
+
+export interface TopBetRecord {
+  id: string;
+  name: string;
+  multiplier: number;
+  amount: number;
+  win: number;
+  timestamp: string;
+  isBot?: boolean;
+}
 
 interface BetsListProps {
   playerBets: PlayerBet[];
@@ -12,15 +24,17 @@ interface BetsListProps {
     timestamp: string;
     cashbackAmount?: number;
   }>;
+  topBetsHistory?: TopBetRecord[];
   roundState: RoundState;
   multiplier: number;
   userStats: UserStats;
   onResetStats: () => void;
 }
 
-export const BetsList: React.FC<BetsListProps> = ({
+export const BetsList: React.FC<BetsListProps> = memo(({
   playerBets,
   myHistory,
+  topBetsHistory,
   roundState,
   multiplier,
   userStats,
@@ -28,17 +42,19 @@ export const BetsList: React.FC<BetsListProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<"ALL" | "MY" | "TOP">("ALL");
 
-  // Filter out simulated top multipliers for the TOP tab
-  const simulatedTopBets = [
-    { name: "Captain_Awesome", multiplier: 154.2, amount: 50, win: 7710 },
-    { name: "SkyHeist", multiplier: 88.45, amount: 200, win: 17690 },
-    { name: "LuckyWing", multiplier: 45.1, amount: 500, win: 22550 },
-    { name: "TurboRacer", multiplier: 32.12, amount: 150, win: 4818 },
-    { name: "FlyHigh_99", multiplier: 24.5, amount: 300, win: 7350 },
-    { name: "BollyGambling", multiplier: 18.22, amount: 1000, win: 18220 },
-    { name: "AviationGuru", multiplier: 12.05, amount: 500, win: 6025 },
+  // Fallback high scores with strictly standardized user_XXXXXXXXXXX naming
+  const defaultTopBets: TopBetRecord[] = [
+    { id: "top_1", name: "user_89401824901", multiplier: 154.20, amount: 2500, win: 385500, timestamp: "Just now", isBot: true },
+    { id: "top_2", name: "user_71829401842", multiplier: 88.45, amount: 4000, win: 353800, timestamp: "2m ago", isBot: true },
+    { id: "top_3", name: "user_49102849102", multiplier: 45.10, amount: 7500, win: 338250, timestamp: "5m ago", isBot: true },
+    { id: "top_4", name: "user_19401829481", multiplier: 32.12, amount: 10000, win: 321200, timestamp: "8m ago", isBot: true },
+    { id: "top_5", name: "user_62019481029", multiplier: 24.50, amount: 12500, win: 306250, timestamp: "11m ago", isBot: true },
+    { id: "top_6", name: "user_39401829471", multiplier: 18.22, amount: 15000, win: 273300, timestamp: "15m ago", isBot: true },
+    { id: "top_7", name: "user_50192849102", multiplier: 12.05, amount: 20000, win: 241000, timestamp: "18m ago", isBot: true },
+    { id: "top_8", name: "user_98102938471", multiplier: 9.80, amount: 25000, win: 245000, timestamp: "22m ago", isBot: true },
   ];
 
+  const displayTopBets = topBetsHistory && topBetsHistory.length > 0 ? topBetsHistory : defaultTopBets;
   const totalBetsVolume = playerBets.reduce((acc, p) => acc + p.amount, 0);
 
   return (
@@ -94,7 +110,12 @@ export const BetsList: React.FC<BetsListProps> = ({
           <div className="flex-1 flex flex-col min-h-0 gap-2.5">
             {/* Round Summary bar */}
             <div className="flex justify-between items-center text-[10px] bg-slate-900/40 p-2 rounded-lg border border-slate-900 font-mono">
-              <span className="text-slate-500 uppercase tracking-widest">Active Stakes</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-slate-500 uppercase tracking-widest">Active Bets</span>
+                <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.2 rounded font-sans">
+                  {playerBets.length} Players
+                </span>
+              </div>
               <span className="text-emerald-400 font-bold">
                 {totalBetsVolume.toLocaleString()}
               </span>
@@ -107,54 +128,75 @@ export const BetsList: React.FC<BetsListProps> = ({
                   Waiting for players to place bets...
                 </div>
               ) : (
-                playerBets.map((player) => (
-                  <div
-                    key={player.id}
-                    className={`flex items-center justify-between p-2 rounded-lg bg-slate-900/30 border text-xs transition ${
-                      player.isCashedOut
-                        ? "border-emerald-500/10 bg-emerald-950/5"
-                        : player.isBust
-                        ? "border-rose-900/20 opacity-40"
-                        : "border-slate-900"
-                    }`}
-                    id={`player_bet_item_${player.id}`}
-                  >
-                    {/* User profile identifier */}
-                    <div className="flex items-center gap-2">
-                      <div
-                        className="w-5.5 h-5.5 rounded-md flex items-center justify-center text-[9.5px] font-black uppercase text-slate-950 shadow-sm"
-                        style={{ backgroundColor: player.avatarColor }}
-                      >
-                        {player.avatarSeed}
-                      </div>
-                      <span className="font-bold text-slate-300 truncate max-w-[85px]">
-                        {player.name}
-                      </span>
-                    </div>
+                playerBets.map((player, pIdx) => {
+                  const standardizedName = formatToStandardUser(player.name);
+                  const isRealUser = (player as any).isRealUser === true;
 
-                    {/* Bet Amount */}
-                    <div className="font-mono text-[11px] font-medium text-slate-400 text-right">
-                      {player.amount.toLocaleString()}
-                    </div>
-
-                    {/* Status badge */}
-                    <div className="w-20 text-right">
-                      {player.isCashedOut ? (
-                        <div className="inline-block bg-emerald-500/10 text-emerald-400 text-[10px] font-black font-mono px-2 py-0.5 rounded border border-emerald-500/10 animate-bounce-short">
-                          {player.cashOutMultiplier?.toFixed(2)}x
+                  return (
+                    <div
+                      key={player.id ? `${player.id}_${pIdx}` : `player_${pIdx}`}
+                      className={`flex items-center justify-between p-2 rounded-lg bg-slate-900/30 border text-xs transition ${
+                        isRealUser
+                          ? "border-amber-500/30 bg-amber-500/5 shadow-sm"
+                          : player.isCashedOut
+                          ? "border-emerald-500/10 bg-emerald-950/5"
+                          : player.isBust
+                          ? "border-rose-900/20 opacity-40"
+                          : "border-slate-900"
+                      }`}
+                      id={`player_bet_item_${player.id}`}
+                    >
+                      {/* User profile identifier */}
+                      <div className="flex items-center gap-2 min-w-0">
+                        <div
+                          className="w-5.5 h-5.5 rounded-md flex items-center justify-center text-[9.5px] font-black uppercase text-slate-950 shadow-sm shrink-0"
+                          style={{ backgroundColor: player.avatarColor }}
+                        >
+                          {player.avatarSeed}
                         </div>
-                      ) : player.isBust ? (
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-rose-500 bg-rose-500/5 px-2 py-0.5 rounded border border-rose-500/5">
-                          Bust
-                        </span>
-                      ) : (
-                        <span className="text-[10px] font-medium text-slate-500 italic">
-                          Flying ...
-                        </span>
-                      )}
+                        <div className="flex flex-col min-w-0">
+                          <span className={`font-mono text-[11px] font-bold truncate max-w-[110px] ${isRealUser ? "text-amber-300" : "text-slate-300"}`}>
+                            {standardizedName}
+                          </span>
+                          {isRealUser && (
+                            <span className="text-[8.5px] text-amber-400 font-sans font-semibold flex items-center gap-0.5">
+                              <UserCheck size={9} /> You (Live API)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Bet Amount */}
+                      <div className="font-mono text-[11px] font-medium text-slate-300 text-right shrink-0">
+                        {player.amount.toLocaleString()}
+                      </div>
+
+                      {/* Status badge */}
+                      <div className="w-20 text-right shrink-0">
+                        {player.isCashedOut ? (
+                          <div
+                            style={{
+                              color: getMultiplierColorTier(player.cashOutMultiplier || 1.0).color,
+                              borderColor: getMultiplierColorTier(player.cashOutMultiplier || 1.0).borderColor,
+                              backgroundColor: getMultiplierColorTier(player.cashOutMultiplier || 1.0).bgColor,
+                            }}
+                            className="inline-block text-[10px] font-black font-mono px-2 py-0.5 rounded border animate-bounce-short"
+                          >
+                            {player.cashOutMultiplier?.toFixed(2)}x
+                          </div>
+                        ) : player.isBust ? (
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-rose-500 bg-rose-500/5 px-2 py-0.5 rounded border border-rose-500/5">
+                            Bust
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium text-slate-500 italic">
+                            Flying ...
+                          </span>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>
@@ -204,13 +246,13 @@ export const BetsList: React.FC<BetsListProps> = ({
                   No bets placed in this session.
                 </div>
               ) : (
-                myHistory.map((item) => (
+                myHistory.map((item, hIdx) => (
                   <div
-                    key={item.id}
+                    key={item.id ? `${item.id}_${hIdx}` : `my_hist_${hIdx}`}
                     className="flex justify-between items-start bg-slate-900/20 border border-slate-900 p-2 rounded-lg text-xs"
-                    id={`my_history_item_${item.id}`}
+                    id={`my_history_item_${item.id || hIdx}`}
                   >
-                    {/* Timestamp & Stake info */}
+                    {/* Timestamp & Bet info */}
                     <div className="flex flex-col">
                       <span className="text-[10px] text-slate-500 font-mono tracking-wider">{item.timestamp}</span>
                       <span className="font-bold text-slate-300">
@@ -227,7 +269,10 @@ export const BetsList: React.FC<BetsListProps> = ({
                     <div className="text-right">
                       {item.multiplier ? (
                         <div className="flex flex-col items-end">
-                          <span className="text-[10.5px] font-black text-emerald-400 font-mono">
+                          <span
+                            style={{ color: getMultiplierColorTier(item.multiplier).color }}
+                            className="text-[10.5px] font-black font-mono"
+                          >
                             x{item.multiplier.toFixed(2)}
                           </span>
                           <span className="text-[9.5px] text-slate-400">
@@ -251,57 +296,62 @@ export const BetsList: React.FC<BetsListProps> = ({
         {activeTab === "TOP" && (
           <div className="flex-1 flex flex-col min-h-0 gap-3">
             <div className="text-[10px] text-slate-500 uppercase tracking-widest font-mono border-b border-slate-900 pb-1.5 flex items-center justify-between">
-              <span>Leaderboard</span>
-              <span>Top Coeffs</span>
+              <span>Top High-Stakes Winners</span>
+              <span>Multiplier / Payout</span>
             </div>
 
             {/* List */}
             <div className="flex-1 overflow-y-auto flex flex-col gap-1.5">
-              {simulatedTopBets.map((item, index) => (
-                <div
-                  key={index}
-                  className="flex items-center justify-between bg-slate-900/10 border border-slate-900/50 px-2.5 py-2 rounded-lg text-xs"
-                  id={`top_leader_payout_${index}`}
-                >
-                  <div className="flex items-center gap-2">
-                    {/* Position circle */}
-                    <span
-                      className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black ${
-                        index === 0
-                          ? "bg-amber-400 text-slate-950 shadow-sm"
-                          : index === 1
-                          ? "bg-slate-300 text-slate-950"
-                          : index === 2
-                          ? "bg-amber-700 text-slate-100"
-                          : "bg-slate-850 text-slate-400"
-                      }`}
-                    >
-                      {index + 1}
-                    </span>
-                    <span className="font-semibold text-slate-300 truncate max-w-[110px]">
-                      {item.name}
-                    </span>
-                  </div>
+              {displayTopBets.map((item, index) => {
+                const formattedName = formatToStandardUser(item.name);
+                const tier = getMultiplierColorTier(item.multiplier);
 
-                  {/* Multipliers with colors representing size */}
-                  <div className="flex items-center gap-3">
-                    <span
-                      className={`font-black font-mono text-[11px] ${
-                        item.multiplier >= 100
-                          ? "text-fuchsia-400 shadow-fuchsia-500/10"
-                          : item.multiplier >= 30
-                          ? "text-rose-400"
-                          : "text-blue-400"
-                      }`}
-                    >
-                      x{item.multiplier.toFixed(2)}
-                    </span>
-                    <span className="text-[10.5px] text-slate-500 font-mono text-right w-14">
-                      {item.win.toLocaleString()}
-                    </span>
+                return (
+                  <div
+                    key={item.id ? `${item.id}_${index}` : `top_item_${index}`}
+                    className="flex items-center justify-between bg-slate-900/10 border border-slate-900/50 px-2.5 py-2 rounded-lg text-xs"
+                    id={`top_leader_payout_${index}`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      {/* Position circle */}
+                      <span
+                        className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 ${
+                          index === 0
+                            ? "bg-amber-400 text-slate-950 shadow-sm"
+                            : index === 1
+                            ? "bg-slate-300 text-slate-950"
+                            : index === 2
+                            ? "bg-amber-700 text-slate-100"
+                            : "bg-slate-850 text-slate-400"
+                        }`}
+                      >
+                        {index + 1}
+                      </span>
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-mono font-bold text-slate-300 text-[11px] truncate max-w-[120px]">
+                          {formattedName}
+                        </span>
+                        <span className="text-[9px] text-slate-500 font-mono">
+                          Bet: {item.amount.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Multipliers with calibrated colors */}
+                    <div className="flex flex-col items-end shrink-0">
+                      <span
+                        style={{ color: tier.color }}
+                        className="font-black font-mono text-[11px]"
+                      >
+                        x{item.multiplier.toFixed(2)}
+                      </span>
+                      <span className="text-[10.5px] text-amber-300 font-mono font-bold">
+                        +{item.win.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
@@ -309,4 +359,5 @@ export const BetsList: React.FC<BetsListProps> = ({
       </div>
     </div>
   );
-};
+});
+

@@ -137,8 +137,8 @@ async function runAllTests() {
   // 8. Risk Assurance Engine Metrics & Simulation
   console.log('\n--- 7. Risk Assurance Engine & Cohort Logic Test ---');
   const metricsRes = await fetch(`${BASE_URL}/api/risk-assurance/metrics`).then(r => r.json());
-  assert('Risk engine target house edge is 37.0%', metricsRes.targetHouseEdgePercent === 37);
-  assert('Risk engine target RTP is 63.0%', metricsRes.targetRTPPercent === 63);
+  assert('Risk engine target house edge is 25.0%', metricsRes.targetHouseEdgePercent === 25);
+  assert('Risk engine target RTP is 75.0%', metricsRes.targetRTPPercent === 75);
   assert('Risk assurance liability ceiling configured', typeof metricsRes.riskCeilingTHB === 'number');
 
   const cohortSim = await fetch(`${BASE_URL}/api/risk-assurance/simulate`, {
@@ -147,9 +147,9 @@ async function runAllTests() {
     body: JSON.stringify({ playerCount: 100, baseWager: 100 })
   }).then(r => r.json());
   assert('Cohort simulation returns 100 players', cohortSim.totalPlayers === 100);
-  assert('Cohort losers count is recorded (~50-65 players)', cohortSim.losersCount >= 45 && cohortSim.losersCount <= 75);
-  assert('Cohort winners count is recorded (~35-55 players)', cohortSim.winnersCount >= 25 && cohortSim.winnersCount <= 55);
-  assert('Positive operator gross house profit generated', cohortSim.grossHouseProfitTHB > 0);
+  assert('Cohort losers count is recorded (~45-65 players)', cohortSim.losersCount >= 40 && cohortSim.losersCount <= 70);
+  assert('Cohort winners count is recorded (~35-60 players)', cohortSim.winnersCount >= 30 && cohortSim.winnersCount <= 60);
+  assert('Positive operator gross house profit generated (Positive House EV)', cohortSim.grossHouseProfitTHB > 0);
 
   // 9. High-Concurrency Stress Load Test (100 concurrent requests)
   console.log('\n--- 8. High-Concurrency Stress Test (100 Concurrent Debits) ---');
