@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { GameCanvas } from "./components/GameCanvas";
 import { BetPanel } from "./components/BetPanel";
 import { BetsList, TopBetRecord } from "./components/BetsList";
@@ -8,7 +8,7 @@ import { SeamlessWalletModal } from "./components/SeamlessWalletModal";
 import { ResponsibleGamingModal } from "./components/ResponsibleGamingModal";
 import { audioManager } from "./audio";
 import { Bet, PlayerBet, RoundState, HistoryItem, UserStats, WalletMode } from "./types";
-import { SkyRushEngine, BetSlip, GameRoomState } from "./lib/SkyRushEngine";
+import { SkyRushEngine, BetSlip, GameRoomState, MULTIPLIER_DISTRIBUTION_MATRIX } from "./lib/SkyRushEngine";
 import { seamlessWalletClient } from "./lib/seamlessWalletClient";
 import { generateRandomBotPool, formatToStandardUser } from "./utils/userTransform";
 import { getMultiplierColorTier } from "./utils/multiplierColor";
@@ -31,8 +31,43 @@ import {
   Key,
   Lock,
   Unlock,
-  Building2
+  Building2,
+  Activity
 } from "lucide-react";
+
+// Memoized past rounds multiplier history bar
+const HistoryBar = memo(({ history }: { history: HistoryItem[] }) => {
+  return (
+    <div className="flex items-center gap-2 overflow-x-auto py-2 sm:py-2.5 px-3 sm:px-3.5 bg-[#281117]/90 border border-[#52252e]/80 rounded-xl select-none scrollbar-none w-full shadow-inner" id="history_bar">
+      <div className="text-[9px] sm:text-[9.5px] text-rose-300/80 font-bold uppercase tracking-wider shrink-0 flex items-center gap-1 font-mono">
+        <TrendingUp size={11} className="text-rose-400" /> History:
+      </div>
+      <div className="flex items-center gap-1.5 shrink-0">
+        {history.map((item, idx) => {
+          const tier = getMultiplierColorTier(item.val);
+          return (
+            <span
+              key={item.id}
+              style={{
+                color: tier.color,
+                borderColor: tier.borderColor,
+                backgroundColor: tier.bgColor,
+                boxShadow: tier.shadow,
+              }}
+              className={`text-[9.5px] sm:text-[10px] font-black px-2.5 py-1 rounded-md font-mono border transition-all duration-300 ring-1 ring-black/50 backdrop-blur-sm ${
+                idx === 0 ? "scale-105 ring-white/40" : "opacity-95 hover:opacity-100 hover:scale-105"
+              }`}
+              title={`${tier.label}: ${item.val.toFixed(2)}x`}
+              id={`history_pill_${idx}`}
+            >
+              {item.val.toFixed(2)}x
+            </span>
+          );
+        })}
+      </div>
+    </div>
+  );
+});
 
 // Initializing some mock general round history items for visual realism
 const INITIAL_HISTORY: HistoryItem[] = [
@@ -83,18 +118,18 @@ export default function App() {
   const maxCountdown = 5.0;
 
   // Dual-Wallet Architecture: Demo Wallet & Master Franchise Real Seamless Wallet (THB)
-  const [walletMode, setWalletMode] = useState<WalletMode>("REAL");
-  const [demoBalance, setDemoBalance] = useState<number>(150000);
+  const [walletMode, setWalletMode] = useState<WalletMode>("DEMO");
+  const [demoBalance, setDemoBalance] = useState<number>(90847316.57);
   const [realBalance, setRealBalance] = useState<number>(50000);
   const [realUserId, setRealUserId] = useState<string>("USER_TH_001");
   const [isSyncingRealWallet, setIsSyncingRealWallet] = useState<boolean>(false);
   const [showRefillNotify, setShowRefillNotify] = useState<boolean>(false);
 
-  const walletModeRef = useRef<WalletMode>("REAL");
+  const walletModeRef = useRef<WalletMode>("DEMO");
   walletModeRef.current = walletMode;
   const realBalanceRef = useRef<number>(50000);
   realBalanceRef.current = realBalance;
-  const demoBalanceRef = useRef<number>(150000);
+  const demoBalanceRef = useRef<number>(90847316.57);
   demoBalanceRef.current = demoBalance;
 
   // Active wallet balance (Used by UI and betting engine)
@@ -247,7 +282,7 @@ export default function App() {
   } | null>(null);
 
   // 30% CAPITAL SAFETY LIFELINE & 45% PREEMPTIVE TRAP INDICATOR STATES
-  const [sessionEntryBalance, setSessionEntryBalance] = useState<number>(150000);
+  const [sessionEntryBalance, setSessionEntryBalance] = useState<number>(90847316.57);
   const [isInCrisisMode, setIsInCrisisMode] = useState<boolean>(false);
   const [isPreemptTrapActive, setIsPreemptTrapActive] = useState<boolean>(false);
 
@@ -444,6 +479,9 @@ export default function App() {
   // REAL-TIME BACKEND INTEGRATION METHODS
   const preFetchNextRoundFromBackend = async () => {
     try {
+      const activeWager = (betLeft.isPlaced ? betLeft.amount : 0) + (betRight.isPlaced ? betRight.amount : 0);
+      const isPlayerActive = betLeft.isPlaced || betRight.isPlaced;
+
       const response = await fetch("/api/security/round/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -453,7 +491,9 @@ export default function App() {
           sessionRoundCounter: sessionRoundCounter,
           fakeTargetRound: fakeTargetRound,
           recalibrationCount: recalibrationCount,
-          userStats: userStats
+          userStats: userStats,
+          isRealPlayerActive: isPlayerActive,
+          totalRealLiability: activeWager
         })
       });
       if (response.ok) {
@@ -558,6 +598,8 @@ export default function App() {
 
   // Pre-calculations for generating random crash targets under Server-Authoritative Math specs
   const generateNewCrashPoint = (isAbuseDirect: boolean, isMock?: boolean) => {
+    const isPlayerActive = betLeft.isPlaced || betRight.isPlaced;
+
     // If we have securely generated a crash target from the backend, inject it as the master source of truth
     if (!isMock && nextRoundDataRef.current && typeof nextRoundDataRef.current.crashPoint === "number") {
       const backendVal = nextRoundDataRef.current.crashPoint;
@@ -566,25 +608,31 @@ export default function App() {
       
       // Clear for the next round
       nextRoundDataRef.current = null;
+
+      // If the player placed a real bet, ensure they never inherit a fake spectator jackpot (>= 25.00x)
+      if (isPlayerActive && backendVal >= 25.00) {
+        const engine = SkyRushEngine.getInstance();
+        const safeOutcome = engine.generateRoundSpacedMultiplier();
+        setEngineMode("SERVER_ACTUARIAL_ENGINE");
+        return safeOutcome.multiplier;
+      }
+
       setEngineMode(isAbuseDirect ? "MARTINGALE_OVERRIDE" : "SERVER_ACTUARIAL_ENGINE");
       return backendVal;
     }
 
     // Otherwise, execute the single-player private room isolated outcome generator
     let totalRealLiabilityTHB = 0;
-    let isRealPlayerActive = false;
     let realPlayerTarget: number | undefined = undefined;
 
     if (betLeft.isPlaced) {
       totalRealLiabilityTHB += betLeft.amount;
-      isRealPlayerActive = true;
       if (betLeft.isAutoCashOut && betLeft.autoCashOutMultiplier > 1.01) {
         realPlayerTarget = betLeft.autoCashOutMultiplier;
       }
     }
     if (betRight.isPlaced) {
       totalRealLiabilityTHB += betRight.amount;
-      isRealPlayerActive = true;
       if (betRight.isAutoCashOut && betRight.autoCashOutMultiplier > 1.01) {
         realPlayerTarget = realPlayerTarget 
           ? Math.min(realPlayerTarget, betRight.autoCashOutMultiplier) 
@@ -595,8 +643,8 @@ export default function App() {
     const roomState: GameRoomState = {
       totalRealLiability: totalRealLiabilityTHB,
       totalRealLiabilityTHB,
-      globalCrashMultiplier: 1.01,
-      isRealPlayerActive,
+      globalCrashMultiplier: 1.00,
+      isRealPlayerActive: isPlayerActive,
       realPlayerTarget,
     };
 
@@ -611,7 +659,7 @@ export default function App() {
 
     setCurrentRoundIsJackpot(false);
     setEngineMode(result.mode);
-    return Math.max(1.01, result.multiplier);
+    return Math.max(1.00, result.multiplier);
   };
 
   // Simulated multiplayer bots and real connected players builder
@@ -663,7 +711,7 @@ export default function App() {
       return;
     }
     audioManager.playCashOut();
-    setDemoBalance(150000);
+    setDemoBalance(90847316.57);
     setShowRefillNotify(true);
     setSessionRoundCounter(0);
     if (typeof window !== "undefined") {
@@ -673,7 +721,7 @@ export default function App() {
   };
 
   // Manual reset of Stats
-  const handleResetStats = () => {
+  const handleResetStats = useCallback(() => {
     audioManager.playClick();
     setUserStats({
       winCount: 0,
@@ -687,10 +735,10 @@ export default function App() {
     if (typeof window !== "undefined") {
       localStorage.setItem("skyrush_session_round_counter", "0");
     }
-  };
+  }, []);
 
   // Placing individual bets with 3% turnover platform commission
-  const placeBetLeft = async (rawAmount: number) => {
+  const placeBetLeft = useCallback(async (rawAmount: number) => {
     if (roundState !== "WAITING") {
       audioManager.playClick();
       return; // Cannot place bet into an already active flight
@@ -725,9 +773,9 @@ export default function App() {
       setAccumulatedFuelTax(SkyRushEngine.getInstance().accumulatedFuelTaxTHB);
       setBetLeft((prev) => ({ ...prev, amount, isPlaced: true, hasCashedOut: false, betTxnId: undefined }));
     }
-  };
+  }, [roundState, realUserId]);
 
-  const placeBetRight = async (rawAmount: number) => {
+  const placeBetRight = useCallback(async (rawAmount: number) => {
     if (roundState !== "WAITING") {
       audioManager.playClick();
       return; // Cannot place bet into an already active flight
@@ -762,10 +810,10 @@ export default function App() {
       setAccumulatedFuelTax(SkyRushEngine.getInstance().accumulatedFuelTaxTHB);
       setBetRight((prev) => ({ ...prev, amount, isPlaced: true, hasCashedOut: false, betTxnId: undefined }));
     }
-  };
+  }, [roundState, realUserId]);
 
   // Bet cancellation is strictly only permitted during the WAITING phase. Once round starts, bets are locked!
-  const cancelBetLeft = async () => {
+  const cancelBetLeft = useCallback(async () => {
     if (roundState !== "WAITING") {
       audioManager.playClick();
       return; // Locked once round starts!
@@ -785,9 +833,9 @@ export default function App() {
       }
       setBetLeft((prev) => ({ ...prev, isPlaced: false, betTxnId: undefined }));
     }
-  };
+  }, [roundState, betLeft.isPlaced, betLeft.betTxnId, betLeft.amount, realUserId]);
 
-  const cancelBetRight = async () => {
+  const cancelBetRight = useCallback(async () => {
     if (roundState !== "WAITING") {
       audioManager.playClick();
       return; // Locked once round starts!
@@ -807,10 +855,10 @@ export default function App() {
       }
       setBetRight((prev) => ({ ...prev, isPlaced: false, betTxnId: undefined }));
     }
-  };
+  }, [roundState, betRight.isPlaced, betRight.betTxnId, betRight.amount, realUserId]);
 
   // Executing user cashout operations with exact mathematical payout (amount * multiplier)
-  const cashOutLeft = async () => {
+  const cashOutLeft = useCallback(async () => {
     if (hasCashedOutLeftRef.current || isCashingOutLeftRef.current) return;
     const currentBet = betLeftRef.current;
     if (stateRef.current !== "FLYING" || !currentBet.isPlaced || currentBet.hasCashedOut) return;
@@ -905,9 +953,9 @@ export default function App() {
     } finally {
       isCashingOutLeftRef.current = false;
     }
-  };
+  }, [realUserId]);
 
-  const cashOutRight = async () => {
+  const cashOutRight = useCallback(async () => {
     if (hasCashedOutRightRef.current || isCashingOutRightRef.current) return;
     const currentBet = betRightRef.current;
     if (stateRef.current !== "FLYING" || !currentBet.isPlaced || currentBet.hasCashedOut) return;
@@ -1002,31 +1050,35 @@ export default function App() {
     } finally {
       isCashingOutRightRef.current = false;
     }
-  };
+  }, [realUserId]);
 
-  const updateAutoSettingsLeft = (isAutoBet: boolean, isAutoCashOut: boolean, autoMultiplier: number) => {
+  const updateAutoSettingsLeft = useCallback((isAutoBet: boolean, isAutoCashOut: boolean, autoMultiplier: number) => {
     setBetLeft((prev) => ({
       ...prev,
       isAutoBet,
       isAutoCashOut,
       autoCashOutMultiplier: autoMultiplier,
     }));
-  };
+  }, []);
 
-  const updateAutoSettingsRight = (isAutoBet: boolean, isAutoCashOut: boolean, autoMultiplier: number) => {
+  const updateAutoSettingsRight = useCallback((isAutoBet: boolean, isAutoCashOut: boolean, autoMultiplier: number) => {
     setBetRight((prev) => ({
       ...prev,
       isAutoBet,
       isAutoCashOut,
       autoCashOutMultiplier: autoMultiplier,
     }));
-  };
+  }, []);
 
   // Main State and loop coordinator
   useEffect(() => {
+    let animFrameId: number;
+    let timeoutId: NodeJS.Timeout | null = null;
+
     // WAITING state initiator
     if (roundState === "WAITING") {
       timeElapsedRef.current = 0;
+      multiplierRef.current = 1.01;
       setMultiplier(1.01);
       setCountdown(maxCountdown);
       spawnSimulatedBots();
@@ -1045,99 +1097,68 @@ export default function App() {
         placeBetRight(betRight.amount);
       }
 
-      // Interval countdown ticks
-      intervalIdRef.current = setInterval(() => {
-        setCountdown((prev) => {
-          if (prev <= 0.1) {
-            clearInterval(intervalIdRef.current);
-            // Transition into Flying state!
-            setMultiplier(1.01);
+      const waitStartTime = performance.now();
+      const durationMs = maxCountdown * 1000;
 
-            // DETECT PROGRESSIVE DOUBLING (MARTINGALE LOGIC) (Pillar 6)
-            const currentWager = (betLeft.isPlaced ? betLeft.amount : 0) + (betRight.isPlaced ? betRight.amount : 0);
-            let currentDoubles = consecutiveUserDoubles;
-            
-            if (lastRoundResultWasLoss && currentWager > 0 && lastCombinedBet > 0) {
-              if (currentWager >= 1.9 * lastCombinedBet) {
-                currentDoubles += 1;
-              } else {
-                currentDoubles = 0;
-              }
-            } else if (currentWager > 0) {
+      const waitTick = (now: number) => {
+        const elapsedMs = now - waitStartTime;
+        const remainingSec = Math.max(0, (durationMs - elapsedMs) / 1000);
+        setCountdown(parseFloat(remainingSec.toFixed(1)));
+
+        if (remainingSec <= 0.05) {
+          // Transition into Flying state!
+          multiplierRef.current = 1.01;
+          setMultiplier(1.01);
+
+          // DETECT PROGRESSIVE DOUBLING (MARTINGALE LOGIC) (Pillar 6)
+          const currentWager = (betLeft.isPlaced ? betLeft.amount : 0) + (betRight.isPlaced ? betRight.amount : 0);
+          let currentDoubles = consecutiveUserDoubles;
+          
+          if (lastRoundResultWasLoss && currentWager > 0 && lastCombinedBet > 0) {
+            if (currentWager >= 1.9 * lastCombinedBet) {
+              currentDoubles += 1;
+            } else {
               currentDoubles = 0;
             }
-            
-            const isAbuse = currentDoubles >= 2;
-            setConsecutiveUserDoubles(currentDoubles);
-            setIsMartingaleAbuse(isAbuse);
-            setLastCombinedBet(currentWager);
-
-            const crashTgt = generateNewCrashPoint(isAbuse);
-            crashMultiplierRef.current = crashTgt;
-            setRoundState("FLYING");
-            audioManager.startEngine();
-            audioManager.playJetTakeoff();
-            return 0;
+          } else if (currentWager > 0) {
+            currentDoubles = 0;
           }
-          return parseFloat((prev - 0.1).toFixed(1));
-        });
-      }, 100);
-    }
+          
+          const isAbuse = currentDoubles >= 2;
+          setConsecutiveUserDoubles(currentDoubles);
+          setIsMartingaleAbuse(isAbuse);
+          setLastCombinedBet(currentWager);
 
-    // FLYING state loop
-    if (roundState === "FLYING") {
-      let startTime = Date.now();
-      let lastBotUpdate = 0;
-      
-      intervalIdRef.current = setInterval(() => {
-        const elapsed = (Date.now() - startTime) / 1000;
-        timeElapsedRef.current = elapsed;
-
-        // Calibrated smooth and relaxed progression (steady, readable, non-laggy pace)
-        let curMultiplier = 1.01;
-        if (elapsed <= 5) {
-          // Relaxed gradual start: reaches ~1.30x at 5 seconds
-          curMultiplier = 1.01 + 0.035 * Math.pow(elapsed, 1.32);
-        } else {
-          // Graceful exponential scaling without sudden jumping
-          const baseMultiplier = 1.01 + 0.035 * Math.pow(5, 1.32); // ~1.28x
-          const extraTime = elapsed - 5;
-          curMultiplier = baseMultiplier * Math.pow(1.18, extraTime);
-        }
-        
-        // Critical block: Crash Point reached
-        if (curMultiplier >= crashMultiplierRef.current) {
-          clearInterval(intervalIdRef.current);
-          setMultiplier(crashMultiplierRef.current);
-          setRoundState("FLEW_AWAY");
-          audioManager.playFlewAway();
+          const crashTgt = generateNewCrashPoint(isAbuse);
+          crashMultiplierRef.current = crashTgt;
+          setRoundState("FLYING");
+          audioManager.startEngine();
+          audioManager.playJetTakeoff();
           return;
         }
 
-        setMultiplier(curMultiplier);
-        audioManager.updateEngine(curMultiplier);
+        animFrameId = requestAnimationFrame(waitTick);
+      };
 
-        // Optimized bot cashout status update (throttled every 200ms to eliminate any UI micro-stutters)
-        const now = Date.now();
-        if (now - lastBotUpdate >= 200) {
-          lastBotUpdate = now;
-          setPlayerBets((prev) =>
-            prev.map((player: any) => {
-              if (!player.isCashedOut && !player.isBust) {
-                if (curMultiplier >= player.targetMultiplier) {
-                  return {
-                    ...player,
-                    isCashedOut: true,
-                    cashOutMultiplier: player.targetMultiplier,
-                  };
-                }
-              }
-              return player;
-            })
-          );
-        }
+      animFrameId = requestAnimationFrame(waitTick);
+    }
 
-        // Auto Cash Out monitors with atomic ref protections
+    // FLYING state loop (Hardware-synced Delta-Time rAF Loop)
+    if (roundState === "FLYING") {
+      const flightStartTime = performance.now();
+      let lastBotUpdate = performance.now();
+      let lastStateFlush = performance.now();
+
+      const flightTick = (now: number) => {
+        const elapsed = (now - flightStartTime) / 1000;
+        timeElapsedRef.current = elapsed;
+
+        // Snappy, high-speed, synchronized progression (brisk takeoff & rapid climbing)
+        const curMultiplier = Math.max(1.01, 1.00 + 0.08 * elapsed + 0.032 * Math.pow(elapsed, 2.0));
+
+        multiplierRef.current = curMultiplier;
+
+        // Immediate Auto Cash Out monitors with 0ms frame-level latency
         const bLeft = betLeftRef.current;
         if (
           bLeft.isPlaced && 
@@ -1164,7 +1185,50 @@ export default function App() {
           }
         }
 
-      }, 40); // 25 FPS smooth timer loop
+        // Critical block: Crash Point reached
+        if (curMultiplier >= crashMultiplierRef.current) {
+          const finalCrash = crashMultiplierRef.current;
+          multiplierRef.current = finalCrash;
+          setMultiplier(finalCrash);
+          setRoundState("FLEW_AWAY");
+          audioManager.playFlewAway();
+          return;
+        }
+
+        audioManager.updateEngine(curMultiplier);
+
+        // Throttle React state setMultiplier to smooth 30 FPS updates to keep UI and event thread ultra-responsive
+        if (now - lastStateFlush >= 33) {
+          lastStateFlush = now;
+          setMultiplier(curMultiplier);
+        }
+
+        // Optimized bot cashout status update (throttled every 250ms, batched without unnecessary renders)
+        if (now - lastBotUpdate >= 250) {
+          lastBotUpdate = now;
+          setPlayerBets((prev) => {
+            let hasChange = false;
+            const updated = prev.map((player: any) => {
+              if (!player.isCashedOut && !player.isBust) {
+                if (curMultiplier >= player.targetMultiplier) {
+                  hasChange = true;
+                  return {
+                    ...player,
+                    isCashedOut: true,
+                    cashOutMultiplier: player.targetMultiplier,
+                  };
+                }
+              }
+              return player;
+            });
+            return hasChange ? updated : prev;
+          });
+        }
+
+        animFrameId = requestAnimationFrame(flightTick);
+      };
+
+      animFrameId = requestAnimationFrame(flightTick);
     }
 
     // FLEW AWAY transition timers (Pillar 6)
@@ -1173,7 +1237,7 @@ export default function App() {
       
       const crashPointVal = crashMultiplierRef.current;
 
-      // Update Simulated other players to either cased out or BUST
+      // Update Simulated other players to either cashed out or BUST
       setPlayerBets((prev) =>
         prev.map((player) => {
           if (!player.isCashedOut) {
@@ -1211,7 +1275,6 @@ export default function App() {
             }
             const combined = Array.from(map.values());
             const sorted = combined.sort((a, b) => b.win - a.win);
-            // Keep top 20 record entries
             return sorted.slice(0, 20);
           });
         }
@@ -1321,29 +1384,28 @@ export default function App() {
       ]);
 
       // Wait 3.0 seconds, then reset state
-      intervalIdRef.current = setTimeout(() => {
+      timeoutId = setTimeout(() => {
         setRoundState("WAITING");
       }, 3000);
     }
 
     return () => {
-      if (intervalIdRef.current) {
-        if (roundState === "WAITING" || roundState === "FLYING") {
-          clearInterval(intervalIdRef.current);
-        } else {
-          clearTimeout(intervalIdRef.current);
-        }
+      if (animFrameId) {
+        cancelAnimationFrame(animFrameId);
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId);
       }
     };
   }, [roundState]);
 
   return (
     <div
-      className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans select-none antialiased scrollbar-thin scrollbar-thumb-slate-800"
+      className="min-h-screen bg-[#3A1920] text-slate-100 flex flex-col font-sans select-none antialiased scrollbar-thin scrollbar-thumb-rose-950"
       id="aviator_application_root"
     >
       {/* Top Banner Header */}
-      <header className="bg-slate-950/80 border-b border-slate-900/60 p-3 sm:p-4 sticky top-0 z-10 backdrop-blur-md">
+      <header className="bg-[#3A1920]/95 border-b border-[#52252e] p-3 sm:p-4 sticky top-0 z-10 backdrop-blur-md">
         <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 sm:gap-4">
           
           {/* Brand Logo */}
@@ -1372,7 +1434,7 @@ export default function App() {
             {/* Audio speaker toggle */}
             <button
               onClick={toggleMute}
-              className="p-1.5 text-slate-400 hover:text-white hover:bg-slate-900 rounded-lg border border-slate-900 transition-colors"
+              className="p-1.5 text-slate-300 hover:text-white bg-[#281117] hover:bg-[#4A1F29] rounded-lg border border-[#52252e] transition-colors"
               title={isMuted ? "Unmute Sound" : "Mute Sound"}
               id="audio_toggle_btn"
             >
@@ -1388,7 +1450,7 @@ export default function App() {
               className={`p-1.5 rounded-lg border transition-all flex items-center justify-center ${
                 isAdminAuthenticated 
                   ? "bg-rose-950/40 text-rose-400 border-rose-500/30 animate-pulse" 
-                  : "text-slate-500 hover:text-slate-300 bg-transparent border-slate-900 hover:bg-slate-900"
+                  : "text-slate-400 hover:text-slate-200 bg-[#281117] border-[#52252e] hover:bg-[#4A1F29]"
               }`}
               title="Actuary Ops Terminal (Credentials Required)"
               id="admin_ops_trigger_btn"
@@ -1402,11 +1464,11 @@ export default function App() {
                 audioManager.playClick();
                 setIsHelpOpen(true);
               }}
-              className="p-1.5 sm:px-3 sm:py-1.5 text-xs text-slate-400 hover:text-white hover:bg-slate-900 rounded-lg border border-slate-900 flex items-center gap-1 sm:gap-1.5 font-semibold transition"
+              className="p-1.5 sm:px-3 sm:py-1.5 text-xs text-slate-300 hover:text-white bg-[#281117] hover:bg-[#4A1F29] rounded-lg border border-[#52252e] flex items-center gap-1 sm:gap-1.5 font-semibold transition"
               id="how_to_play_trigger"
               title="How to play?"
             >
-              <HelpCircle size={14} className="text-rose-500 shrink-0" />
+              <HelpCircle size={14} className="text-rose-400 shrink-0" />
               <span className="hidden sm:inline">How to play?</span>
             </button>
 
@@ -1452,15 +1514,15 @@ export default function App() {
 
       {/* Pre-Game Diagnostics Warnings (only renders after 3 seconds loader finishes) */}
       {!isSplashActive && failedChecks.length > 0 && (
-        <div className="bg-rose-950/80 border-b border-rose-500/30 text-rose-300 py-2.5 px-4 text-xs font-mono flex items-center justify-between gap-3 backdrop-blur-sm shadow-lg animate-pulse" id="system_check_warning_banner">
+        <div className="bg-rose-950/90 border-b border-rose-500/40 text-rose-200 py-2.5 px-4 text-xs font-mono flex items-center justify-between gap-3 backdrop-blur-sm shadow-lg animate-pulse" id="system_check_warning_banner">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping shrink-0" />
             <span className="font-bold uppercase tracking-wider">SYSTEM WARNING: PRE-GAME TESTS COMPLETED WITH FAILURES</span>
-            <span className="text-slate-400">({failedChecks.join(', ')})</span>
+            <span className="text-slate-300">({failedChecks.join(', ')})</span>
           </div>
           <button 
             onClick={() => setFailedChecks([])}
-            className="text-slate-400 hover:text-white border border-slate-800 hover:border-slate-700 bg-slate-900 px-2.5 py-1 rounded text-[10px] font-sans"
+            className="text-slate-200 hover:text-white border border-[#52252e] hover:border-rose-500/40 bg-[#281117] px-2.5 py-1 rounded text-[10px] font-sans"
           >
             Acknowledge & Dismiss
           </button>
@@ -1477,7 +1539,7 @@ export default function App() {
 
       {/* Cashback Popup Toast (bottom-right corner) */}
       <div 
-        className={`fixed bottom-6 right-6 z-50 bg-[#0e0e1a] border-2 border-[#32CD32] text-white px-5 py-4 rounded-xl shadow-2xl flex flex-col gap-1.5 transition-all duration-300 transform ${
+        className={`fixed bottom-6 right-6 z-50 bg-[#16080b] border-2 border-[#32CD32] text-white px-5 py-4 rounded-xl shadow-2xl flex flex-col gap-1.5 transition-all duration-300 transform ${
           cashbackPopup.show 
             ? "opacity-100 translate-y-0 scale-100" 
             : "opacity-0 translate-y-4 scale-95 pointer-events-none"
@@ -1502,34 +1564,7 @@ export default function App() {
       <main className="flex-1 max-w-7xl mx-auto w-full p-2.5 sm:p-4 flex flex-col gap-3 sm:gap-4 min-h-0">
         
         {/* Horizontal scrollbar of past round coefficient payouts */}
-        <div className="flex items-center gap-2 overflow-x-auto py-2 sm:py-2.5 px-3 sm:px-3.5 bg-slate-950/40 border border-slate-900/60 rounded-xl select-none scrollbar-none w-full" id="history_bar">
-          <div className="text-[9px] sm:text-[9.5px] text-slate-500 font-bold uppercase tracking-wider shrink-0 flex items-center gap-1 font-mono">
-            <TrendingUp size={11} className="text-slate-500" /> History:
-          </div>
-          <div className="flex items-center gap-1.5 shrink-0">
-            {history.map((item, idx) => {
-              const tier = getMultiplierColorTier(item.val);
-              return (
-                <span
-                  key={item.id}
-                  style={{
-                    color: tier.color,
-                    borderColor: tier.borderColor,
-                    backgroundColor: tier.bgColor,
-                    boxShadow: idx === 0 ? tier.shadow : "none",
-                  }}
-                  className={`text-[9.5px] sm:text-[10px] font-black px-2 py-0.5 rounded font-mono border transition-all duration-300 ${
-                    idx === 0 ? "scale-105" : "opacity-90 hover:opacity-100"
-                  }`}
-                  title={`${tier.label}: ${item.val.toFixed(2)}x`}
-                  id={`history_pill_${idx}`}
-                >
-                  {item.val.toFixed(2)}x
-                </span>
-              );
-            })}
-          </div>
-        </div>
+        <HistoryBar history={history} />
 
         {/* Dashboard Panels Split */}
         <div className="flex-1 flex flex-col lg:flex-row gap-3 sm:gap-4 min-h-0">
@@ -1540,7 +1575,6 @@ export default function App() {
               playerBets={playerBets}
               myHistory={myHistory}
               roundState={roundState}
-              multiplier={multiplier}
               userStats={userStats}
               onResetStats={handleResetStats}
               topBetsHistory={topBetsHistory}
@@ -1765,6 +1799,50 @@ export default function App() {
                       <span className="text-[8px] text-slate-500 mt-1 leading-snug font-sans">
                         Automatically clamps the next 3 rounds to Early Bracket ([1.00x - 2.00x]) if standard outcome lands &gt; 5.50x, re-arming forever.
                       </span>
+                    </div>
+                  </div>
+
+                  {/* 📊 8-TIER EXACT MULTIPLIER PROBABILITY & FREQUENCY MATRIX */}
+                  <div className="bg-slate-950/80 border border-slate-800 p-3.5 rounded-xl flex flex-col gap-2.5">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-[10px] font-bold text-amber-400 uppercase tracking-wider font-mono flex items-center gap-1.5">
+                        <Activity size={12} className="text-amber-400" />
+                        8-TIER MULTIPLIER DISTRIBUTION & ROUND FREQUENCY MATRIX
+                      </h4>
+                      <span className="text-[8px] font-mono font-bold bg-amber-950/50 text-amber-300 border border-amber-800/40 px-2 py-0.5 rounded">
+                        Target RTP: 85.00% | House Edge: 15.00% (EV+)
+                      </span>
+                    </div>
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-[9px] font-mono border-collapse">
+                        <thead>
+                          <tr className="border-b border-slate-800 text-slate-400 uppercase text-[8px] bg-slate-900/60">
+                            <th className="py-1.5 px-2">ช่วงตัวคูณ (Multiplier)</th>
+                            <th className="py-1.5 px-2 text-right">ความน่าจะเป็น (%)</th>
+                            <th className="py-1.5 px-2 text-center text-amber-300 font-bold">ความถี่เฉลี่ย (Frequency)</th>
+                            <th className="py-1.5 px-2">วัตถุประสงค์ / บทบาทในเกม</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-850">
+                          {MULTIPLIER_DISTRIBUTION_MATRIX.map((tier, idx) => (
+                            <tr key={idx} className="hover:bg-slate-900/40 transition-colors">
+                              <td className="py-1.5 px-2 font-bold text-slate-200">
+                                {tier.label}
+                              </td>
+                              <td className="py-1.5 px-2 text-right font-black text-rose-300">
+                                {tier.probability.toFixed(2)}%
+                              </td>
+                              <td className="py-1.5 px-2 text-center font-bold text-amber-400 bg-amber-950/10">
+                                {tier.averageFrequency}
+                              </td>
+                              <td className="py-1.5 px-2 text-slate-400 text-[8px] font-sans">
+                                {tier.psychologyRole}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
 

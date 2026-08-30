@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, memo } from "react";
 import { RoundState } from "../types";
 import { getMultiplierColorTier } from "../utils/multiplierColor";
 
@@ -9,7 +9,22 @@ interface GameCanvasProps {
   maxCountdown: number;
 }
 
-export const GameCanvas: React.FC<GameCanvasProps> = ({
+interface Particle {
+  active: boolean;
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  size: number;
+  color: string;
+}
+
+const MAX_PARTICLES = 50;
+const MAX_SPEED_LINES = 12;
+
+export const GameCanvas: React.FC<GameCanvasProps> = memo(({
   multiplier,
   state,
   countdown,
@@ -17,39 +32,71 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const animationFrameRef = useRef<number | null>(null);
 
-  // Store dimensions dynamically
+  // Store dimensions
   const [dimensions, setDimensions] = useState({ width: 800, height: 400 });
 
-  // References for keeping track of high-frequency animation states
-  const animStateRef = useRef({
+  // References to decouple high-frequency state from React re-renders
+  const multiplierRef = useRef(multiplier);
+  const stateRef = useRef(state);
+  const countdownRef = useRef(countdown);
+  const maxCountdownRef = useRef(maxCountdown);
+  const dimensionsRef = useRef(dimensions);
+
+  // Sync refs instantly
+  multiplierRef.current = multiplier;
+  stateRef.current = state;
+  countdownRef.current = countdown;
+  maxCountdownRef.current = maxCountdown;
+  dimensionsRef.current = dimensions;
+
+  // Animation Engine State Container
+  const engineRef = useRef({
+    lastTimestamp: 0,
     gridOffset: 0,
     propellerAngle: 0,
-    planeAnimY: 0, // ambient hovering
-    particles: [] as Array<{ x: number; y: number; life: number; size: number; alpha: number; vx: number; vy: number }>,
-    screencrashEffect: 0, // screen shake or flash trigger
-    flewAwayTime: 0, // time elapsed since crash
-    stars: [] as Array<{ xRatio: number; yRatio: number; size: number; brightness: number; speed: number; layer?: string }>,
-    nebulae: [] as Array<{ xRatio: number; yRatio: number; vx: number; vy: number; radiusRatio: number; baseRadiusRatio?: number; color1: string; pulseSpeed?: number; phase?: number }>,
+    planeHoverPhase: 0,
+    flewAwayTime: 0,
+    particles: [] as Particle[],
+    burstShockwave: { active: false, x: 0, y: 0, radius: 0, alpha: 0 },
+    stars: [] as Array<{ xRatio: number; yRatio: number; size: number; brightness: number; speed: number; layer: "small" | "medium" | "large" }>,
+    nebulae: [] as Array<{ xRatio: number; yRatio: number; vx: number; vy: number; radiusRatio: number; baseRadiusRatio: number; color1: string; pulseSpeed: number; phase: number }>,
     speedLines: [] as Array<{ x: number; y: number; length: number; speed: number; alpha: number }>,
     shootingStars: [] as Array<{ x: number; y: number; vx: number; vy: number; length: number; alpha: number; active: boolean }>,
     lastShootingStarSpawn: 0,
+    prevRoundState: state,
   });
 
-  // Track state change
-  const prevStateRef = useRef<RoundState>(state);
+  // Pre-initialize particle pool once
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (engine.particles.length === 0) {
+      for (let i = 0; i < MAX_PARTICLES; i++) {
+        engine.particles.push({
+          active: false,
+          x: 0,
+          y: 0,
+          vx: 0,
+          vy: 0,
+          life: 0,
+          maxLife: 30,
+          size: 2,
+          color: "#f97316",
+        });
+      }
+    }
+  }, []);
 
-  // Resize observer to make the canvas completely fluid and responsive
+  // Resize observer with smooth hardware dimension sync
   useEffect(() => {
     if (!containerRef.current) return;
-    
+
     const resizeObserver = new ResizeObserver((entries) => {
-      for (let entry of entries) {
+      for (const entry of entries) {
         const { width, height } = entry.contentRect;
-        // Make sure it has adequate height adapted for mobile & desktop
-        const resolvedHeight = Math.max(height, 220);
-        setDimensions({ width: Math.max(width, 280), height: resolvedHeight });
+        const resolvedWidth = Math.max(Math.floor(width), 280);
+        const resolvedHeight = Math.max(Math.floor(height), 220);
+        setDimensions({ width: resolvedWidth, height: resolvedHeight });
       }
     });
 
@@ -57,77 +104,134 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
     return () => resizeObserver.disconnect();
   }, []);
 
-  // Update canvas sizing attribute
+  // Update canvas internal buffer dimensions
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    canvas.width = dimensions.width;
-    canvas.height = dimensions.height;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2); // limit to 2x DPR for GPU efficiency
+    canvas.width = dimensions.width * dpr;
+    canvas.height = dimensions.height * dpr;
   }, [dimensions]);
 
-  // Main Render Loop
+  // Main Hardware-Synced 60 FPS Animation & Render Loop (Never destroyed on multiplier ticks!)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
-    const ctx = canvas.getContext("2d");
+    const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) return;
 
-    let localFrameId: number;
+    let animFrameId: number;
 
-    const render = () => {
-      const anim = animStateRef.current;
-      const width = Math.max(dimensions.width && isFinite(dimensions.width) ? dimensions.width : 280, 280);
-      const height = Math.max(dimensions.height && isFinite(dimensions.height) ? dimensions.height : 220, 220);
+    const renderLoop = (timestamp: number) => {
+      const engine = engineRef.current;
+      if (!engine.lastTimestamp) engine.lastTimestamp = timestamp;
+      
+      // Calculate delta time (clamped between 1ms and 100ms for safety against tab throttling)
+      const dt = Math.min(Math.max((timestamp - engine.lastTimestamp) / 1000, 0.001), 0.1);
+      engine.lastTimestamp = timestamp;
+      const dtScale = dt * 60; // 1.0 at standard 60 FPS
 
-      // Clear Canvas
-      ctx.clearRect(0, 0, width, height);
+      const curState = stateRef.current;
+      const curMultiplier = Math.max(multiplierRef.current, 1.0);
+      const curCountdown = countdownRef.current;
+      const curMaxCountdown = maxCountdownRef.current;
+      const width = dimensionsRef.current.width;
+      const height = dimensionsRef.current.height;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
 
-      // 1. Draw Space Dark Background (Gradient from dark navy #020818 to deep purple #0d0527)
+      // Trigger burst shockwave immediately when state transitions to FLEW_AWAY
+      if (curState === "FLEW_AWAY" && engine.prevRoundState === "FLYING") {
+        engine.flewAwayTime = timestamp;
+        // Compute last rocket position
+        const startX = 40;
+        const startY = height - 40;
+        const safeMult = typeof curMultiplier === "number" && isFinite(curMultiplier) ? curMultiplier : 1.0;
+        const progress = Math.max(0, Math.min((safeMult - 1) / 4, 0.85));
+        const planeX = startX + Math.max(0, width - startX - 80) * progress;
+        const rise = Math.pow(Math.max(0, progress), 1.4);
+        const planeY = startY - Math.max(0, height - 80) * rise;
+
+        engine.burstShockwave = {
+          active: true,
+          x: planeX,
+          y: planeY,
+          radius: 10,
+          alpha: 1.0,
+        };
+
+        // Spawn rapid blast particles
+        const blastColors = ["#ffffff", "#fef08a", "#fb7185", "#f43f5e", "#f97316"];
+        for (let i = 0; i < 24; i++) {
+          const p = engine.particles[i % MAX_PARTICLES];
+          const angle = Math.random() * Math.PI * 2;
+          const spd = 2.5 + Math.random() * 5.5;
+          p.active = true;
+          p.x = planeX;
+          p.y = planeY;
+          p.vx = Math.cos(angle) * spd;
+          p.vy = Math.sin(angle) * spd;
+          p.life = 25 + Math.random() * 15;
+          p.maxLife = p.life;
+          p.size = 2.5 + Math.random() * 3.5;
+          p.color = blastColors[Math.floor(Math.random() * blastColors.length)];
+        }
+      } else if (curState === "WAITING" && engine.prevRoundState !== "WAITING") {
+        engine.flewAwayTime = 0;
+        engine.burstShockwave.active = false;
+        // Kill particles on round reset
+        for (let i = 0; i < MAX_PARTICLES; i++) {
+          engine.particles[i].active = false;
+        }
+      }
+      engine.prevRoundState = curState;
+
+      // Apply DPR scaling for crisp canvas rendering
+      ctx.save();
+      ctx.scale(dpr, dpr);
+
+      // Clear & Draw Space Dark Background
       const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
       bgGrad.addColorStop(0, "#020818");
       bgGrad.addColorStop(1, "#0d0527");
       ctx.fillStyle = bgGrad;
       ctx.fillRect(0, 0, width, height);
 
-      // --- INITIALIZE BACKGROUND ELEMENTS ONCE ---
-      if (anim.stars.length === 0) {
-        // Small distant stars (220 dots), slow twinkle
-        for (let i = 0; i < 220; i++) {
-          anim.stars.push({
+      // --- 1. INITIALIZE BACKGROUND ASSETS ONCE ---
+      if (engine.stars.length === 0) {
+        for (let i = 0; i < 180; i++) {
+          engine.stars.push({
             xRatio: Math.random(),
             yRatio: Math.random(),
             size: 0.3 + Math.random() * 0.5,
             brightness: Math.random(),
             speed: 0.001 + Math.random() * 0.003,
-            layer: "small"
+            layer: "small",
           });
         }
-        // Medium stars (80 dots), medium twinkle
-        for (let i = 0; i < 80; i++) {
-          anim.stars.push({
+        for (let i = 0; i < 60; i++) {
+          engine.stars.push({
             xRatio: Math.random(),
             yRatio: Math.random(),
             size: 0.8 + Math.random() * 0.7,
             brightness: Math.random(),
             speed: 0.004 + Math.random() * 0.007,
-            layer: "medium"
+            layer: "medium",
           });
         }
-        // Large near stars (20 dots) with glow
-        for (let i = 0; i < 20; i++) {
-          anim.stars.push({
+        for (let i = 0; i < 16; i++) {
+          engine.stars.push({
             xRatio: Math.random(),
             yRatio: Math.random(),
             size: 1.8 + Math.random() * 1.0,
             brightness: Math.random(),
             speed: 0.002 + Math.random() * 0.005,
-            layer: "large"
+            layer: "large",
           });
         }
       }
 
-      if (anim.nebulae.length === 0) {
-        anim.nebulae.push(
+      if (engine.nebulae.length === 0) {
+        engine.nebulae.push(
           {
             xRatio: 0.3,
             yRatio: 0.25,
@@ -135,7 +239,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             vy: 0.006,
             radiusRatio: 0.45,
             baseRadiusRatio: 0.45,
-            color1: "#4a0080", // purple
+            color1: "#4a0080",
             pulseSpeed: 0.001,
             phase: 0,
           },
@@ -146,7 +250,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             vy: 0.012,
             radiusRatio: 0.55,
             baseRadiusRatio: 0.55,
-            color1: "#001a6e", // deep blue
+            color1: "#001a6e",
             pulseSpeed: 0.0015,
             phase: Math.PI / 3,
           },
@@ -157,16 +261,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
             vy: -0.006,
             radiusRatio: 0.4,
             baseRadiusRatio: 0.4,
-            color1: "#4a0080", // purple
+            color1: "#4a0080",
             pulseSpeed: 0.0008,
             phase: Math.PI / 1.5,
           }
         );
       }
 
-      if (anim.speedLines.length === 0) {
-        for (let i = 0; i < 12; i++) {
-          anim.speedLines.push({
+      if (engine.speedLines.length === 0) {
+        for (let i = 0; i < MAX_SPEED_LINES; i++) {
+          engine.speedLines.push({
             x: Math.random() * width,
             y: Math.random() * (height - 40),
             length: 40 + Math.random() * 100,
@@ -176,9 +280,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         }
       }
 
-      // --- DRAW TWINKLING STARS (3 depths) ---
-      anim.stars.forEach((star) => {
-        star.brightness += star.speed;
+      // --- 2. DRAW TWINKLING STARS (Delta-time synced) ---
+      for (let i = 0; i < engine.stars.length; i++) {
+        const star = engine.stars[i];
+        star.brightness += star.speed * dtScale;
         if (star.brightness > 1 || star.brightness < 0.15) {
           star.speed = -star.speed;
         }
@@ -186,67 +291,44 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         const sY = star.yRatio * height;
         const currentAlpha = Math.max(0.15, Math.min(1, star.brightness));
 
-        const starRadius = Math.max(0.1, isFinite(star.size) ? star.size : 1);
-        if (star.layer === "large") {
-          ctx.save();
-          ctx.fillStyle = `rgba(255, 255, 255, ${currentAlpha})`;
-          ctx.shadowColor = "rgba(255, 255, 255, 0.75)";
-          ctx.shadowBlur = 5;
-          ctx.beginPath();
-          ctx.arc(sX, sY, starRadius, 0, 2 * Math.PI);
-          ctx.fill();
-          ctx.restore();
-        } else {
-          ctx.fillStyle = `rgba(255, 255, 255, ${currentAlpha})`;
-          ctx.beginPath();
-          ctx.arc(sX, sY, starRadius, 0, 2 * Math.PI);
-          ctx.fill();
-        }
-      });
+        ctx.fillStyle = `rgba(255, 255, 255, ${currentAlpha})`;
+        ctx.beginPath();
+        ctx.arc(sX, sY, star.size, 0, 2 * Math.PI);
+        ctx.fill();
+      }
 
-      // --- DRAW MOVING CLOUDS / NEBULA (PULSE & PARALLAX) ---
-      anim.nebulae.forEach((n) => {
-        n.xRatio += n.vx / 60;
-        n.yRatio += n.vy / 60;
+      // --- 3. DRAW NEBULAE (Fast lightweight radial rendering) ---
+      for (let i = 0; i < engine.nebulae.length; i++) {
+        const n = engine.nebulae[i];
+        n.xRatio += (n.vx / 60) * dtScale;
+        n.yRatio += (n.vy / 60) * dtScale;
         if (n.xRatio < -0.3) n.xRatio = 1.3;
         if (n.xRatio > 1.3) n.xRatio = -0.3;
         if (n.yRatio < -0.3) n.yRatio = 1.3;
         if (n.yRatio > 1.3) n.yRatio = -0.3;
 
-        n.phase = (n.phase || 0) + (n.pulseSpeed || 0.001);
-        const currentRadiusRatio = (n.baseRadiusRatio || n.radiusRatio) * (1 + Math.sin(n.phase) * 0.12);
-
+        n.phase += n.pulseSpeed * dtScale;
+        const currentRadius = n.baseRadiusRatio * (1 + Math.sin(n.phase) * 0.12) * Math.min(width, height);
         const nebX = n.xRatio * width;
         const nebY = n.yRatio * height;
-        const rawNebRadius = currentRadiusRatio * Math.min(width, height);
-        const nebRadius = isFinite(rawNebRadius) && rawNebRadius > 1 ? rawNebRadius : 0;
 
-        if (nebRadius > 0 && isFinite(nebX) && isFinite(nebY)) {
-          const cloudGrad = ctx.createRadialGradient(nebX, nebY, 0, nebX, nebY, nebRadius);
-          const opacity = 0.15 + (Math.sin(n.phase) + 1) * 0.05; // range 0.15 - 0.25 opacity
-          
+        if (currentRadius > 1) {
+          const cloudGrad = ctx.createRadialGradient(nebX, nebY, 0, nebX, nebY, currentRadius);
+          const opacity = 0.14 + (Math.sin(n.phase) + 1) * 0.04;
           cloudGrad.addColorStop(0, n.color1 === "#4a0080" ? `rgba(74, 0, 128, ${opacity})` : `rgba(0, 26, 110, ${opacity})`);
-          cloudGrad.addColorStop(0.5, n.color1 === "#4a0080" ? `rgba(74, 0, 128, ${opacity * 0.4})` : `rgba(0, 26, 110, ${opacity * 0.4})`);
+          cloudGrad.addColorStop(0.6, n.color1 === "#4a0080" ? `rgba(74, 0, 128, ${opacity * 0.3})` : `rgba(0, 26, 110, ${opacity * 0.3})`);
           cloudGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
-          
-          ctx.save();
-          ctx.globalCompositeOperation = "screen";
+
           ctx.fillStyle = cloudGrad;
           ctx.beginPath();
-          ctx.arc(nebX, nebY, nebRadius, 0, 2 * Math.PI);
+          ctx.arc(nebX, nebY, currentRadius, 0, 2 * Math.PI);
           ctx.fill();
-          ctx.restore();
         }
-      });
-
-      // --- RANDOM SHOOTING STAR STREAKS EVERY 4-8 SECONDS ---
-      const nowMs = Date.now();
-      if (!anim.shootingStars) {
-        anim.shootingStars = [];
-        anim.lastShootingStarSpawn = nowMs - 2000;
       }
-      if (anim.shootingStars.length === 0 && nowMs - anim.lastShootingStarSpawn > 4000 + Math.random() * 4000) {
-        anim.shootingStars.push({
+
+      // --- 4. RANDOM SHOOTING STAR (Non-blocking) ---
+      if (engine.shootingStars.length === 0 && timestamp - engine.lastShootingStarSpawn > 5000 + Math.random() * 5000) {
+        engine.shootingStars.push({
           x: (0.4 + Math.random() * 0.5) * width,
           y: Math.random() * 0.25 * height,
           vx: -7 - Math.random() * 7,
@@ -255,89 +337,59 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
           alpha: 1.0,
           active: true,
         });
-        anim.lastShootingStarSpawn = nowMs;
+        engine.lastShootingStarSpawn = timestamp;
       }
-      anim.shootingStars = anim.shootingStars.filter(ss => ss.active);
-      anim.shootingStars.forEach(ss => {
-        ss.x += ss.vx;
-        ss.y += ss.vy;
-        ss.alpha -= 0.022;
+
+      for (let i = 0; i < engine.shootingStars.length; i++) {
+        const ss = engine.shootingStars[i];
+        if (!ss.active) continue;
+        ss.x += ss.vx * dtScale;
+        ss.y += ss.vy * dtScale;
+        ss.alpha -= 0.022 * dtScale;
         if (ss.alpha <= 0 || ss.x < -100 || ss.y > height + 100) {
           ss.active = false;
         } else {
-          const trailGrad = ctx.createLinearGradient(ss.x, ss.y, ss.x - ss.vx * 2.5, ss.y - ss.vy * 2.5);
-          trailGrad.addColorStop(0, `rgba(255, 255, 255, ${ss.alpha})`);
-          trailGrad.addColorStop(0.3, `rgba(219, 39, 119, ${ss.alpha * 0.5})`); // vibrant pink trail tint
-          trailGrad.addColorStop(1, "rgba(255, 255, 255, 0)");
-
-          ctx.save();
-          ctx.strokeStyle = trailGrad;
-          ctx.lineWidth = 1.6;
+          ctx.strokeStyle = `rgba(255, 255, 255, ${Math.max(0, ss.alpha)})`;
+          ctx.lineWidth = 1.5;
           ctx.beginPath();
           ctx.moveTo(ss.x, ss.y);
           ctx.lineTo(ss.x - ss.vx * 1.1, ss.y - ss.vy * 1.1);
           ctx.stroke();
-          ctx.restore();
         }
-      });
+      }
+      for (let i = engine.shootingStars.length - 1; i >= 0; i--) {
+        if (!engine.shootingStars[i].active) {
+          engine.shootingStars.splice(i, 1);
+        }
+      }
 
-      // --- DISTANT HELICAL GALAXY (faint spiral in top right corner) ---
+      // --- 5. DISTANT FAINT GALAXY ---
       const galX = width * 0.82;
       const galY = height * 0.18;
       ctx.save();
       ctx.translate(galX, galY);
-      ctx.rotate(-0.35); // galaxy tilt
-
+      ctx.rotate(-0.35);
       const galGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, 42);
-      galGrad.addColorStop(0, "rgba(255, 230, 255, 0.13)");
-      galGrad.addColorStop(0.3, "rgba(139, 92, 246, 0.08)");
-      galGrad.addColorStop(0.7, "rgba(79, 70, 229, 0.03)");
+      galGrad.addColorStop(0, "rgba(255, 230, 255, 0.12)");
+      galGrad.addColorStop(0.4, "rgba(139, 92, 246, 0.06)");
       galGrad.addColorStop(1, "rgba(0, 0, 0, 0)");
-      
       ctx.fillStyle = galGrad;
       ctx.beginPath();
       ctx.ellipse(0, 0, 42, 14, 0, 0, 2 * Math.PI);
       ctx.fill();
-
-      // Galaxy Core
-      const coreGrad = ctx.createRadialGradient(0, 0, 0, 0, 0, 8);
-      coreGrad.addColorStop(0, "rgba(255, 255, 255, 0.2)");
-      coreGrad.addColorStop(1, "rgba(255, 255, 255, 0)");
-      ctx.fillStyle = coreGrad;
-      ctx.beginPath();
-      ctx.ellipse(0, 0, 8, 3, 0, 0, 2 * Math.PI);
-      ctx.fill();
-
-      // Faint spiral points
-      ctx.fillStyle = "rgba(196, 181, 253, 0.1)";
-      for (let theta = 0; theta < 2 * Math.PI * 1.6; theta += 0.25) {
-        const r1 = 6 + theta * 7.5;
-        const arm1X = r1 * Math.cos(theta);
-        const arm1Y = r1 * Math.sin(theta) * 0.35;
-        ctx.beginPath();
-        ctx.arc(arm1X, arm1Y, 0.7, 0, 2 * Math.PI);
-        ctx.fill();
-
-        const arm2X = r1 * Math.cos(theta + Math.PI);
-        const arm2Y = r1 * Math.sin(theta + Math.PI) * 0.35;
-        ctx.beginPath();
-        ctx.arc(arm2X, arm2Y, 0.7, 0, 2 * Math.PI);
-        ctx.fill();
-      }
       ctx.restore();
 
-      // --- DRAW DYNAMIC SPEED LINES ---
-      // Speed multiplier factor: increases as game multiplier speeds up
+      // --- 6. DYNAMIC SPEED LINES ---
       let speedFactor = 1;
-      if (state === "FLYING") {
-        speedFactor = Math.min(1 + multiplier * 2.2, 28);
-      } else if (state === "FLEW_AWAY") {
+      if (curState === "FLYING") {
+        speedFactor = Math.min(1 + curMultiplier * 2.2, 28);
+      } else if (curState === "FLEW_AWAY") {
         speedFactor = 18;
       }
 
-      anim.speedLines.forEach((line) => {
-        line.x -= line.speed * speedFactor;
-        // If line scrolls entirely off screen, loop back to right
+      for (let i = 0; i < engine.speedLines.length; i++) {
+        const line = engine.speedLines[i];
+        line.x -= line.speed * speedFactor * dtScale;
         if (line.x < -line.length) {
           line.x = width + Math.random() * 50;
           line.y = Math.random() * (height - 40);
@@ -351,32 +403,28 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.moveTo(line.x, line.y);
         ctx.lineTo(line.x + line.length, line.y);
         ctx.stroke();
-      });
+      }
 
-      // --- SCROLLING GRID ---
-      // Speed of scroll depends on multiplier or status
+      // --- 7. SCROLLING GRID & AXES ---
       let scrollSpeed = 0.5;
-      if (state === "FLYING") {
-        scrollSpeed = Math.min(2 + multiplier * 1.5, 12);
-      } else if (state === "FLEW_AWAY") {
+      if (curState === "FLYING") {
+        scrollSpeed = Math.min(2 + curMultiplier * 1.5, 12);
+      } else if (curState === "FLEW_AWAY") {
         scrollSpeed = 5;
       }
-      anim.gridOffset = (anim.gridOffset + scrollSpeed) % 40;
+      engine.gridOffset = (engine.gridOffset + scrollSpeed * dtScale) % 40;
 
-      // Make grid lines more subtle (lower opacity, indigo/blue tint)
       ctx.strokeStyle = "rgba(99, 102, 241, 0.012)";
       ctx.lineWidth = 1;
 
-      // Draw Grid Lines (Vertical)
-      for (let x = -40 + anim.gridOffset; x < width + 40; x += 40) {
+      for (let x = -40 + engine.gridOffset; x < width + 40; x += 40) {
         ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, height);
         ctx.stroke();
       }
 
-      // Draw Grid Lines (Horizontal)
-      const hOffset = (anim.gridOffset * 0.5) % 40;
+      const hOffset = (engine.gridOffset * 0.5) % 40;
       for (let y = -40 + hOffset; y < height + 40; y += 40) {
         ctx.beginPath();
         ctx.moveTo(0, y);
@@ -384,7 +432,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.stroke();
       }
 
-      // Draw Side/Bottom Borders representing scale axes
+      // Axes
       ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
       ctx.lineWidth = 2;
       ctx.beginPath();
@@ -393,11 +441,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
       ctx.lineTo(width, height - 40);
       ctx.stroke();
 
-      // Tick marks on Axes
+      // Tick marks
       ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
-      ctx.font = "10px monospace";
+      ctx.font = "10px 'Chakra Petch', monospace";
       ctx.textAlign = "center";
-      // X-Ticks
       for (let i = 1; i <= 5; i++) {
         const tickX = 40 + (width - 80) * (i / 5);
         ctx.beginPath();
@@ -406,7 +453,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.stroke();
         ctx.fillText(`${i * 2}s`, tickX, height - 20);
       }
-      // Y-Ticks
+
       ctx.textAlign = "right";
       ctx.textBaseline = "middle";
       for (let i = 1; i <= 4; i++) {
@@ -418,14 +465,13 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.fillText(`x${(1 + i * 0.5).toFixed(1)}`, 28, tickY);
       }
 
-      // 2. State specific drawings
-      if (state === "WAITING") {
-        // --- DRAW LOADING INDICATOR PRE-GAME ---
-        const percent = countdown / maxCountdown;
+      // --- 8. STATE SPECIFIC DRAWING ---
+      if (curState === "WAITING") {
+        const percent = Math.max(0, Math.min(1, curCountdown / curMaxCountdown));
         const centerX = width / 2;
         const centerY = height / 2 - 20;
 
-        // Glowing outer arc
+        // Glowing outer circle
         ctx.beginPath();
         ctx.arc(centerX, centerY, 55, 0, 2 * Math.PI);
         ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
@@ -433,22 +479,16 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.stroke();
 
         ctx.beginPath();
-        // Counter-clockwise loader
         ctx.arc(centerX, centerY, 55, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * percent, false);
-        ctx.strokeStyle = "#e91e63"; // Deep pink glowing red
-        ctx.shadowColor = "#e91e63";
-        ctx.shadowBlur = 15;
+        ctx.strokeStyle = "#e91e63";
         ctx.lineWidth = 6;
         ctx.stroke();
-        ctx.shadowBlur = 0; // reset glow
 
-        // Airplane/Rocket inside waiting loader facing up (3D stylized rocket)
+        // 3D Sci-Fi Rocket - Vertical Waiting Position
         ctx.save();
         ctx.translate(centerX, centerY);
-        
-        // 3D Sci-Fi Rocket - Vertical Waiting Position
-        // Engine plume spark in center
-        const idleFlame = 6 + Math.sin(Date.now() / 80) * 3;
+
+        const idleFlame = 6 + Math.sin(timestamp / 80) * 3;
         const idleFlameGrad = ctx.createLinearGradient(0, 16, 0, 16 + idleFlame);
         idleFlameGrad.addColorStop(0, "#ffffff");
         idleFlameGrad.addColorStop(0.3, "#38bdf8");
@@ -462,7 +502,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.closePath();
         ctx.fill();
 
-        // Left Fin (3D dark angle)
+        // Left Fin
         ctx.fillStyle = "#1e1b4b";
         ctx.beginPath();
         ctx.moveTo(-6, 8);
@@ -472,7 +512,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.closePath();
         ctx.fill();
 
-        // Right Fin (3D light angle)
+        // Right Fin
         ctx.fillStyle = "#312e81";
         ctx.beginPath();
         ctx.moveTo(6, 8);
@@ -482,19 +522,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.closePath();
         ctx.fill();
 
-        // Left Main Rocket Body (Shadowed side)
+        // Rocket Body Left
         const bodyGradL = ctx.createLinearGradient(-10, 0, 0, 0);
         bodyGradL.addColorStop(0, "#cbd5e1");
         bodyGradL.addColorStop(1, "#f8fafc");
         ctx.fillStyle = bodyGradL;
         ctx.beginPath();
-        ctx.moveTo(0, -24); // Sharp Nose
-        ctx.quadraticCurveTo(-8, -10, -7, 16); // Left fuselage
+        ctx.moveTo(0, -24);
+        ctx.quadraticCurveTo(-8, -10, -7, 16);
         ctx.lineTo(0, 16);
         ctx.closePath();
         ctx.fill();
 
-        // Right Main Rocket Body (Light specular side)
+        // Rocket Body Right
         const bodyGradR = ctx.createLinearGradient(0, 0, 10, 0);
         bodyGradR.addColorStop(0, "#ffffff");
         bodyGradR.addColorStop(1, "#94a3b8");
@@ -506,7 +546,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.closePath();
         ctx.fill();
 
-        // Center Spine & Nose Cone Trim (Red/Orange accent)
+        // Nose Cone Trim
         ctx.fillStyle = "#ef4444";
         ctx.beginPath();
         ctx.moveTo(0, -24);
@@ -515,7 +555,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.closePath();
         ctx.fill();
 
-        // Rocket Porthole Window (Glowing Cyan)
+        // Rocket Porthole Window
         ctx.fillStyle = "#0284c7";
         ctx.beginPath();
         ctx.arc(0, -4, 4.5, 0, Math.PI * 2);
@@ -529,7 +569,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.arc(-1, -5, 1.2, 0, Math.PI * 2);
         ctx.fill();
 
-        // Center Fin (Fore-facing 3D keel)
+        // Keel
         ctx.fillStyle = "#f43f5e";
         ctx.beginPath();
         ctx.moveTo(0, 2);
@@ -542,42 +582,33 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
         // Display Status Text
         ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 17px 'Rajdhani', 'Chakra Petch', sans-serif";
+        ctx.font = "bold 17px 'Rajdhani', 'Orbitron', 'Montserrat', sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText("WAITING FOR NEXT ROUND", centerX, centerY + 90);
 
         ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
         ctx.font = "600 14px 'Chakra Petch', monospace";
-        ctx.fillText(`PLACING BETS (${countdown.toFixed(1)}s)`, centerX, centerY + 115);
+        ctx.fillText(`PLACING BETS (${curCountdown.toFixed(1)}s)`, centerX, centerY + 115);
 
-      } else if (state === "FLYING" || state === "FLEW_AWAY") {
-        // --- DRAW REBELS FLIGHT CURVE ---
-        // Calculate curve ending coordinates based on progressive multiplier/progress
-        // We simulate quadratic Bezier curve
-        // Start curve at: 40, height - 40
+      } else if (curState === "FLYING" || curState === "FLEW_AWAY") {
+        // --- FLIGHT CURVE & ROCKET RENDERING ---
         const startX = 40;
         const startY = height - 40;
 
-        // Plane coordinates scale with multiplier
-        // Max range of graph: 1.00x to 3.00x over 15 seconds
-        // x-axis represents progress (0 to 1)
-        const safeMultiplier = typeof multiplier === "number" && isFinite(multiplier) && multiplier >= 1.0 ? multiplier : 1.0;
-        const progress = Math.max(0, Math.min((safeMultiplier - 1) / 4, 0.85)); // caps out around 85% of graph width
+        // Dynamic flight trajectory synchronized with rapid launch & acceleration
+        const deltaMult = Math.max(0, curMultiplier - 1.0);
+        const progress = Math.min(0.88, Math.pow(deltaMult / (deltaMult + 3.0), 0.72) * 1.38);
         const planeX = startX + Math.max(0, width - startX - 80) * progress;
-        // quadratic upward rise
-        const rise = Math.pow(Math.max(0, progress), 1.4);
-        const safeRise = isFinite(rise) ? rise : 0;
-        const rawPlaneY = startY - Math.max(0, height - 80) * safeRise;
+        const rise = Math.pow(progress, 1.35);
+        const rawPlaneY = startY - Math.max(0, height - 85) * rise;
         const planeY = isFinite(rawPlaneY) ? rawPlaneY : startY;
 
-        // Control point represents a nice bending curve
-        const cpX = startX + (planeX - startX) * 0.65;
-        const cpY = startY; // pulls down curve to keep it flat initially then steep
+        const cpX = startX + (planeX - startX) * 0.55;
+        const cpY = startY - (startY - planeY) * 0.08;
 
-        // Gradient filled area under the curve with fiery underglow
-        const gradEndY = isFinite(planeY) ? planeY : startY;
-        const curveGrad = ctx.createLinearGradient(0, startY, 0, gradEndY);
+        // Gradient filled under-curve
+        const curveGrad = ctx.createLinearGradient(0, startY, 0, planeY);
         curveGrad.addColorStop(0, "rgba(239, 68, 68, 0.0)");
         curveGrad.addColorStop(0.6, "rgba(249, 115, 22, 0.12)");
         curveGrad.addColorStop(1, "rgba(239, 68, 68, 0.32)");
@@ -590,139 +621,136 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.fillStyle = curveGrad;
         ctx.fill();
 
-        // 1. Outer Flame Aura (Broad Heat Glow)
+        // 1. Broad outer halo (lightweight layered stroke without heavy shadowBlur)
         ctx.beginPath();
         ctx.moveTo(startX, startY);
         ctx.quadraticCurveTo(cpX, cpY, planeX, planeY);
-        ctx.strokeStyle = "rgba(249, 115, 22, 0.35)"; // blazing orange halo
-        ctx.lineWidth = 9;
-        ctx.shadowColor = "#f97316";
-        ctx.shadowBlur = 16;
+        ctx.strokeStyle = "rgba(249, 115, 22, 0.22)";
+        ctx.lineWidth = 10;
         ctx.stroke();
 
-        // 2. Multi-Color Fiery Plasma Gradient along the curve
+        // 2. Fiery Plasma Gradient along the curve
         const fireBeamGrad = ctx.createLinearGradient(startX, startY, planeX, planeY);
-        fireBeamGrad.addColorStop(0, "rgba(225, 29, 72, 0.7)");    // Crimson base
-        fireBeamGrad.addColorStop(0.45, "rgba(239, 68, 68, 0.95)"); // Fiery Red
-        fireBeamGrad.addColorStop(0.8, "rgba(249, 115, 22, 1.0)");  // Burning Orange
-        fireBeamGrad.addColorStop(0.96, "rgba(253, 224, 71, 1.0)"); // Radiant Yellow
-        fireBeamGrad.addColorStop(1, "rgba(255, 255, 255, 1.0)");   // White-hot tip
+        fireBeamGrad.addColorStop(0, "rgba(225, 29, 72, 0.7)");
+        fireBeamGrad.addColorStop(0.45, "rgba(239, 68, 68, 0.95)");
+        fireBeamGrad.addColorStop(0.8, "rgba(249, 115, 22, 1.0)");
+        fireBeamGrad.addColorStop(0.96, "rgba(253, 224, 71, 1.0)");
+        fireBeamGrad.addColorStop(1, "rgba(255, 255, 255, 1.0)");
 
         ctx.beginPath();
         ctx.moveTo(startX, startY);
         ctx.quadraticCurveTo(cpX, cpY, planeX, planeY);
         ctx.strokeStyle = fireBeamGrad;
         ctx.lineWidth = 4.5;
-        ctx.shadowColor = "#ef4444";
-        ctx.shadowBlur = 10;
         ctx.stroke();
 
-        // 3. Inner White-Hot Laser Core along the curve
+        // 3. Crisp Laser Core
         ctx.beginPath();
         ctx.moveTo(startX, startY);
         ctx.quadraticCurveTo(cpX, cpY, planeX, planeY);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.75)";
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
         ctx.lineWidth = 1.6;
-        ctx.shadowBlur = 0; // reset blur for crisp core
         ctx.stroke();
 
-        // Generate fiery sparks & trail particles along the red curve & jet exhaust
-        if (state === "FLYING") {
-          // Cap particles at 45 to guarantee 60fps zero-lag execution
-          if (anim.particles.length < 45) {
-            // Spawn flame ember along the recent segment of the curve
-            const t = 0.55 + Math.random() * 0.45; // between 55% and 100% of the curve
-            const oneMinusT = 1 - t;
-            const curveEmberX = (oneMinusT * oneMinusT * startX) + (2 * oneMinusT * t * cpX) + (t * t * planeX);
-            const curveEmberY = (oneMinusT * oneMinusT * startY) + (2 * oneMinusT * t * cpY) + (t * t * planeY);
-            
-            const emberPalette = ["#ffffff", "#fef08a", "#fbbf24", "#f97316", "#ef4444"];
-            const color = emberPalette[Math.floor(Math.random() * emberPalette.length)];
+        // Spawn Jet exhaust flame particles (in-place pool, zero allocation)
+        if (curState === "FLYING") {
+          for (let i = 0; i < MAX_PARTICLES; i++) {
+            const p = engine.particles[i];
+            if (!p.active) {
+              const t = 0.6 + Math.random() * 0.4;
+              const oneMinusT = 1 - t;
+              const curveEmberX = (oneMinusT * oneMinusT * startX) + (2 * oneMinusT * t * cpX) + (t * t * planeX);
+              const curveEmberY = (oneMinusT * oneMinusT * startY) + (2 * oneMinusT * t * cpY) + (t * t * planeY);
 
-            anim.particles.push({
-              x: curveEmberX + (Math.random() - 0.5) * 4,
-              y: curveEmberY + (Math.random() - 0.5) * 4,
-              vx: -0.8 - Math.random() * 1.5,
-              vy: (Math.random() - 0.3) * 1.8,
-              size: 1.5 + Math.random() * 3.5,
-              life: 25 + Math.random() * 25,
-              alpha: 1,
-              color,
-            } as any);
-
-            // Also spawn jet exhaust flame particle directly behind the nozzle
-            if (Math.random() < 0.6) {
-              anim.particles.push({
-                x: planeX - 12,
-                y: planeY + (Math.random() - 0.5) * 6,
-                vx: -2.5 - Math.random() * 2.5,
-                vy: (Math.random() - 0.5) * 1.8,
-                size: 2.2 + Math.random() * 3.8,
-                life: 20 + Math.random() * 20,
-                alpha: 1,
-                color: Math.random() < 0.5 ? "#fef08a" : "#f97316",
-              } as any);
+              p.active = true;
+              p.x = curveEmberX + (Math.random() - 0.5) * 4;
+              p.y = curveEmberY + (Math.random() - 0.5) * 4;
+              p.vx = -1.2 - Math.random() * 2.2;
+              p.vy = (Math.random() - 0.3) * 2.0;
+              p.life = 20 + Math.random() * 20;
+              p.maxLife = p.life;
+              p.size = 1.5 + Math.random() * 3;
+              p.color = Math.random() < 0.5 ? "#fef08a" : "#f97316";
+              break;
             }
           }
         }
 
-        // --- DRAW FIERY FLAME PARTICLES ---
-        anim.particles = anim.particles.filter((p) => typeof p.life === "number" && p.life > 0);
-        anim.particles.forEach((p: any) => {
-          p.x += p.vx || 0;
-          p.y += p.vy || 0;
-          p.life -= 1;
-          if (p.life <= 0) return;
-          
-          const rawLifeRatio = p.life / 35;
-          p.alpha = Math.max(0, Math.min(1, rawLifeRatio));
-          const pRadius = Math.max(0.1, (p.size || 2) * Math.max(0, rawLifeRatio));
-          
-          if (isFinite(pRadius) && pRadius > 0 && isFinite(p.x) && isFinite(p.y)) {
-            ctx.save();
-            ctx.globalAlpha = p.alpha;
-            ctx.fillStyle = p.color || "#f97316";
-            ctx.shadowColor = p.color || "#f97316";
-            ctx.shadowBlur = 4;
-            ctx.beginPath();
-            ctx.arc(p.x, p.y, pRadius, 0, 2 * Math.PI);
-            ctx.fill();
-            ctx.restore();
-          }
-        });
+        // Draw Active Particles (Batch rendered without save/restore overhead)
+        for (let i = 0; i < MAX_PARTICLES; i++) {
+          const p = engine.particles[i];
+          if (!p.active) continue;
 
-        // --- ANIMATE & RENDER THE RED PLANE ---
-        anim.propellerAngle = (anim.propellerAngle + 0.3) % (2 * Math.PI);
-        anim.planeHoverY = Math.sin(Date.now() / 150) * 4; // subtle floating oscillation
+          p.x += p.vx * dtScale;
+          p.y += p.vy * dtScale;
+          p.life -= dtScale;
+
+          if (p.life <= 0) {
+            p.active = false;
+            continue;
+          }
+
+          const lifeRatio = p.life / p.maxLife;
+          const currentRadius = p.size * lifeRatio;
+          ctx.fillStyle = p.color;
+          ctx.globalAlpha = Math.max(0, Math.min(1, lifeRatio));
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, Math.max(0.2, currentRadius), 0, 2 * Math.PI);
+          ctx.fill();
+        }
+        ctx.globalAlpha = 1.0;
+
+        // Render Shockwave on Bust (Smooth expanding ring)
+        if (engine.burstShockwave.active) {
+          const sw = engine.burstShockwave;
+          sw.radius += 3.5 * dtScale;
+          sw.alpha -= 0.04 * dtScale;
+          if (sw.alpha <= 0 || sw.radius > 80) {
+            sw.active = false;
+          } else {
+            ctx.strokeStyle = `rgba(244, 63, 94, ${Math.max(0, sw.alpha)})`;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(sw.x, sw.y, sw.radius, 0, 2 * Math.PI);
+            ctx.stroke();
+
+            ctx.strokeStyle = `rgba(255, 255, 255, ${Math.max(0, sw.alpha * 0.7)})`;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.arc(sw.x, sw.y, sw.radius * 0.6, 0, 2 * Math.PI);
+            ctx.stroke();
+          }
+        }
+
+        // --- RENDER ROCKET ---
+        engine.propellerAngle = (engine.propellerAngle + 0.3 * dtScale) % (2 * Math.PI);
+        engine.planeHoverPhase += 0.04 * dtScale;
+        const planeHoverY = Math.sin(engine.planeHoverPhase) * 3;
 
         ctx.save();
-        
         let finalPlaneX = planeX;
-        let finalPlaneY = planeY + anim.planeHoverY;
+        let finalPlaneY = planeY + planeHoverY;
 
-        if (state === "FLEW_AWAY") {
-          // Accelerate off-screen on cash out bust
-          if (anim.flewAwayTime === 0) anim.flewAwayTime = Date.now();
-          const elapsed = (Date.now() - anim.flewAwayTime) / 1000;
-          finalPlaneX += elapsed * 500; // accelerates extremely fast
-          finalPlaneY -= elapsed * 280; // climbs into the sky
+        if (curState === "FLEW_AWAY") {
+          const elapsed = (timestamp - engine.flewAwayTime) / 1000;
+          finalPlaneX += elapsed * 550;
+          finalPlaneY -= elapsed * 300;
         }
 
         ctx.translate(finalPlaneX, finalPlaneY);
-        // Tilt slightly upwards
-        ctx.rotate(-0.1); 
+        // Dynamic pitch angle synced with launch speed & climb vector
+        const pitchAngle = curState === "FLEW_AWAY" ? -0.32 : -0.06 - (1 - progress) * 0.20;
+        ctx.rotate(pitchAngle);
 
-        // --- 1. 3D ROCKET THRUSTER EXHAUST PLUMES (DUAL ION / FIRE BOOSTERS) ---
-        const flameLen = 18 + Math.random() * 16;
-        
-        // Main Central Thruster Flame
+        // Dynamic Rocket Thruster Plumes
+        const flameLen = 22 + Math.min(curMultiplier * 4.2, 58) + Math.sin(timestamp / 35) * 9;
         const flameGradCenter = ctx.createLinearGradient(-26, 0, -26 - flameLen, 0);
-        flameGradCenter.addColorStop(0, "#ffffff"); // White hot ignition
-        flameGradCenter.addColorStop(0.2, "#fef08a"); // Yellow
-        flameGradCenter.addColorStop(0.5, "#f97316"); // Orange
-        flameGradCenter.addColorStop(0.85, "#ef4444"); // Crimson
-        flameGradCenter.addColorStop(1, "rgba(239, 68, 68, 0)"); // Alpha fade
-        
+        flameGradCenter.addColorStop(0, "#ffffff");
+        flameGradCenter.addColorStop(0.2, "#fef08a");
+        flameGradCenter.addColorStop(0.5, "#f97316");
+        flameGradCenter.addColorStop(0.85, "#ef4444");
+        flameGradCenter.addColorStop(1, "rgba(239, 68, 68, 0)");
+
         ctx.fillStyle = flameGradCenter;
         ctx.beginPath();
         ctx.moveTo(-26, -5);
@@ -761,8 +789,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.closePath();
         ctx.fill();
 
-        // --- 2. 3D ROCKET FUSELAGE & AERODYNAMIC METALLIC BODY ---
-        // Rear Thruster Nozzle Rings (Dark Titanium)
+        // Rocket Body & Wings
         ctx.fillStyle = "#1e293b";
         ctx.beginPath();
         ctx.roundRect(-27, -6, 5, 12, [2, 0, 0, 2]);
@@ -774,21 +801,17 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.roundRect(-23, 6, 4, 7, [2, 0, 0, 2]);
         ctx.fill();
 
-        // Top Stabilizer Wing / Fin (3D Isometric Perspective)
-        ctx.save();
-        ctx.shadowColor = "#f43f5e";
-        ctx.shadowBlur = 10;
-        ctx.fillStyle = "#e11d48"; // Crimson Red Fin
+        // Top Wing
+        ctx.fillStyle = "#e11d48";
         ctx.beginPath();
         ctx.moveTo(-10, -7);
-        ctx.lineTo(-26, -23); // Swept tip
+        ctx.lineTo(-26, -23);
         ctx.lineTo(-18, -23);
         ctx.lineTo(2, -7);
         ctx.closePath();
         ctx.fill();
-        ctx.restore();
 
-        // Top Fin Specular Highlight Edge
+        // Top Wing Edge Highlight
         ctx.fillStyle = "#fda4af";
         ctx.beginPath();
         ctx.moveTo(-10, -7);
@@ -798,7 +821,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.closePath();
         ctx.fill();
 
-        // Bottom Stabilizer Wing / Fin (Shadow side)
+        // Bottom Wing
         ctx.fillStyle = "#881337";
         ctx.beginPath();
         ctx.moveTo(-10, 7);
@@ -808,7 +831,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.closePath();
         ctx.fill();
 
-        // Rocket Lower Shaded Fuselage (3D Cylindrical Shadow)
+        // Lower Fuselage
         const lowerBodyGrad = ctx.createLinearGradient(0, 0, 0, 10);
         lowerBodyGrad.addColorStop(0, "#cbd5e1");
         lowerBodyGrad.addColorStop(1, "#475569");
@@ -816,31 +839,28 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.beginPath();
         ctx.moveTo(-25, 0);
         ctx.lineTo(16, 0);
-        ctx.quadraticCurveTo(28, 2, 34, 0); // Nose cone tip
+        ctx.quadraticCurveTo(28, 2, 34, 0);
         ctx.quadraticCurveTo(24, 6, 12, 8);
         ctx.lineTo(-25, 6);
         ctx.closePath();
         ctx.fill();
 
-        // Rocket Upper Specular Fuselage (3D Cylindrical Lighting)
+        // Upper Fuselage
         const upperBodyGrad = ctx.createLinearGradient(0, -9, 0, 0);
-        upperBodyGrad.addColorStop(0, "#f8fafc"); // Bright white reflection
+        upperBodyGrad.addColorStop(0, "#f8fafc");
         upperBodyGrad.addColorStop(0.7, "#e2e8f0");
         upperBodyGrad.addColorStop(1, "#cbd5e1");
         ctx.fillStyle = upperBodyGrad;
         ctx.beginPath();
         ctx.moveTo(-25, 0);
         ctx.lineTo(16, 0);
-        ctx.quadraticCurveTo(28, -2, 34, 0); // Nose cone tip
+        ctx.quadraticCurveTo(28, -2, 34, 0);
         ctx.quadraticCurveTo(24, -6, 12, -8);
         ctx.lineTo(-25, -6);
         ctx.closePath();
         ctx.fill();
 
-        // Aerodynamic Nose Cone Trim (Rose/Crimson 3D Cap)
-        ctx.save();
-        ctx.shadowColor = "#f43f5e";
-        ctx.shadowBlur = 8;
+        // Nose Cone
         const noseGrad = ctx.createLinearGradient(16, 0, 34, 0);
         noseGrad.addColorStop(0, "#e11d48");
         noseGrad.addColorStop(1, "#fb7185");
@@ -851,9 +871,8 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.quadraticCurveTo(27, 0, 18, 6.5);
         ctx.closePath();
         ctx.fill();
-        ctx.restore();
 
-        // High-Tech Porthole / Cockpit Visor (Gloss Cyan Glass)
+        // Cockpit Visor
         ctx.fillStyle = "#0f172a";
         ctx.beginPath();
         ctx.ellipse(3, -1, 7, 4.5, 0, 0, Math.PI * 2);
@@ -867,13 +886,12 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
         ctx.ellipse(3, -1, 5.5, 3.5, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // Visor Glass Specular Glint
         ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
         ctx.beginPath();
         ctx.ellipse(1.5, -2.5, 2.5, 1, -0.3, 0, Math.PI * 2);
         ctx.fill();
 
-        // Fore Lateral 3D Keel / Center Ridge
+        // Fore Keel
         ctx.fillStyle = "#ef4444";
         ctx.beginPath();
         ctx.moveTo(-16, -0.8);
@@ -885,74 +903,96 @@ export const GameCanvas: React.FC<GameCanvasProps> = ({
 
         ctx.restore();
 
-        // 3. Central HUD Multiplier text
+        // --- 9. CENTRAL HUD MULTIPLIER (Zero-Lag Optical Light Radiance & Rays) ---
         const hudX = width / 2;
         const hudY = height / 2 - 20;
 
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
-        if (state === "FLYING") {
-          const tier = getMultiplierColorTier(multiplier);
-          let scale = 1.0;
-          let glowBlur = 12;
+        if (curState === "FLYING") {
+          const tier = getMultiplierColorTier(curMultiplier);
+          const hudFontSize = Math.min(74, Math.max(38, Math.floor(width * 0.095)));
 
-          if (multiplier >= 20.0) {
-            const pulse = (Math.sin((Date.now() / 400) * Math.PI * 2) + 1) / 2;
-            scale = 1.0 + pulse * 0.08;
-            glowBlur = 24;
-          } else if (multiplier >= 10.0) {
-            const pulse = (Math.sin((Date.now() / 500) * Math.PI * 2) + 1) / 2;
-            scale = 1.0 + pulse * 0.05;
-            glowBlur = 18;
+          // Dynamic scale pulse that scales with high multipliers
+          let scale = 1.0;
+          if (curMultiplier >= 20.0) {
+            const pulse = (Math.sin((timestamp / 280) * Math.PI * 2) + 1) / 2;
+            scale = 1.0 + pulse * 0.10;
+          } else if (curMultiplier >= 10.0) {
+            const pulse = (Math.sin((timestamp / 380) * Math.PI * 2) + 1) / 2;
+            scale = 1.0 + pulse * 0.06;
+          } else if (curMultiplier >= 2.0) {
+            const pulse = (Math.sin((timestamp / 500) * Math.PI * 2) + 1) / 2;
+            scale = 1.0 + pulse * 0.03;
           }
 
           ctx.save();
           ctx.translate(hudX, hudY);
           ctx.scale(scale, scale);
 
-          const hudFontSize = Math.min(68, Math.max(36, Math.floor(width * 0.09)));
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
+
+
+
+
+
+
+          // CRISP 2-LAYER MULTIPLIER TEXT
+          ctx.font = `800 ${hudFontSize}px 'Rajdhani', 'Orbitron', 'Montserrat', sans-serif`;
+
+          // Layer 1: High contrast outer stroke / border
+          ctx.strokeStyle = tier.borderColor || "rgba(0, 0, 0, 0.85)";
+          ctx.lineWidth = 6;
+          ctx.lineJoin = "round";
+          ctx.strokeText(`${curMultiplier.toFixed(2)}x`, 0, 0);
+
+          // Layer 2: Vibrant primary tier fill
           ctx.fillStyle = tier.color;
-          ctx.font = `700 ${hudFontSize}px 'Rajdhani', 'Chakra Petch', sans-serif`;
-          ctx.shadowColor = tier.color;
-          ctx.shadowBlur = glowBlur;
-          ctx.fillText(`${multiplier.toFixed(2)}x`, 0, 0);
+          ctx.fillText(`${curMultiplier.toFixed(2)}x`, 0, 0);
+
           ctx.restore();
-        } else if (state === "FLEW_AWAY") {
-          // Large RED Flew Away status
+        } else if (curState === "FLEW_AWAY") {
           const flewAwayFontSize = Math.min(48, Math.max(26, Math.floor(width * 0.065)));
           const flewAwaySubSize = Math.min(34, Math.max(18, Math.floor(width * 0.045)));
 
           ctx.fillStyle = "#f43f5e";
-          ctx.font = `800 ${flewAwayFontSize}px 'Rajdhani', 'Chakra Petch', sans-serif`;
-          ctx.shadowColor = "rgba(0,0,0,1)";
-          ctx.shadowBlur = 10;
+          ctx.font = `800 ${flewAwayFontSize}px 'Rajdhani', 'Orbitron', 'Montserrat', sans-serif`;
           ctx.fillText("FLEW AWAY", hudX, hudY - 15);
 
-          ctx.fillStyle = "#9ca3af"; // silver gray
+          ctx.fillStyle = "#9ca3af";
           ctx.font = `700 ${flewAwaySubSize}px 'Chakra Petch', monospace`;
-          ctx.fillText(`${multiplier.toFixed(2)}x`, hudX, hudY + 30);
-          ctx.shadowBlur = 0; // reset
+          ctx.fillText(`${curMultiplier.toFixed(2)}x`, hudX, hudY + 30);
         }
       }
 
-      localFrameId = requestAnimationFrame(render);
+      ctx.restore();
+      animFrameId = requestAnimationFrame(renderLoop);
     };
 
-    localFrameId = requestAnimationFrame(render);
+    animFrameId = requestAnimationFrame(renderLoop);
 
-    return () => cancelAnimationFrame(localFrameId);
-  }, [multiplier, state, countdown, dimensions]);
+    return () => cancelAnimationFrame(animFrameId);
+  }, []);
 
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full min-h-[220px] sm:min-h-[300px] md:min-h-[350px] bg-slate-900 overflow-hidden flex items-center justify-center rounded-xl border border-slate-800"
+      className="relative w-full h-full min-h-[220px] sm:min-h-[300px] md:min-h-[350px] bg-slate-900 overflow-hidden flex items-center justify-center rounded-xl border border-slate-800 will-change-transform"
+      style={{
+        contain: "layout style paint",
+        transform: "translateZ(0)",
+      }}
       id="aviator_canvas_container"
     >
-      <canvas ref={canvasRef} className="block w-full h-full" id="aviator_game_canvas" />
+      <canvas
+        ref={canvasRef}
+        className="block w-full h-full will-change-transform"
+        style={{
+          transform: "translateZ(0)",
+        }}
+        id="aviator_game_canvas"
+      />
     </div>
   );
-};
+});
+

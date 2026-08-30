@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useCallback } from "react";
+import React, { useState, useMemo, useRef, useCallback, memo } from "react";
 import { TrendingUp, TrendingDown, Activity, Flame, Target } from "lucide-react";
 import type { UserStats } from "../types";
 
@@ -88,7 +88,7 @@ function getMonotoneCubicSplinePath(points: Array<{ svgX: number; svgY: number }
   return path;
 }
 
-export const LivePerformanceLoop: React.FC<LivePerformanceLoopProps> = ({
+export const LivePerformanceLoop: React.FC<LivePerformanceLoopProps> = memo(({
   userStats,
   myHistory,
 }) => {
@@ -305,17 +305,17 @@ export const LivePerformanceLoop: React.FC<LivePerformanceLoopProps> = ({
 
   return (
     <div
-      className="w-full bg-[#070b18] rounded-2xl border border-emerald-500/25 p-3 sm:p-4 mt-2 sm:mt-3 shadow-2xl shadow-emerald-950/30 relative overflow-hidden transition-all duration-300"
+      className="w-full bg-[#281117]/95 rounded-2xl border border-[#52252e] p-3 sm:p-4 mt-2 sm:mt-3 shadow-2xl shadow-[#18080c]/50 relative overflow-hidden transition-all duration-300"
       id="live_performance_loop_card"
       style={{ willChange: "transform, opacity", transform: "translateZ(0)" }}
     >
       {/* Background Volumetric Aura (GPU accelerated) */}
       <div 
-        className="absolute top-0 right-0 w-96 h-48 bg-gradient-to-bl from-emerald-500/15 via-teal-500/5 to-transparent rounded-full blur-3xl pointer-events-none -mr-20 -mt-16"
+        className="absolute top-0 right-0 w-96 h-48 bg-gradient-to-bl from-rose-500/10 via-teal-500/5 to-transparent rounded-full blur-3xl pointer-events-none -mr-20 -mt-16"
         style={{ transform: "translate3d(0,0,0)" }}
       />
       <div 
-        className="absolute bottom-0 left-0 w-80 h-36 bg-gradient-to-tr from-cyan-600/10 via-emerald-600/5 to-transparent rounded-full blur-2xl pointer-events-none -ml-16 -mb-10"
+        className="absolute bottom-0 left-0 w-80 h-36 bg-gradient-to-tr from-cyan-600/10 via-rose-600/5 to-transparent rounded-full blur-2xl pointer-events-none -ml-16 -mb-10"
         style={{ transform: "translate3d(0,0,0)" }}
       />
 
@@ -342,7 +342,7 @@ export const LivePerformanceLoop: React.FC<LivePerformanceLoopProps> = ({
         <div className="flex items-center gap-2 flex-wrap">
           {/* Quick HUD Chips without THB / ฿ symbols */}
           <div className="flex items-center gap-1.5 text-[10px] font-mono">
-            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-900/80 border border-slate-800 text-slate-300">
+            <div className="flex items-center gap-1 px-2 py-1 rounded-lg bg-[#1C0A0F] border border-[#481E26] text-slate-300">
               <Target size={11} className="text-cyan-400" />
               <span>Win: <strong className="text-white">{metrics.winRate.toFixed(1)}%</strong></span>
             </div>
@@ -369,14 +369,14 @@ export const LivePerformanceLoop: React.FC<LivePerformanceLoopProps> = ({
           </div>
 
           {/* Timeframe Scope Selector */}
-          <div className="flex items-center bg-slate-950/80 p-0.5 rounded-lg border border-slate-800 text-[9.5px] font-mono">
+          <div className="flex items-center bg-[#1C0A0F] p-0.5 rounded-lg border border-[#481E26] text-[9.5px] font-mono">
             {(["ALL", "LAST20", "LAST10"] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setViewFilter(mode)}
                 className={`px-2 py-0.5 rounded-md font-bold transition-all ${
                   viewFilter === mode
-                    ? "bg-emerald-500 text-slate-950 shadow-sm"
+                    ? "bg-emerald-500 text-slate-950 shadow-sm font-black"
                     : "text-slate-400 hover:text-slate-200"
                 }`}
               >
@@ -389,7 +389,7 @@ export const LivePerformanceLoop: React.FC<LivePerformanceLoopProps> = ({
 
       {/* Main Responsive SVG Performance Spline Canvas */}
       <div 
-        className="relative w-full bg-[#030611] rounded-xl border border-emerald-500/20 p-1.5 sm:p-2 overflow-hidden shadow-inner"
+        className="relative w-full bg-[#16070B] rounded-xl border border-[#52252e]/70 p-1.5 sm:p-2 overflow-hidden shadow-inner"
         id="performance_spline_container"
         style={{ transform: "translateZ(0)", willChange: "contents" }}
       >
@@ -661,4 +661,4 @@ export const LivePerformanceLoop: React.FC<LivePerformanceLoopProps> = ({
       </div>
     </div>
   );
-};
+});

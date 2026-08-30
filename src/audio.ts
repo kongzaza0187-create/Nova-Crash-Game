@@ -384,14 +384,26 @@ class AudioManager {
 
   public updateEngine(multiplier: number) {
     if (!this.ctx || this.isMuted || !this.engineOsc || !this.engineGain) return;
+    if (this.ctx.state === "closed") return;
 
-    // Pitch rises dynamically as multiplier increases
-    const targetFreq = 45 + Math.min(multiplier * 18, 450);
-    this.engineOsc.frequency.setTargetAtTime(targetFreq, this.ctx.currentTime, 0.15);
+    try {
+      const safeMultiplier = typeof multiplier === "number" && Number.isFinite(multiplier) && multiplier >= 1.0 ? multiplier : 1.0;
+      const now = typeof this.ctx.currentTime === "number" && Number.isFinite(this.ctx.currentTime) ? this.ctx.currentTime : 0;
 
-    // Rumble intensity increases as flight path scales up
-    const targetGain = 0.035 + Math.min(multiplier * 0.012, 0.10);
-    this.engineGain.gain.setTargetAtTime(targetGain, this.ctx.currentTime, 0.12);
+      // Pitch rises dynamically as multiplier increases
+      const targetFreq = Math.min(Math.max(45 + safeMultiplier * 18, 45), 500);
+      if (Number.isFinite(targetFreq) && Number.isFinite(now)) {
+        this.engineOsc.frequency.setTargetAtTime(targetFreq, now, 0.15);
+      }
+
+      // Rumble intensity increases as flight path scales up
+      const targetGain = Math.min(Math.max(0.035 + safeMultiplier * 0.012, 0.01), 0.12);
+      if (Number.isFinite(targetGain) && Number.isFinite(now)) {
+        this.engineGain.gain.setTargetAtTime(targetGain, now, 0.12);
+      }
+    } catch (e) {
+      // Audio param lifecycle guard
+    }
   }
 
   public stopEngine() {
@@ -418,30 +430,34 @@ class AudioManager {
       this.ctx.resume();
     }
 
-    const now = this.ctx.currentTime;
-    const playTone = (freq: number, start: number, duration: number) => {
-      if (!this.ctx) return;
-      const osc = this.ctx.createOscillator();
-      const gain = this.ctx.createGain();
+    try {
+      const now = typeof this.ctx.currentTime === "number" && Number.isFinite(this.ctx.currentTime) ? this.ctx.currentTime : 0;
+      const playTone = (freq: number, start: number, duration: number) => {
+        if (!this.ctx || !Number.isFinite(freq) || !Number.isFinite(start) || !Number.isFinite(duration)) return;
+        try {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
 
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(freq, start);
+          osc.type = "sine";
+          osc.frequency.setValueAtTime(freq, start);
 
-      gain.gain.setValueAtTime(0.12, start);
-      gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
+          gain.gain.setValueAtTime(0.12, start);
+          gain.gain.exponentialRampToValueAtTime(0.001, start + duration);
 
-      osc.connect(gain);
-      gain.connect(this.ctx.destination);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
 
-      osc.start(start);
-      osc.stop(start + duration);
-    };
+          osc.start(start);
+          osc.stop(start + duration);
+        } catch (e) {}
+      };
 
-    // Upward lush arpeggio chime representing luxurious success
-    playTone(523.25, now, 0.22); // C5
-    playTone(659.25, now + 0.08, 0.22); // E5
-    playTone(783.99, now + 0.16, 0.22); // G5
-    playTone(1046.50, now + 0.24, 0.45); // C6
+      // Upward lush arpeggio chime representing luxurious success
+      playTone(523.25, now, 0.22); // C5
+      playTone(659.25, now + 0.08, 0.22); // E5
+      playTone(783.99, now + 0.16, 0.22); // G5
+      playTone(1046.50, now + 0.24, 0.45); // C6
+    } catch (e) {}
   }
 
   // SOUND 4 : CRASH Explosion (dramatic boom + descending tone)

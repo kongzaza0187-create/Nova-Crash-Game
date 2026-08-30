@@ -26,17 +26,16 @@ interface BetsListProps {
   }>;
   topBetsHistory?: TopBetRecord[];
   roundState: RoundState;
-  multiplier: number;
+  multiplier?: number;
   userStats: UserStats;
   onResetStats: () => void;
 }
 
-export const BetsList: React.FC<BetsListProps> = memo(({
+const BetsListComponent: React.FC<BetsListProps> = ({
   playerBets,
   myHistory,
   topBetsHistory,
   roundState,
-  multiplier,
   userStats,
   onResetStats,
 }) => {
@@ -59,17 +58,17 @@ export const BetsList: React.FC<BetsListProps> = memo(({
 
   return (
     <div
-      className="w-full lg:w-80 bg-slate-950/70 border border-slate-800 rounded-xl flex flex-col h-64 sm:h-72 lg:h-[500px] overflow-hidden"
+      className="w-full lg:w-80 bg-[#281117]/90 border border-[#52252e]/80 rounded-xl flex flex-col h-64 sm:h-72 lg:h-[500px] overflow-hidden shadow-xl"
       id="bets_list_container"
     >
       {/* Sidebar Tabs Header */}
-      <div className="flex bg-slate-900/60 border-b border-slate-850 p-1 select-none">
+      <div className="flex bg-[#1D0A0F] border-b border-[#52252e]/70 p-1 select-none">
         <button
           onClick={() => setActiveTab("ALL")}
           className={`flex-1 py-2 flex items-center justify-center gap-1.5 text-xs font-bold rounded-lg transition ${
             activeTab === "ALL"
-              ? "bg-slate-850 text-white border-b-2 border-rose-500"
-              : "text-slate-400 hover:text-white"
+              ? "bg-[#3A1920] text-white border-b-2 border-rose-500 shadow-sm"
+              : "text-slate-400 hover:text-slate-200"
           }`}
           id="btn_all_bets_tab"
         >
@@ -80,8 +79,8 @@ export const BetsList: React.FC<BetsListProps> = memo(({
           onClick={() => setActiveTab("MY")}
           className={`flex-1 py-2 flex items-center justify-center gap-1.5 text-xs font-bold rounded-lg transition ${
             activeTab === "MY"
-              ? "bg-slate-850 text-white border-b-2 border-rose-500"
-              : "text-slate-400 hover:text-white"
+              ? "bg-[#3A1920] text-white border-b-2 border-rose-500 shadow-sm"
+              : "text-slate-400 hover:text-slate-200"
           }`}
           id="btn_my_bets_tab"
         >
@@ -92,8 +91,8 @@ export const BetsList: React.FC<BetsListProps> = memo(({
           onClick={() => setActiveTab("TOP")}
           className={`flex-1 py-2 flex items-center justify-center gap-1.5 text-xs font-bold rounded-lg transition ${
             activeTab === "TOP"
-              ? "bg-slate-850 text-white border-b-2 border-rose-500"
-              : "text-slate-400 hover:text-white"
+              ? "bg-[#3A1920] text-white border-b-2 border-rose-500 shadow-sm"
+              : "text-slate-400 hover:text-slate-200"
           }`}
           id="btn_top_tab"
         >
@@ -109,10 +108,10 @@ export const BetsList: React.FC<BetsListProps> = memo(({
         {activeTab === "ALL" && (
           <div className="flex-1 flex flex-col min-h-0 gap-2.5">
             {/* Round Summary bar */}
-            <div className="flex justify-between items-center text-[10px] bg-slate-900/40 p-2 rounded-lg border border-slate-900 font-mono">
+            <div className="flex justify-between items-center text-[10px] bg-[#1A090D] p-2 rounded-lg border border-[#481E26] font-mono">
               <div className="flex items-center gap-1.5">
-                <span className="text-slate-500 uppercase tracking-widest">Active Bets</span>
-                <span className="text-[9px] bg-slate-800 text-slate-400 px-1.5 py-0.2 rounded font-sans">
+                <span className="text-slate-400 uppercase tracking-widest">Active Bets</span>
+                <span className="text-[9px] bg-[#2E1218] text-slate-300 px-1.5 py-0.2 rounded font-sans border border-[#52252e]/50">
                   {playerBets.length} Players
                 </span>
               </div>
@@ -124,7 +123,7 @@ export const BetsList: React.FC<BetsListProps> = memo(({
             {/* List */}
             <div className="flex-1 overflow-y-auto pr-0.5 flex flex-col gap-1.5">
               {playerBets.length === 0 ? (
-                <div className="text-center text-xs text-slate-500 my-auto py-10">
+                <div className="text-center text-xs text-slate-400 my-auto py-10">
                   Waiting for players to place bets...
                 </div>
               ) : (
@@ -135,14 +134,14 @@ export const BetsList: React.FC<BetsListProps> = memo(({
                   return (
                     <div
                       key={player.id ? `${player.id}_${pIdx}` : `player_${pIdx}`}
-                      className={`flex items-center justify-between p-2 rounded-lg bg-slate-900/30 border text-xs transition ${
+                      className={`flex items-center justify-between p-2 rounded-lg bg-[#1A090D]/80 border text-xs transition ${
                         isRealUser
-                          ? "border-amber-500/30 bg-amber-500/5 shadow-sm"
+                          ? "border-amber-500/40 bg-amber-500/10 shadow-sm"
                           : player.isCashedOut
-                          ? "border-emerald-500/10 bg-emerald-950/5"
+                          ? "border-emerald-500/20 bg-emerald-950/20"
                           : player.isBust
-                          ? "border-rose-900/20 opacity-40"
-                          : "border-slate-900"
+                          ? "border-rose-900/30 opacity-40"
+                          : "border-[#481E26]"
                       }`}
                       id={`player_bet_item_${player.id}`}
                     >
@@ -185,11 +184,11 @@ export const BetsList: React.FC<BetsListProps> = memo(({
                             {player.cashOutMultiplier?.toFixed(2)}x
                           </div>
                         ) : player.isBust ? (
-                          <span className="text-[10px] uppercase font-bold tracking-wider text-rose-500 bg-rose-500/5 px-2 py-0.5 rounded border border-rose-500/5">
+                          <span className="text-[10px] uppercase font-bold tracking-wider text-rose-400 bg-rose-950/40 px-2 py-0.5 rounded border border-rose-500/30">
                             Bust
                           </span>
                         ) : (
-                          <span className="text-[10px] font-medium text-slate-500 italic">
+                          <span className="text-[10px] font-medium text-slate-400 italic">
                             Flying ...
                           </span>
                         )}
@@ -206,9 +205,9 @@ export const BetsList: React.FC<BetsListProps> = memo(({
         {activeTab === "MY" && (
           <div className="flex-1 flex flex-col min-h-0 gap-3">
             {/* Quick stats dashboard */}
-            <div className="grid grid-cols-2 gap-2 text-xs bg-slate-900/40 p-2.5 rounded-xl border border-slate-900">
+            <div className="grid grid-cols-2 gap-2 text-xs bg-[#1A090D] p-2.5 rounded-xl border border-[#481E26]">
               <div className="flex flex-col gap-0.5">
-                <span className="text-[9.5px] text-slate-500 uppercase tracking-wider font-mono">Win Rate</span>
+                <span className="text-[9.5px] text-slate-400 uppercase tracking-wider font-mono">Win Rate</span>
                 <span className="font-bold text-slate-200">
                   {userStats.totalBets > 0
                     ? `${Math.round((userStats.winCount / userStats.totalBets) * 100)}%`
@@ -216,7 +215,7 @@ export const BetsList: React.FC<BetsListProps> = memo(({
                 </span>
               </div>
               <div className="flex flex-col gap-0.5">
-                <span className="text-[9.5px] text-slate-500 uppercase tracking-wider font-mono">Net Profit</span>
+                <span className="text-[9.5px] text-slate-400 uppercase tracking-wider font-mono">Net Profit</span>
                 <span
                   className={`font-black font-mono ${
                     userStats.netProfit >= 0 ? "text-emerald-400" : "text-rose-400"
@@ -227,7 +226,7 @@ export const BetsList: React.FC<BetsListProps> = memo(({
                 </span>
               </div>
               
-              <div className="col-span-2 pt-1.5 border-t border-slate-850 flex justify-between items-center text-[9.5px] text-slate-500">
+              <div className="col-span-2 pt-1.5 border-t border-[#481E26] flex justify-between items-center text-[9.5px] text-slate-400">
                 <span>Bets: {userStats.totalBets}</span>
                 <button
                   onClick={onResetStats}
@@ -242,20 +241,20 @@ export const BetsList: React.FC<BetsListProps> = memo(({
             {/* History stack */}
             <div className="flex-1 overflow-y-auto pr-0.5 flex flex-col gap-1.5">
               {myHistory.length === 0 ? (
-                <div className="text-center text-xs text-slate-500 my-auto py-10">
+                <div className="text-center text-xs text-slate-400 my-auto py-10">
                   No bets placed in this session.
                 </div>
               ) : (
                 myHistory.map((item, hIdx) => (
                   <div
                     key={item.id ? `${item.id}_${hIdx}` : `my_hist_${hIdx}`}
-                    className="flex justify-between items-start bg-slate-900/20 border border-slate-900 p-2 rounded-lg text-xs"
+                    className="flex justify-between items-start bg-[#1A090D]/90 border border-[#481E26] p-2 rounded-lg text-xs"
                     id={`my_history_item_${item.id || hIdx}`}
                   >
                     {/* Timestamp & Bet info */}
                     <div className="flex flex-col">
-                      <span className="text-[10px] text-slate-500 font-mono tracking-wider">{item.timestamp}</span>
-                      <span className="font-bold text-slate-300">
+                      <span className="text-[10px] text-slate-400 font-mono tracking-wider">{item.timestamp}</span>
+                      <span className="font-bold text-slate-200">
                         {item.amount.toLocaleString()}{!item.multiplier && " — LOSS"}
                       </span>
                       {item.cashbackAmount !== undefined && item.cashbackAmount > 0 && (
@@ -275,12 +274,12 @@ export const BetsList: React.FC<BetsListProps> = memo(({
                           >
                             x{item.multiplier.toFixed(2)}
                           </span>
-                          <span className="text-[9.5px] text-slate-400">
+                          <span className="text-[9.5px] text-slate-300">
                             +{(item.winAmount || 0).toLocaleString(undefined, { maximumFractionDigits: 0 })}
                           </span>
                         </div>
                       ) : (
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-rose-500 bg-rose-500/5 px-2 py-0.5 rounded border border-rose-500/5">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-rose-400 bg-rose-950/50 px-2 py-0.5 rounded border border-rose-500/30">
                           Loss
                         </span>
                       )}
@@ -295,7 +294,7 @@ export const BetsList: React.FC<BetsListProps> = memo(({
         {/* TOP TAB */}
         {activeTab === "TOP" && (
           <div className="flex-1 flex flex-col min-h-0 gap-3">
-            <div className="text-[10px] text-slate-500 uppercase tracking-widest font-mono border-b border-slate-900 pb-1.5 flex items-center justify-between">
+            <div className="text-[10px] text-slate-400 uppercase tracking-widest font-mono border-b border-[#481E26] pb-1.5 flex items-center justify-between">
               <span>Top High-Stakes Winners</span>
               <span>Multiplier / Payout</span>
             </div>
@@ -309,7 +308,7 @@ export const BetsList: React.FC<BetsListProps> = memo(({
                 return (
                   <div
                     key={item.id ? `${item.id}_${index}` : `top_item_${index}`}
-                    className="flex items-center justify-between bg-slate-900/10 border border-slate-900/50 px-2.5 py-2 rounded-lg text-xs"
+                    className="flex items-center justify-between bg-[#1A090D]/80 border border-[#481E26]/80 px-2.5 py-2 rounded-lg text-xs"
                     id={`top_leader_payout_${index}`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
@@ -322,16 +321,16 @@ export const BetsList: React.FC<BetsListProps> = memo(({
                             ? "bg-slate-300 text-slate-950"
                             : index === 2
                             ? "bg-amber-700 text-slate-100"
-                            : "bg-slate-850 text-slate-400"
+                            : "bg-[#2E1218] text-slate-300 border border-[#52252e]/50"
                         }`}
                       >
                         {index + 1}
                       </span>
                       <div className="flex flex-col min-w-0">
-                        <span className="font-mono font-bold text-slate-300 text-[11px] truncate max-w-[120px]">
+                        <span className="font-mono font-bold text-slate-200 text-[11px] truncate max-w-[120px]">
                           {formattedName}
                         </span>
-                        <span className="text-[9px] text-slate-500 font-mono">
+                        <span className="text-[9px] text-slate-400 font-mono">
                           Bet: {item.amount.toLocaleString()}
                         </span>
                       </div>
@@ -359,5 +358,7 @@ export const BetsList: React.FC<BetsListProps> = memo(({
       </div>
     </div>
   );
-});
+};
+
+export const BetsList: React.FC<BetsListProps> = memo(BetsListComponent);
 

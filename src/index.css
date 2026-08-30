@@ -1,9 +1,29 @@
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Exo 2", "Chakra Petch", "Rajdhani", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Rajdhani", "Chakra Petch", sans-serif;
+  --font-sans: "Rajdhani", "Montserrat", "Exo 2", "Chakra Petch", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Orbitron", "Rajdhani", "Montserrat", sans-serif;
+  --font-heading: "Orbitron", "Rajdhani", sans-serif;
+  --font-english: "Rajdhani", "Orbitron", "Montserrat", sans-serif;
   --font-mono: "Chakra Petch", "Rajdhani", monospace;
+  --font-numeric: "Chakra Petch", monospace;
+}
+
+/* Futuristic/Modern English Typography */
+.font-english {
+  font-family: "Rajdhani", "Orbitron", "Montserrat", sans-serif;
+  letter-spacing: 0.03em;
+}
+
+.font-display-modern {
+  font-family: "Orbitron", "Rajdhani", sans-serif;
+  letter-spacing: 0.05em;
+}
+
+/* Numeric Preservation */
+.font-numeric, .font-mono {
+  font-family: "Chakra Petch", "Rajdhani", monospace !important;
+  font-feature-settings: "tnum" 1, "zero" 1;
 }
 
 /* Prevent viewport overflow and eliminate mobile elastic bounce */
@@ -15,7 +35,7 @@ html, body, #root {
   overflow-x: hidden;
   -webkit-text-size-adjust: 100%;
   touch-action: manipulation;
-  background-color: #030712;
+  background-color: #3A1920;
 }
 
 /* Smooth Canvas Hardware Acceleration */
@@ -27,6 +47,28 @@ canvas {
   will-change: transform;
 }
 
+#aviator_canvas_container {
+  contain: layout style paint;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+#aviator_game_canvas {
+  contain: strict;
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+/* GPU Accelerated Container Performance */
+.gpu-layer {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  will-change: transform;
+}
+
+
 /* Custom subtle thin scrollbars */
 ::-webkit-scrollbar {
   width: 5px;
@@ -34,21 +76,21 @@ canvas {
 }
 
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.3);
+  background: rgba(35, 14, 19, 0.5);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(225, 29, 72, 0.35);
+  background: rgba(225, 29, 72, 0.45);
   border-radius: 999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(225, 29, 72, 0.65);
+  background: rgba(225, 29, 72, 0.75);
 }
 
 /* Support Firefox */
 * {
   scrollbar-width: thin;
-  scrollbar-color: rgba(225, 29, 72, 0.35) rgba(15, 23, 42, 0.3);
+  scrollbar-color: rgba(225, 29, 72, 0.45) rgba(35, 14, 19, 0.5);
 }
 

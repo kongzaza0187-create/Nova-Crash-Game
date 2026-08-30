@@ -15,7 +15,28 @@ interface BetPanelProps {
   onUpdateAutoSettings: (isAutoBet: boolean, isAutoCashOut: boolean, autoCashOutMultiplier: number) => void;
 }
 
-export const BetPanel: React.FC<BetPanelProps> = memo(({
+function areBetPanelPropsEqual(prev: BetPanelProps, next: BetPanelProps) {
+  // If active round is flying and user has an active un-cashed bet, we must update when multiplier updates
+  const isActivelyCashingOut = next.roundState === "FLYING" && next.bet.isPlaced && !next.bet.hasCashedOut;
+  const wasActivelyCashingOut = prev.roundState === "FLYING" && prev.bet.isPlaced && !prev.bet.hasCashedOut;
+
+  if (isActivelyCashingOut || wasActivelyCashingOut) {
+    if (prev.multiplier !== next.multiplier) return false;
+  }
+
+  return (
+    prev.id === next.id &&
+    prev.roundState === next.roundState &&
+    prev.userBalance === next.userBalance &&
+    prev.bet === next.bet &&
+    prev.onPlaceBet === next.onPlaceBet &&
+    prev.onCancelBet === next.onCancelBet &&
+    prev.onCashOut === next.onCashOut &&
+    prev.onUpdateAutoSettings === next.onUpdateAutoSettings
+  );
+}
+
+const BetPanelComponent: React.FC<BetPanelProps> = ({
   id,
   bet,
   roundState,
@@ -466,5 +487,7 @@ export const BetPanel: React.FC<BetPanelProps> = memo(({
       )}
     </div>
   );
-});
+};
+
+export const BetPanel: React.FC<BetPanelProps> = memo(BetPanelComponent, areBetPanelPropsEqual);
 
