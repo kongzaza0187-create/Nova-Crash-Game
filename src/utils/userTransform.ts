@@ -3,7 +3,25 @@
  * Ensures all player and bot names follow the standardized format:
  * "user_" followed by exactly 11 digits (e.g. user_84920481923).
  * Zero-PII, completely anonymized, deterministic or random 11-digit generation.
+ * Guarantees zero duplicate 11-digit user IDs between real franchise players and bots.
  */
+
+// Global registry of currently active real player 11-digit IDs to prevent bot collision
+const activeRealPlayerIds = new Set<string>();
+
+export function registerRealPlayerId(formattedUserId: string) {
+  const match = formattedUserId.match(/^user_(\d{11})$/i);
+  if (match && match[1]) {
+    activeRealPlayerIds.add(match[1]);
+  }
+}
+
+export function unregisterRealPlayerId(formattedUserId: string) {
+  const match = formattedUserId.match(/^user_(\d{11})$/i);
+  if (match && match[1]) {
+    activeRealPlayerIds.delete(match[1]);
+  }
+}
 
 // Generate a deterministic or pseudo-random unique 11-digit string
 export function generate11DigitString(seed?: string | number): string {
@@ -36,12 +54,15 @@ export function generate11DigitString(seed?: string | number): string {
  */
 export function formatToStandardUser(rawUserIdOrName: string): string {
   if (!rawUserIdOrName) {
-    return `user_${generate11DigitString()}`;
+    const freshId = generate11DigitString();
+    registerRealPlayerId(`user_${freshId}`);
+    return `user_${freshId}`;
   }
 
   // If already user_ + 11 digits, keep it
   const match = rawUserIdOrName.match(/^user_(\d{11})$/i);
-  if (match) {
+  if (match && match[1]) {
+    registerRealPlayerId(`user_${match[1]}`);
     return `user_${match[1]}`;
   }
 
@@ -49,7 +70,9 @@ export function formatToStandardUser(rawUserIdOrName: string): string {
   const digitsOnly = rawUserIdOrName.replace(/\D/g, "");
   
   if (digitsOnly.length >= 11) {
-    return `user_${digitsOnly.slice(0, 11)}`;
+    const formatted = `user_${digitsOnly.slice(0, 11)}`;
+    registerRealPlayerId(formatted);
+    return formatted;
   }
 
   // If digits are fewer than 11, deterministically pad with hashed seed from name
@@ -60,7 +83,9 @@ export function formatToStandardUser(rawUserIdOrName: string): string {
   }
   const extraDigits = String(Math.abs(hash)).padStart(11, "8");
   const combined = (digitsOnly + extraDigits).slice(0, 11);
-  return `user_${combined}`;
+  const formatted = `user_${combined}`;
+  registerRealPlayerId(formatted);
+  return formatted;
 }
 
 export const AVATAR_COLORS = [
@@ -75,11 +100,13 @@ export interface BotPoolConfig {
   minBots?: number;
   maxBots?: number;
   maxBetAmount?: number;
+  excludedRealUserIds?: string[];
 }
 
 /**
  * Generates a randomized bot pool of 100 to 200 bots per round
  * Every bot has a strictly unique 11-digit user identifier: `user_XXXXXXXXXXX`
+ * Guaranteed zero collision with any real active player IDs.
  * Wager amount is capped at max 30,000 THB.
  */
 export function generateRandomBotPool(config: BotPoolConfig = {}) {
@@ -87,7 +114,15 @@ export function generateRandomBotPool(config: BotPoolConfig = {}) {
   const max = config.maxBots ?? 200;
   const count = Math.floor(Math.random() * (max - min + 1)) + min;
   
-  const generatedNumbers = new Set<string>();
+  // Seed with all active real player numbers and passed exclusions to guarantee 100% uniqueness
+  const generatedNumbers = new Set<string>(activeRealPlayerIds);
+  if (config.excludedRealUserIds) {
+    for (const uid of config.excludedRealUserIds) {
+      const m = uid.match(/^user_(\d{11})$/i);
+      if (m && m[1]) generatedNumbers.add(m[1]);
+    }
+  }
+
   const bots = [];
 
   // Weighted bet amounts up to max 30,000 THB
@@ -96,7 +131,7 @@ export function generateRandomBotPool(config: BotPoolConfig = {}) {
   ];
 
   for (let i = 0; i < count; i++) {
-    // Generate unique 11-digit string using deduplication set
+    // Generate unique 11-digit string that never collides with any real user or another bot
     let num11 = generate11DigitString();
     while (generatedNumbers.has(num11)) {
       num11 = generate11DigitString();

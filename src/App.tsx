@@ -664,12 +664,17 @@ export default function App() {
 
   // Simulated multiplayer bots and real connected players builder
   const spawnSimulatedBots = () => {
-    // Generate between 100 and 200 random user bots per round with strictly unique 11-digit numbers
-    const botPool = generateRandomBotPool({ minBots: 100, maxBots: 200, maxBetAmount: 30000 });
+    const formattedRealUser = formatToStandardUser(realUserId);
+    // Generate between 100 and 200 random user bots per round with strictly unique 11-digit numbers (guaranteed zero collision with real users)
+    const botPool = generateRandomBotPool({ 
+      minBots: 100, 
+      maxBots: 200, 
+      maxBetAmount: 30000,
+      excludedRealUserIds: [formattedRealUser, realUserId]
+    });
     
     // Inject active real user bets if committed this round
     const combinedBets: PlayerBet[] = [];
-    const formattedRealUser = formatToStandardUser(realUserId);
 
     if (betLeft.isPlaced) {
       combinedBets.push({
