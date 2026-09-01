@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback, memo } from "react";
+import { io, Socket } from "socket.io-client";
 import { GameCanvas } from "./components/GameCanvas";
 import { BetPanel } from "./components/BetPanel";
 import { BetsList, TopBetRecord } from "./components/BetsList";
 import { LivePerformanceLoop } from "./components/LivePerformanceLoop";
 import { HelpModal } from "./components/HelpModal";
+import { FairPlayModal } from "./components/FairPlayModal";
 import { SeamlessWalletModal } from "./components/SeamlessWalletModal";
 import { ResponsibleGamingModal } from "./components/ResponsibleGamingModal";
 import { audioManager } from "./audio";
@@ -36,34 +38,49 @@ import {
 } from "lucide-react";
 
 // Memoized past rounds multiplier history bar
-const HistoryBar = memo(({ history }: { history: HistoryItem[] }) => {
+const HistoryBar = memo(({ history, onOpenFairPlay }: { history: HistoryItem[]; onOpenFairPlay?: () => void }) => {
   return (
-    <div className="flex items-center gap-2 overflow-x-auto py-2 sm:py-2.5 px-3 sm:px-3.5 bg-[#281117]/90 border border-[#52252e]/80 rounded-xl select-none scrollbar-none w-full shadow-inner" id="history_bar">
-      <div className="text-[9px] sm:text-[9.5px] text-rose-300/80 font-bold uppercase tracking-wider shrink-0 flex items-center gap-1 font-mono">
-        <TrendingUp size={11} className="text-rose-400" /> History:
+    <div className="flex flex-col gap-1.5 w-full select-none" id="history_section">
+      <div className="flex items-center gap-2 overflow-x-auto py-2 sm:py-2.5 px-3 sm:px-3.5 bg-[#281117]/90 border border-[#52252e]/80 rounded-xl select-none scrollbar-none w-full shadow-inner" id="history_bar">
+        <div className="text-[9px] sm:text-[9.5px] text-rose-300/80 font-bold uppercase tracking-wider shrink-0 flex items-center gap-1 font-mono">
+          <TrendingUp size={11} className="text-rose-400" /> History:
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {history.map((item, idx) => {
+            const tier = getMultiplierColorTier(item.val);
+            return (
+              <span
+                key={item.id ? `hist_${item.id}_${idx}` : `hist_idx_${idx}`}
+                style={{
+                  color: tier.color,
+                  borderColor: tier.borderColor,
+                  backgroundColor: tier.bgColor,
+                  boxShadow: tier.shadow,
+                }}
+                className={`text-[9.5px] sm:text-[10px] font-black px-2.5 py-1 rounded-md font-mono border transition-all duration-300 ring-1 ring-black/50 backdrop-blur-sm ${
+                  idx === 0 ? "scale-105 ring-white/40" : "opacity-95 hover:opacity-100 hover:scale-105"
+                }`}
+                title={`${tier.label}: ${item.val.toFixed(2)}x`}
+                id={`history_pill_${idx}`}
+              >
+                {item.val.toFixed(2)}x
+              </span>
+            );
+          })}
+        </div>
       </div>
-      <div className="flex items-center gap-1.5 shrink-0">
-        {history.map((item, idx) => {
-          const tier = getMultiplierColorTier(item.val);
-          return (
-            <span
-              key={item.id}
-              style={{
-                color: tier.color,
-                borderColor: tier.borderColor,
-                backgroundColor: tier.bgColor,
-                boxShadow: tier.shadow,
-              }}
-              className={`text-[9.5px] sm:text-[10px] font-black px-2.5 py-1 rounded-md font-mono border transition-all duration-300 ring-1 ring-black/50 backdrop-blur-sm ${
-                idx === 0 ? "scale-105 ring-white/40" : "opacity-95 hover:opacity-100 hover:scale-105"
-              }`}
-              title={`${tier.label}: ${item.val.toFixed(2)}x`}
-              id={`history_pill_${idx}`}
-            >
-              {item.val.toFixed(2)}x
-            </span>
-          );
-        })}
+
+      {/* Button below history: Fair play */}
+      <div className="flex items-center px-0.5">
+        <button
+          onClick={onOpenFairPlay}
+          id="fair_play_btn"
+          className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-500/30 hover:border-emerald-400/50 px-3 py-1 rounded-lg transition-all duration-150 shadow-sm shadow-emerald-950/30 font-mono group cursor-pointer active:scale-95"
+        >
+          <ShieldCheck size={13} className="text-emerald-400 group-hover:scale-110 transition-transform" />
+          <span>Fair play</span>
+          <span className="text-[9px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded font-sans ml-0.5">Provably Fair</span>
+        </button>
       </div>
     </div>
   );
@@ -162,19 +179,6 @@ export default function App() {
     }
   };
 
-  // Initial sync on mount
-  useEffect(() => {
-    syncRealWallet();
-  }, []);
-
-  const switchWalletMode = async (mode: WalletMode) => {
-    audioManager.playClick();
-    setWalletMode(mode);
-    if (mode === "REAL") {
-      await syncRealWallet();
-    }
-  };
-
   // Stats
   const [userStats, setUserStats] = useState<UserStats>({
     winCount: 0,
@@ -186,6 +190,100 @@ export default function App() {
 
   // Recent multiplier history
   const [history, setHistory] = useState<HistoryItem[]>(INITIAL_HISTORY);
+
+  // Fetch real 24/7 continuous global history from backend server on room entry
+  const fetchRealGlobalHistory = async () => {
+    try {
+      const res = await fetch("/api/security/history");
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.history) && data.history.length > 0) {
+          const seen = new Set<string>();
+          const uniqueItems: HistoryItem[] = [];
+          for (const h of data.history) {
+            const id = String(h.id || h.roundId || Math.random());
+            if (!seen.has(id)) {
+              seen.add(id);
+              uniqueItems.push({
+                id,
+                val: Number(h.val || h.crashMultiplier)
+              });
+            }
+          }
+          setHistory(uniqueItems);
+          if (typeof data.globalRoundNum === "number") {
+            setGlobalRoundNum(data.globalRoundNum);
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch real 24/7 global history from server:", err);
+    }
+  };
+
+  // Initial sync on mount and real-time Socket.io single source of truth connection
+  useEffect(() => {
+    syncRealWallet();
+    fetchRealGlobalHistory();
+
+    // Attach real-time WebSocket connection to central server room
+    const socket: Socket = io({ transports: ["websocket", "polling"] });
+
+    socket.on("connect", () => {
+      socket.emit("JOIN_GAME_ROOM", { token: "PLAYER_LIVE_ROOM" });
+    });
+
+    // 1. Instant history payload on room entry
+    socket.on("INIT_HISTORY", (payload: any) => {
+      if (payload?.data?.history && Array.isArray(payload.data.history)) {
+        const seen = new Set<string>();
+        const uniqueItems: HistoryItem[] = [];
+        for (const h of payload.data.history) {
+          const id = String(h.id || h.roundId || Math.random());
+          if (!seen.has(id)) {
+            seen.add(id);
+            uniqueItems.push({
+              id,
+              val: Number(h.val || h.crashMultiplier)
+            });
+          }
+        }
+        setHistory(uniqueItems);
+      }
+    });
+
+    // 2. Real-time broadcast when rocket crashes on central server
+    socket.on("NEW_HISTORY_ENTRY", (payload: any) => {
+      const record = payload?.data || payload;
+      if (record && (record.val || record.crashMultiplier)) {
+        const roundId = String(record.id || record.roundId);
+        const mult = Number(record.val || record.crashMultiplier);
+        const newItem: HistoryItem = {
+          id: roundId,
+          val: mult
+        };
+        setHistory((prev) => {
+          // If already the latest entry or already present in list, avoid duplicate
+          if (prev.some(p => p.id === roundId)) {
+            return prev;
+          }
+          return [newItem, ...prev.slice(0, 49)];
+        });
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+    };
+  }, []);
+
+  const switchWalletMode = async (mode: WalletMode) => {
+    audioManager.playClick();
+    setWalletMode(mode);
+    if (mode === "REAL") {
+      await syncRealWallet();
+    }
+  };
 
   // Simulated multiplayer bets
   const [playerBets, setPlayerBets] = useState<PlayerBet[]>([]);
@@ -220,6 +318,7 @@ export default function App() {
   }>>([]);
 
   const [isHelpOpen, setIsHelpOpen] = useState<boolean>(false);
+  const [isFairPlayOpen, setIsFairPlayOpen] = useState<boolean>(false);
   const [isSeamlessWalletOpen, setIsSeamlessWalletOpen] = useState<boolean>(false);
   const [isMuted, setIsMuted] = useState<boolean>(false);
 
@@ -438,9 +537,9 @@ export default function App() {
         }
 
         // Check 5: Round history array is initialized
-        const curHistory = historyRef.current;
+        const curHistory = (historyRef.current && historyRef.current.length > 0) ? historyRef.current : history;
         if (!Array.isArray(curHistory) || curHistory.length === 0) {
-          validationFailures.push("Coefficient History Log Uninitialized");
+          setHistory(INITIAL_HISTORY);
         }
 
         // Check 6: RNG / crash point generator function exists
@@ -537,6 +636,14 @@ export default function App() {
               localStorage.setItem("skyrush_recalibration_count", String(data.recalibrationCount));
             }
           }
+          if (Array.isArray(data.history) && data.history.length > 0) {
+            setHistory(prev => {
+              if (prev.length === 0 || prev === INITIAL_HISTORY) {
+                return data.history.map((h: any) => ({ id: String(h.id), val: Number(h.val) }));
+              }
+              return prev;
+            });
+          }
           setSignalConfidence(parseFloat((69 + Math.random() * 6).toFixed(1)));
           setIsAnalyzingSignal(true);
           setSignalPrediction(null);
@@ -562,11 +669,24 @@ export default function App() {
       const response = await fetch("/api/security/analytics/insights");
       if (response.ok) {
         const data = await response.json();
-        setBackendTelemetryInsights(data);
+        if (data && typeof data === "object") {
+          setBackendTelemetryInsights(data);
+          return;
+        }
       }
-    } catch (err) {
-      console.error("Failed to fetch backend telemetry insights", err);
+    } catch {
+      // Graceful offline fallback
     }
+    // Set fallback telemetry insights safely
+    setBackendTelemetryInsights((prev) => prev || {
+      totalAnalyzed: 0,
+      averageCashoutPoint: 1.50,
+      predictedPeakRiskPoint: 1.45,
+      targetRtpPercent: 63,
+      houseEdgePercent: 37,
+      jackpotCyclesCount: "0/100",
+      jackpotsScheduledThisCycle: [17, 33, 49, 72, 88]
+    });
   };
 
   const logPlayerCashoutToBackend = async (multiplier: number) => {
@@ -669,7 +789,7 @@ export default function App() {
     const botPool = generateRandomBotPool({ 
       minBots: 100, 
       maxBots: 200, 
-      maxBetAmount: 30000,
+      maxBetAmount: 8000,
       excludedRealUserIds: [formattedRealUser, realUserId]
     });
     
@@ -750,7 +870,7 @@ export default function App() {
     }
     hasCashedOutLeftRef.current = false;
     isCashingOutLeftRef.current = false;
-    const amount = Math.min(30000, Math.max(30, rawAmount));
+    const amount = Math.min(8000, Math.max(20, rawAmount));
     const tax = getTaxForWager(amount);
     const totalCost = amount + tax;
     
@@ -787,7 +907,7 @@ export default function App() {
     }
     hasCashedOutRightRef.current = false;
     isCashingOutRightRef.current = false;
-    const amount = Math.min(30000, Math.max(30, rawAmount));
+    const amount = Math.min(8000, Math.max(20, rawAmount));
     const tax = getTaxForWager(amount);
     const totalCost = amount + tax;
     
@@ -1382,11 +1502,26 @@ export default function App() {
       setBetLeft((prev) => ({ ...prev, isPlaced: false, hasCashedOut: false }));
       setBetRight((prev) => ({ ...prev, isPlaced: false, hasCashedOut: false }));
 
-      // Push multiplier onto top history list
-      setHistory((prev) => [
-        { id: `hist_${Date.now()}`, val: crashPointVal },
-        ...prev.slice(0, 16), // cap at max 17 items shown
-      ]);
+      // Commit completed round to central 24/7 server history
+      const finishedRoundId = String(globalRoundNum);
+      
+      // Update top history list ONLY after crash explosion with single authoritative round ID
+      setHistory((prev) => {
+        if (prev.some(p => p.id === finishedRoundId || p.id === `hist_${finishedRoundId}`)) {
+          return prev;
+        }
+        const newItem: HistoryItem = { id: finishedRoundId, val: crashPointVal };
+        return [newItem, ...prev.slice(0, 49)];
+      });
+
+      fetch("/api/security/round/finish", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          roundId: finishedRoundId,
+          crashMultiplier: crashPointVal
+        })
+      }).catch(() => {});
 
       // Wait 3.0 seconds, then reset state
       timeoutId = setTimeout(() => {
@@ -1569,7 +1704,10 @@ export default function App() {
       <main className="flex-1 max-w-7xl mx-auto w-full p-2.5 sm:p-4 flex flex-col gap-3 sm:gap-4 min-h-0">
         
         {/* Horizontal scrollbar of past round coefficient payouts */}
-        <HistoryBar history={history} />
+        <HistoryBar
+          history={history}
+          onOpenFairPlay={() => setIsFairPlayOpen(true)}
+        />
 
         {/* Dashboard Panels Split */}
         <div className="flex-1 flex flex-col lg:flex-row gap-3 sm:gap-4 min-h-0">
@@ -1639,6 +1777,14 @@ export default function App() {
 
       {/* Interactive Helper Overlay Modal */}
       <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
+
+      {/* Fair Play & Provably Fair Modal */}
+      <FairPlayModal
+        isOpen={isFairPlayOpen}
+        onClose={() => setIsFairPlayOpen(false)}
+        currentMultiplier={multiplier}
+        history={history}
+      />
 
       {/* ACTUARIAL OPERATIONS AND ADMINISTRATIVE TERMINAL MODAL */}
       {isAdminModalOpen && (

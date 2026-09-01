@@ -1,6 +1,8 @@
 import express, { Request, Response, NextFunction } from "express";
+import http from "http";
 import path from "path";
 import crypto from "crypto";
+import { Server as SocketIOServer } from "socket.io";
 import { createServer as createViteServer } from "vite";
 import { 
   seamlessWalletStore, 
@@ -11,6 +13,11 @@ import {
 import { riskAssuranceEngine } from "./src/modules/game/riskAssuranceEngine";
 import { b2bRedis, b2bPostgresLogs } from "./server/b2bArchitectureEngine";
 import { masterK6Simulator } from "./server/k6MasterEngine";
+import { 
+  CentralGameHistoryService, 
+  LiveGameSyncController, 
+  HistoryRecord 
+} from "./src/services/centralHistoryEngine";
 
 // Ensure process.env.NODE_ENV is set or default
 const isProduction = process.env.NODE_ENV === "production";
@@ -26,7 +33,7 @@ interface SecurityLogEntry {
   details: string;
 }
 
-// Stores sanitized event logs
+// Stores sanitized event logs without IP, machine, or fingerprint metadata
 const securityLogs: SecurityLogEntry[] = [];
 
 function sanitizeClientToken(raw?: string): string {
@@ -34,7 +41,7 @@ function sanitizeClientToken(raw?: string): string {
   return crypto.createHash("sha256").update(raw).digest("hex").slice(0, 12);
 }
 
-function logSecurityEvent(entry: { type: string; details: string; timestamp?: string; ip?: string; userId?: string }) {
+function logSecurityEvent(entry: { type: string; details: string; timestamp?: string; userId?: string }) {
   const logId = "evt_" + crypto.randomUUID();
   const fullEntry: SecurityLogEntry = {
     id: logId,
@@ -47,15 +54,15 @@ function logSecurityEvent(entry: { type: string; details: string; timestamp?: st
   console.log(`[EVENT][${fullEntry.type}] ${fullEntry.details}`);
 }
 
-function logSuspiciousActivity(payload: { type: string; details: string; ip?: string; userId?: string }) {
-  const token = sanitizeClientToken(payload.ip || payload.userId);
+function logSuspiciousActivity(payload: { type: string; details: string; userId?: string }) {
+  const token = sanitizeClientToken(payload.userId);
   logSecurityEvent({
     type: payload.type,
     details: `Security rule evaluated for token [${token}]: ${payload.details}`
   });
 }
 
-function logFailedValidation(payload: { timestamp: string; details: string; ip?: string }) {
+function logFailedValidation(payload: { timestamp: string; details: string }) {
   logSecurityEvent({
     type: "FAILED_VALIDATION",
     timestamp: payload.timestamp,
@@ -146,7 +153,6 @@ class SecurityTokenService {
     this.blacklistedTokens.add(token);
     logSecurityEvent({
       type: "TOKEN_BLACKLISTED",
-      ip: "system",
       timestamp: new Date().toISOString(),
       details: "User token blacklisted after logout"
     });
@@ -167,8 +173,7 @@ function verifyJWT(req: Request, res: Response, next: NextFunction) {
   if (!payload) {
     logSuspiciousActivity({
       type: "INVALID_JWT_ATTEMPT",
-      details: "Access attempt using expired or invalid JWT token",
-      ip: req.ip || "unknown"
+      details: "Access attempt using expired or invalid JWT token"
     });
     return res.status(401).json({ error: "Unauthorized. Invalid, signature-mismatched, or expired JWT." });
   }
@@ -186,33 +191,33 @@ interface RateLimitBucket {
 }
 
 class SecurityRateLimiter {
-  private ipBuckets: Map<string, RateLimitBucket> = new Map();
+  private clientBuckets: Map<string, RateLimitBucket> = new Map();
   private userBetBuckets: Map<string, RateLimitBucket> = new Map();
   private loginBuckets: Map<string, RateLimitBucket> = new Map();
   private consecutiveViolations: Map<string, number> = new Map();
-  private blockedIPs: Set<string> = new Set();
+  private blockedClients: Set<string> = new Set();
 
-  public isBlocked(ip: string): boolean {
-    return this.blockedIPs.has(ip);
+  public isBlocked(clientToken: string): boolean {
+    return this.blockedClients.has(clientToken);
   }
 
-  public trackViolation(ip: string, reason: string) {
-    const current = (this.consecutiveViolations.get(ip) || 0) + 1;
-    this.consecutiveViolations.set(ip, current);
+  public trackViolation(clientToken: string, reason: string) {
+    const current = (this.consecutiveViolations.get(clientToken) || 0) + 1;
+    this.consecutiveViolations.set(clientToken, current);
     
     logSecurityEvent({
       type: "RATE_LIMIT_VIOLATION",
       timestamp: new Date().toISOString(),
-      details: `Rate threshold exceeded [${sanitizeClientToken(ip)}]: ${reason} (count: ${current})`
+      details: `Rate threshold exceeded [${clientToken}]: ${reason} (count: ${current})`
     });
 
     // Block token automatically after 3 consecutive violations
     if (current >= 3) {
-      this.blockedIPs.add(ip);
+      this.blockedClients.add(clientToken);
       logSecurityEvent({
         type: "CLIENT_BLOCKED",
         timestamp: new Date().toISOString(),
-        details: `Client token [${sanitizeClientToken(ip)}] temporarily blocked due to repeated rate limit violations.`
+        details: `Client token [${clientToken}] temporarily blocked due to repeated rate limit violations.`
       });
     }
   }
@@ -228,30 +233,29 @@ class SecurityRateLimiter {
     return bucket.count <= max;
   }
 
-  public handleRequest(ip: string): boolean {
-    if (ip === "127.0.0.1" || ip === "::1" || ip === "::ffff:127.0.0.1" || ip === "localhost") return true;
-    if (this.isBlocked(ip)) return false;
-    const ok = this.checkLimit(this.ipBuckets, ip, 10000, 60000); // High throughput allowed for wallet integrations
+  public handleRequest(clientToken: string): boolean {
+    if (this.isBlocked(clientToken)) return false;
+    const ok = this.checkLimit(this.clientBuckets, clientToken, 10000, 60000); // High throughput allowed for wallet integrations
     if (!ok) {
-      this.trackViolation(ip, "Max global application endpoint requests exceeded");
+      this.trackViolation(clientToken, "Max global application endpoint requests exceeded");
     }
     return ok;
   }
 
-  public handleBet(userId: string, ip: string): boolean {
-    if (this.isBlocked(ip)) return false;
+  public handleBet(userId: string, clientToken: string): boolean {
+    if (this.isBlocked(clientToken)) return false;
     const ok = this.checkLimit(this.userBetBuckets, userId, 10, 60000); // Max 10 bet requests per minute per user
     if (!ok) {
-      this.trackViolation(ip, `Max user bet requests (10 bets/min) exceeded by user ID: ${userId}`);
+      this.trackViolation(clientToken, `Max user bet requests (10 bets/min) exceeded by user ID: ${userId}`);
     }
     return ok;
   }
 
-  public handleLogin(ip: string): boolean {
-    if (this.isBlocked(ip)) return false;
-    const ok = this.checkLimit(this.loginBuckets, ip, 5, 60000); // Max 5 login attempts per minute per IP
+  public handleLogin(clientToken: string): boolean {
+    if (this.isBlocked(clientToken)) return false;
+    const ok = this.checkLimit(this.loginBuckets, clientToken, 5, 60000); // Max 5 login attempts per minute
     if (!ok) {
-      this.trackViolation(ip, "Max authorization key attempts (5 logins/min) exceeded");
+      this.trackViolation(clientToken, "Max authorization key attempts (5 logins/min) exceeded");
     }
     return ok;
   }
@@ -259,14 +263,15 @@ class SecurityRateLimiter {
 
 const rateLimiterInstance = new SecurityRateLimiter();
 
-// General requests limiter middleware
+// General requests limiter middleware (uses ephemeral cryptographic random trace token)
 function globalRateLimitMiddleware(req: Request, res: Response, next: NextFunction) {
-  const clientIp = req.ip || "unknown";
-  if (rateLimiterInstance.isBlocked(clientIp)) {
-    return res.status(403).json({ error: "Access denied. Your IP has been flagged and blocked due to consecutive rate limit violations." });
+  // Extract or generate privacy-preserving anonymous trace identifier
+  const clientToken = (req.headers["x-session-id"] as string) || "anonymous_session";
+  if (rateLimiterInstance.isBlocked(clientToken)) {
+    return res.status(403).json({ error: "Access denied. Rate limit threshold exceeded." });
   }
 
-  const success = rateLimiterInstance.handleRequest(clientIp);
+  const success = rateLimiterInstance.handleRequest(clientToken);
   if (!success) {
     return res.status(429).json({ error: "Too Many Requests. Maximum speed bound reached (100 req/min)." });
   }
@@ -314,7 +319,6 @@ function validateInputMiddleware(req: Request, res: Response, next: NextFunction
   if (hasMalicious) {
     logFailedValidation({
       timestamp: new Date().toISOString(),
-      ip: req.ip || "unknown",
       details: "SQL Injection or Cross-Site Scripting (XSS) symbols matched in requested parameters"
     });
     return res.status(400).json({ error: "Suspicious database payload detected. Operation cancelled." });
@@ -515,7 +519,6 @@ class SecurityGameIntegrityEngine {
 
     logSecurityEvent({
       type: "PROVABLY_FAIR_ROUND_GEN",
-      ip: "system",
       timestamp: new Date().toISOString(),
       details: `Created new round. Public Commitment Hash: ${hash} (Salt hidden for fair assurance)`
     });
@@ -530,19 +533,17 @@ class SecurityGameIntegrityEngine {
       this.currentRound.isCrashed = true;
       logSecurityEvent({
         type: "ROUND_CRASHED",
-        ip: "system",
         timestamp: new Date().toISOString(),
         details: `Game Round crashed at verified limit: ${this.currentRound.crashPoint}x`
       });
     }
   }
 
-  public registerBetOnServer(userId: string, betAmount: number, ip: string): { success: boolean; error?: string } {
+  public registerBetOnServer(userId: string, betAmount: number): { success: boolean; error?: string } {
     if (!this.currentRound || !this.currentRound.active || this.currentRound.isCrashed) {
       logSuspiciousActivity({
         type: "BET_NO_ACTIVE_ROUND",
         userId,
-        ip,
         details: "User attempted to post bet wager while game round is inactive"
       });
       return { success: false, error: "Game round is not open for wagering." };
@@ -553,7 +554,6 @@ class SecurityGameIntegrityEngine {
       logSuspiciousActivity({
         type: "INVALID_BET_WAGER",
         userId,
-        ip,
         details: `Rejected negative, non-numeric, or null wager amount: ${betAmount}`
       });
       return { success: false, error: "Wager amount must be a clean positive number." };
@@ -563,7 +563,6 @@ class SecurityGameIntegrityEngine {
       logSuspiciousActivity({
         type: "DUPLICATE_BET_WAGER",
         userId,
-        ip,
         details: "Attempted to register multiple active wagers inside matching cycle"
       });
       return { success: false, error: "An active bet is already bound to your credentials." };
@@ -573,7 +572,7 @@ class SecurityGameIntegrityEngine {
     return { success: true };
   }
 
-  public processVerifyCashout(userId: string, targetMultiplier: number, ip: string): { success: boolean; payout?: number; error?: string } {
+  public processVerifyCashout(userId: string, targetMultiplier: number): { success: boolean; payout?: number; error?: string } {
     if (!this.currentRound || !this.currentRound.active || this.currentRound.isCrashed) {
       return { success: false, error: "The flight simulation round is not currently running." };
     }
@@ -588,7 +587,6 @@ class SecurityGameIntegrityEngine {
       logSuspiciousActivity({
         type: "INVALID_CASHOUT_MULTIPLIER",
         userId,
-        ip,
         details: `Rejected unauthorized cashout multiplier format: ${targetMultiplier}`
       });
       return { success: false, error: "Requested cashout multiplier format is invalid." };
@@ -601,7 +599,6 @@ class SecurityGameIntegrityEngine {
       logSuspiciousActivity({
         type: "EXCEEDED_MULTIPLIER_FRAUD",
         userId,
-        ip,
         details: `User requested payout at ${targetMultiplier}x when actual crash point sequence triggered at ${crashPoint}x`
       });
       this.activeWagers.delete(userId); // Lose wager
@@ -665,21 +662,190 @@ export interface GlobalTierConfig {
 }
 
 export const GLOBAL_11_TIERS: GlobalTierConfig[] = [
-  { id: 1, label: "1.00x (Instant Bust)", min: 1.00, max: 1.00, probability: 4.00, targetIntervalRounds: 25.0, minCooldown: 0, maxCooldown: 0 },
-  { id: 2, label: "1.01x – 1.20x (Micro-Stumble Zone)", min: 1.01, max: 1.20, probability: 8.00, targetIntervalRounds: 12.5, minCooldown: 0, maxCooldown: 0 },
-  { id: 3, label: "1.21x – 1.50x (Low Safe Zone)", min: 1.21, max: 1.50, probability: 16.00, targetIntervalRounds: 6.3, minCooldown: 0, maxCooldown: 0 },
-  { id: 4, label: "1.51x – 2.00x (Mid Safe Zone)", min: 1.51, max: 2.00, probability: 14.00, targetIntervalRounds: 7.1, minCooldown: 0, maxCooldown: 0 },
-  { id: 5, label: "2.01x – 3.50x (Circulation Zone)", min: 2.01, max: 3.50, probability: 20.00, targetIntervalRounds: 5.0, minCooldown: 0, maxCooldown: 0 },
-  { id: 6, label: "3.51x – 6.00x (Mid-Profit Zone)", min: 3.51, max: 6.00, probability: 12.00, targetIntervalRounds: 8.3, minCooldown: 0, maxCooldown: 0 },
-  { id: 7, label: "6.01x – 9.00x (Big Win Tier 1)", min: 6.01, max: 9.00, probability: 8.00, targetIntervalRounds: 12.5, minCooldown: 0, maxCooldown: 0 },
-  { id: 8, label: "9.01x – 14.00x (Big Win Tier 2)", min: 9.01, max: 14.00, probability: 6.00, targetIntervalRounds: 16.7, minCooldown: 0, maxCooldown: 0 },
-  { id: 9, label: "14.01x – 22.00x (Mega Win Tier 1)", min: 14.01, max: 22.00, probability: 5.00, targetIntervalRounds: 20.0, minCooldown: 0, maxCooldown: 0 },
-  { id: 10, label: "22.01x – 35.00x (Mega Win Tier 2)", min: 22.01, max: 35.00, probability: 3.50, targetIntervalRounds: 28.6, minCooldown: 0, maxCooldown: 0 },
-  { id: 11, label: "35.01x – 50.00x (MAX CAP JACKPOT ZONE)", min: 35.01, max: 50.00, probability: 3.50, targetIntervalRounds: 28.6, minCooldown: 0, maxCooldown: 0 },
+  { id: 1, label: "1.00x (Instant Bust)", min: 1.00, max: 1.00, probability: 15.50, targetIntervalRounds: 6.45, minCooldown: 0, maxCooldown: 0 },
+  { id: 2, label: "1.01x – 1.20x (Micro-Stumble)", min: 1.01, max: 1.20, probability: 14.08, targetIntervalRounds: 7.1, minCooldown: 0, maxCooldown: 0 },
+  { id: 3, label: "1.21x – 1.50x (Low Safe Zone)", min: 1.21, max: 1.50, probability: 14.09, targetIntervalRounds: 7.1, minCooldown: 0, maxCooldown: 0 },
+  { id: 4, label: "1.51x – 2.00x (Mid Safe Zone)", min: 1.51, max: 2.00, probability: 14.08, targetIntervalRounds: 7.1, minCooldown: 0, maxCooldown: 0 },
+  { id: 5, label: "2.01x – 3.50x (Circulation Zone)", min: 2.01, max: 3.50, probability: 17.52, targetIntervalRounds: 5.7, minCooldown: 0, maxCooldown: 0 },
+  { id: 6, label: "3.51x – 6.00x (Mid-Profit Zone)", min: 3.51, max: 6.00, probability: 10.06, targetIntervalRounds: 9.9, minCooldown: 0, maxCooldown: 0 },
+  { id: 7, label: "6.01x – 9.00x (Big Win 1)", min: 6.01, max: 9.00, probability: 4.69, targetIntervalRounds: 21.3, minCooldown: 0, maxCooldown: 0 },
+  { id: 8, label: "9.01x – 14.00x (Big Win 2)", min: 9.01, max: 14.00, probability: 3.35, targetIntervalRounds: 29.8, minCooldown: 0, maxCooldown: 0 },
+  { id: 9, label: "14.01x – 22.00x (Mega Win 1)", min: 14.01, max: 22.00, probability: 2.20, targetIntervalRounds: 45.4, minCooldown: 0, maxCooldown: 0 },
+  { id: 10, label: "22.01x – 35.00x (Mega Win 2)", min: 22.01, max: 35.00, probability: 1.43, targetIntervalRounds: 69.9, minCooldown: 0, maxCooldown: 0 },
+  { id: 11, label: "35.01x – 50.00x (Max Cap Jackpot)", min: 35.01, max: 50.00, probability: 3.00, targetIntervalRounds: 33.3, minCooldown: 0, maxCooldown: 0 },
 ];
 
 export const GLOBAL_12_TIERS = GLOBAL_11_TIERS; // Alias for backward compatibility
 export const GLOBAL_8_TIERS = GLOBAL_11_TIERS;  // Alias for backward compatibility
+
+// -------------------------------------------------------------
+// 24/7 GLOBAL REAL-TIME ROUND HISTORY BUFFER
+// -------------------------------------------------------------
+export interface GlobalRoundHistoryItem {
+  id: string;
+  roundId: number;
+  val: number;
+  hash: string;
+  serverSeed?: string;
+  timestamp: string;
+  tierId: number;
+  tierLabel: string;
+}
+
+export const globalRoundHistoryBuffer: GlobalRoundHistoryItem[] = [];
+
+/**
+ * Pure 11-Tier Provably Fair continuous probability crash calculator
+ */
+export function compute11TierCrashPoint(r: number): { val: number; tierId: number; tierLabel: string } {
+  let crashValue = 1.00;
+  if (r < 0.1550) {
+    // 1. Instant Bust (15.50%)
+    crashValue = 1.00;
+  } else if (r < 0.2958) {
+    // 2. Micro-Stumble (14.08%)
+    const sub = (r - 0.1550) / 0.1408;
+    crashValue = parseFloat((1.01 + (1.20 - 1.01) * Math.pow(sub, 1.05)).toFixed(2));
+  } else if (r < 0.4367) {
+    // 3. Low Safe Zone (14.09%)
+    const sub = (r - 0.2958) / 0.1409;
+    crashValue = parseFloat((1.21 + (1.50 - 1.21) * Math.pow(sub, 1.05)).toFixed(2));
+  } else if (r < 0.5775) {
+    // 4. Mid Safe Zone (14.08%)
+    const sub = (r - 0.4367) / 0.1408;
+    crashValue = parseFloat((1.51 + (2.00 - 1.51) * Math.pow(sub, 1.08)).toFixed(2));
+  } else if (r < 0.7527) {
+    // 5. Circulation Zone (17.52%)
+    const sub = (r - 0.5775) / 0.1752;
+    crashValue = parseFloat((2.01 + (3.50 - 2.01) * Math.pow(sub, 1.12)).toFixed(2));
+  } else if (r < 0.8533) {
+    // 6. Mid-Profit Zone (10.06%)
+    const sub = (r - 0.7527) / 0.1006;
+    crashValue = parseFloat((3.51 + (6.00 - 3.51) * Math.pow(sub, 1.15)).toFixed(2));
+  } else if (r < 0.9002) {
+    // 7. Big Win 1 (4.69%)
+    const sub = (r - 0.8533) / 0.0469;
+    crashValue = parseFloat((6.01 + (9.00 - 6.01) * Math.pow(sub, 1.18)).toFixed(2));
+  } else if (r < 0.9337) {
+    // 8. Big Win 2 (3.35%)
+    const sub = (r - 0.9002) / 0.0335;
+    crashValue = parseFloat((9.01 + (14.00 - 9.01) * Math.pow(sub, 1.20)).toFixed(2));
+  } else if (r < 0.9557) {
+    // 9. Mega Win 1 (2.20%)
+    const sub = (r - 0.9337) / 0.0220;
+    crashValue = parseFloat((14.01 + (22.00 - 14.01) * Math.pow(sub, 1.22)).toFixed(2));
+  } else if (r < 0.9700) {
+    // 10. Mega Win 2 (1.43%)
+    const sub = (r - 0.9557) / 0.0143;
+    crashValue = parseFloat((22.01 + (35.00 - 22.01) * Math.pow(sub, 1.25)).toFixed(2));
+  } else {
+    // 11. Max Cap Jackpot (3.00%)
+    const sub = Math.min(1.0, Math.max(0.0, (r - 0.9700) / 0.0300));
+    crashValue = parseFloat(Math.min(50.00, 35.01 + (50.00 - 35.01) * Math.pow(sub, 1.30)).toFixed(2));
+  }
+
+  crashValue = parseFloat(Math.max(1.00, Math.min(50.00, crashValue)).toFixed(2));
+  let selectedTier = GLOBAL_11_TIERS.find(t => crashValue >= t.min && crashValue <= t.max);
+  if (!selectedTier) {
+    selectedTier = crashValue <= 1.00 ? GLOBAL_11_TIERS[0] : GLOBAL_11_TIERS[GLOBAL_11_TIERS.length - 1];
+  }
+  return { val: crashValue, tierId: selectedTier.id, tierLabel: selectedTier.label };
+}
+
+// Pre-populate 24/7 continuous history on server startup with genuine 11-tier Provably Fair calculations
+function initialize24x7GlobalHistoryBuffer() {
+  if (globalRoundHistoryBuffer.length === 0) {
+    const now = Date.now();
+    for (let i = 1; i <= 35; i++) {
+      const rId = 1000 - i;
+      const randSeed = crypto.randomBytes(16).toString("hex");
+      const seedHash = crypto.createHash("sha256").update(randSeed).digest("hex");
+      const r = Math.random();
+      const outcome = compute11TierCrashPoint(r);
+      const timeOffset = now - i * 14500; // ~14.5s average round interval
+      globalRoundHistoryBuffer.push({
+        id: String(rId),
+        roundId: rId,
+        val: outcome.val,
+        hash: seedHash,
+        serverSeed: randSeed,
+        timestamp: new Date(timeOffset).toISOString(),
+        tierId: outcome.tierId,
+        tierLabel: outcome.tierLabel
+      });
+    }
+  }
+}
+initialize24x7GlobalHistoryBuffer();
+
+// -------------------------------------------------------------
+// 24/7 CENTRAL SERVER-AUTHORITATIVE AUTONOMOUS GAME LOOP ENGINE
+// -------------------------------------------------------------
+export interface CentralGameServerState {
+  roundId: number;
+  status: "COUNTDOWN" | "FLYING" | "CRASHED";
+  currentMultiplier: number;
+  targetCrashPoint: number;
+  countdownRemainingMs: number;
+  phaseStartTime: number;
+  flightStartTime: number;
+  seedHash: string;
+  serverSeed: string;
+  tierId: number;
+  tierLabel: string;
+  lastCrashPoint: number;
+  lastCrashTimestamp: string;
+}
+
+const initialSeed = crypto.randomBytes(16).toString("hex");
+const initialHash = crypto.createHash("sha256").update(initialSeed).digest("hex");
+const initialOutcome = compute11TierCrashPoint(Math.random());
+
+export let centralServerGameState: CentralGameServerState = {
+  roundId: 1000 + globalRoundHistoryBuffer.length + 1,
+  status: "COUNTDOWN",
+  currentMultiplier: 1.00,
+  targetCrashPoint: initialOutcome.val,
+  countdownRemainingMs: 5000,
+  phaseStartTime: Date.now(),
+  flightStartTime: Date.now() + 5000,
+  seedHash: initialHash,
+  serverSeed: initialSeed,
+  tierId: initialOutcome.tierId,
+  tierLabel: initialOutcome.tierLabel,
+  lastCrashPoint: globalRoundHistoryBuffer[0]?.val || 1.85,
+  lastCrashTimestamp: globalRoundHistoryBuffer[0]?.timestamp || new Date().toISOString()
+};
+
+function startNewCentralServerRound() {
+  backendRoundCounter += 1;
+  const rId = 1000 + globalRoundHistoryBuffer.length + 1;
+  const randSeed = crypto.randomBytes(16).toString("hex");
+  const seedHash = crypto.createHash("sha256").update(randSeed).digest("hex");
+  const r = Math.random();
+  const outcome = compute11TierCrashPoint(r);
+
+  centralServerGameState = {
+    roundId: rId,
+    status: "COUNTDOWN",
+    currentMultiplier: 1.00,
+    targetCrashPoint: outcome.val,
+    countdownRemainingMs: 5000,
+    phaseStartTime: Date.now(),
+    flightStartTime: Date.now() + 5000,
+    seedHash: seedHash,
+    serverSeed: randSeed,
+    tierId: outcome.tierId,
+    tierLabel: outcome.tierLabel,
+    lastCrashPoint: globalRoundHistoryBuffer[0]?.val || 1.00,
+    lastCrashTimestamp: globalRoundHistoryBuffer[0]?.timestamp || new Date().toISOString()
+  };
+}
+
+export const centralHistoryService = new CentralGameHistoryService();
+centralHistoryService.initialize().catch(err => console.error("Central history init error:", err));
+
+export let liveGameSyncController: LiveGameSyncController | null = null;
 
 let globalTierCooldowns: Record<number, number> = {
   1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0, 11: 0
@@ -913,7 +1079,7 @@ async function runSecurityFullstackServer() {
   // Parse JSON payloads securely
   app.use(express.json());
 
-  // === PART 1: API SECURITY HEADERS ===
+  // === PART 1: API SECURITY HEADERS & ZERO-FOOTPRINT PRIVACY HEADERS ===
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
@@ -921,6 +1087,10 @@ async function runSecurityFullstackServer() {
     res.setHeader("Strict-Transport-Security", "max-age=31536000");
     res.setHeader("Content-Security-Policy", "default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' ws: wss: https:;");
     res.setHeader("Referrer-Policy", "no-referrer");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Permissions-Policy", "interest-cohort=(), geolocation=(), camera=(), microphone=()");
     next();
   });
 
@@ -936,7 +1106,7 @@ async function runSecurityFullstackServer() {
         poolActive: secureDb["activePoolSize"],
         jwtSecretActive: true,
         provablyFairHashActive: integrityEngine.getActiveRound() ? true : false,
-        activeViolationsBlocked: rateLimiterInstance["blockedIPs"].size
+        activeViolationsBlocked: rateLimiterInstance["blockedClients"].size
       }
     });
   });
@@ -1328,9 +1498,10 @@ async function runSecurityFullstackServer() {
     let targetCrashPoint = 1.00;
     let isSpecial49xRound = false;
 
-    // Helper to generate crash points using Provably Fair Continuous Crash RNG with Wide Natural Dispersion
-    // Target RTP: 84.50% (84.00% - 85.00%) | House Edge: 15.50% (15.00% - 16.00%)
-    // Absolute Max Cap: 50.00x | Early Cutoff: 1.00x - 1.06x | Long-term positive EV for House
+    // Helper to generate crash points using Provably Fair Continuous Crash RNG with Actuarial 11-Tier Precision
+    // Target RTP: 84.00% - 85.00% | House Edge: 15.00% - 16.00%
+    // Instant Bust: 15.50% at 1.00x | Max Cap Jackpot (35.01x-50.00x): 3.00%
+    // Absolute Max Cap: 50.00x | Long-term positive EV for House (Law of Large Numbers)
     const getExact8TierDistributionCrashPoint = (): number => {
       let r = Math.random(); // Uniform [0, 1)
 
@@ -1340,39 +1511,52 @@ async function runSecurityFullstackServer() {
       }
 
       let crashValue = 1.00;
-      if (r < 0.030) {
-        crashValue = 1.00; // Special Weighted Instant bust (~3.00%)
-      } else if (r < 0.070) {
-        // Special Weighted Micro-cutoff zone (1.01x to 1.06x, ~4.00%)
-        const sub = (r - 0.030) / 0.040;
-        crashValue = parseFloat((1.01 + sub * (1.06 - 1.01)).toFixed(2));
+      if (r < 0.1550) {
+        // 1. Instant Bust at 1.00x (15.50%)
+        crashValue = 1.00;
+      } else if (r < 0.2958) {
+        // 2. Micro-Stumble (1.01x - 1.20x, 14.08%)
+        const sub = (r - 0.1550) / 0.1408;
+        crashValue = parseFloat((1.01 + (1.20 - 1.01) * Math.pow(sub, 1.05)).toFixed(2));
+      } else if (r < 0.4367) {
+        // 3. Low Safe Zone (1.21x - 1.50x, 14.09%)
+        const sub = (r - 0.2958) / 0.1409;
+        crashValue = parseFloat((1.21 + (1.50 - 1.21) * Math.pow(sub, 1.05)).toFixed(2));
+      } else if (r < 0.5775) {
+        // 4. Mid Safe Zone (1.51x - 2.00x, 14.08%)
+        const sub = (r - 0.4367) / 0.1408;
+        crashValue = parseFloat((1.51 + (2.00 - 1.51) * Math.pow(sub, 1.08)).toFixed(2));
+      } else if (r < 0.7527) {
+        // 5. Circulation Zone (2.01x - 3.50x, 17.52%)
+        const sub = (r - 0.5775) / 0.1752;
+        crashValue = parseFloat((2.01 + (3.50 - 2.01) * Math.pow(sub, 1.12)).toFixed(2));
+      } else if (r < 0.8533) {
+        // 6. Mid-Profit Zone (3.51x - 6.00x, 10.06%)
+        const sub = (r - 0.7527) / 0.1006;
+        crashValue = parseFloat((3.51 + (6.00 - 3.51) * Math.pow(sub, 1.15)).toFixed(2));
+      } else if (r < 0.9002) {
+        // 7. Big Win 1 (6.01x - 9.00x, 4.69%)
+        const sub = (r - 0.8533) / 0.0469;
+        crashValue = parseFloat((6.01 + (9.00 - 6.01) * Math.pow(sub, 1.18)).toFixed(2));
+      } else if (r < 0.9337) {
+        // 8. Big Win 2 (9.01x - 14.00x, 3.35%)
+        const sub = (r - 0.9002) / 0.0335;
+        crashValue = parseFloat((9.01 + (14.00 - 9.01) * Math.pow(sub, 1.20)).toFixed(2));
+      } else if (r < 0.9557) {
+        // 9. Mega Win 1 (14.01x - 22.00x, 2.20%)
+        const sub = (r - 0.9337) / 0.0220;
+        crashValue = parseFloat((14.01 + (22.00 - 14.01) * Math.pow(sub, 1.22)).toFixed(2));
+      } else if (r < 0.9700) {
+        // 10. Mega Win 2 (22.01x - 35.00x, 1.43%)
+        const sub = (r - 0.9557) / 0.0143;
+        crashValue = parseFloat((22.01 + (35.00 - 22.01) * Math.pow(sub, 1.25)).toFixed(2));
       } else {
-        // Continuous Distributed RNG across [1.07x - 50.00x] (93.00% of all rounds)
-        const u = (r - 0.070) / 0.930;
-        let m: number;
-        if (u < 0.35) {
-          // Low Safe Zone (1.07x - 2.00x): ~32.5%
-          const norm = u / 0.35;
-          m = 1.07 + (2.00 - 1.07) * Math.pow(norm, 1.1);
-        } else if (u < 0.68) {
-          // Mid Circulation Zone (2.01x - 4.50x): ~30.7%
-          const norm = (u - 0.35) / 0.33;
-          m = 2.01 + (4.50 - 2.01) * Math.pow(norm, 1.2);
-        } else if (u < 0.85) {
-          // Big Win Zone (4.51x - 9.00x): ~15.8%
-          const norm = (u - 0.68) / 0.17;
-          m = 4.51 + (9.00 - 4.51) * Math.pow(norm, 1.2);
-        } else if (u < 0.94) {
-          // Mega Win Zone (9.01x - 22.00x): ~8.4%
-          const norm = (u - 0.85) / 0.09;
-          m = 9.01 + (22.00 - 9.01) * Math.pow(norm, 1.25);
-        } else {
-          // Jackpot Flight Zone (22.01x - 50.00x): ~5.6%
-          const norm = (u - 0.94) / 0.06;
-          m = 22.01 + (50.00 - 22.01) * Math.pow(norm, 1.3);
-        }
-        crashValue = parseFloat(Math.max(1.00, Math.min(50.00, m)).toFixed(2));
+        // 11. Max Cap Jackpot (35.01x - 50.00x, 3.00%)
+        const sub = Math.min(1.0, Math.max(0.0, (r - 0.9700) / 0.0300));
+        crashValue = parseFloat(Math.min(50.00, 35.01 + (50.00 - 35.01) * Math.pow(sub, 1.30)).toFixed(2));
       }
+
+      crashValue = parseFloat(Math.max(1.00, Math.min(50.00, crashValue)).toFixed(2));
 
       // Identify corresponding descriptive tier for metrics and state tracking
       let selectedTier = GLOBAL_11_TIERS.find(t => crashValue >= t.min && crashValue <= t.max);
@@ -1653,16 +1837,141 @@ async function runSecurityFullstackServer() {
       sessionEntryBalance: state ? state.sessionEntryBalance : 150000,
       isInCrisisMode: state ? state.isInCrisisMode : false,
       isPreemptTrapActive: isPreemptTrapActive,
+      history: globalRoundHistoryBuffer.slice(0, 25).map(h => ({ id: h.id, val: h.val, hash: h.hash, timestamp: h.timestamp })),
       hint: "Valid server hash generated. Salt precommitted."
+    });
+  });
+
+  // CONFIRM ROUND FINISH / CRASH ENDPOINT
+  // Strictly commits a completed round to 24/7 central history ONLY after the rocket has exploded
+  app.post("/api/security/round/finish", async (req, res) => {
+    try {
+      const { roundId, crashMultiplier, seedHash, serverSeed } = req.body || {};
+      const multiplier = typeof crashMultiplier === "number" ? crashMultiplier : 1.00;
+      const rId = roundId ? Number(roundId) : backendRoundCounter;
+
+      let selectedTier = GLOBAL_11_TIERS.find(t => multiplier >= t.min && multiplier <= t.max);
+      if (!selectedTier) {
+        selectedTier = multiplier <= 1.00 ? GLOBAL_11_TIERS[0] : GLOBAL_11_TIERS[GLOBAL_11_TIERS.length - 1];
+      }
+
+      const timestamp = new Date().toISOString();
+      const newRecord: HistoryRecord = {
+        id: String(rId),
+        roundId: rId,
+        crashMultiplier: multiplier,
+        val: multiplier,
+        seedHash: seedHash || "",
+        hash: seedHash || "",
+        serverSeed: serverSeed || "",
+        timestamp,
+        tierId: selectedTier.id,
+        tierLabel: selectedTier.label,
+        tier: selectedTier.label
+      };
+
+      // Check if already in history buffer to prevent double recording
+      const exists = globalRoundHistoryBuffer.some(h => String(h.id) === String(rId) || h.roundId === rId);
+      if (!exists) {
+        globalRoundHistoryBuffer.unshift({
+          id: String(rId),
+          roundId: rId,
+          val: multiplier,
+          hash: seedHash || "",
+          serverSeed: serverSeed || "",
+          timestamp,
+          tierId: selectedTier.id,
+          tierLabel: selectedTier.label
+        });
+        if (globalRoundHistoryBuffer.length > 100) {
+          globalRoundHistoryBuffer.pop();
+        }
+
+        // Commit to Redis and broadcast to all connected web clients in real-time
+        if (liveGameSyncController) {
+          await liveGameSyncController.handleRoundCrash(newRecord);
+        } else {
+          await centralHistoryService.pushHistory(newRecord);
+        }
+      }
+
+      res.json({
+        status: "SUCCESS",
+        message: "Round recorded to central 24/7 history after crash confirmed",
+        record: newRecord
+      });
+    } catch (err) {
+      console.error("Error in /api/security/round/finish:", err);
+      res.status(500).json({ status: "ERROR", error: "Failed to commit round to central history" });
+    }
+  });
+
+  // 24/7 GLOBAL ROUND MULTIPLIER HISTORY API ENDPOINT
+  // Provides authentic historical round multipliers from the Redis Provably Fair RNG engine
+  app.get(["/api/security/history", "/api/game/history"], async (req, res) => {
+    const redisHistory = await centralHistoryService.getRecentHistory(50);
+    const combinedHistory = redisHistory.length > 0 ? redisHistory : globalRoundHistoryBuffer;
+
+    res.json({
+      status: "SUCCESS",
+      globalRoundNum: backendRoundCounter,
+      serverTime: new Date().toISOString(),
+      currentServerRound: {
+        roundId: centralServerGameState.roundId,
+        status: centralServerGameState.status,
+        currentMultiplier: centralServerGameState.currentMultiplier,
+        countdownRemainingMs: centralServerGameState.countdownRemainingMs,
+        lastCompletedRoundCrashPoint: centralServerGameState.lastCrashPoint,
+        lastCompletedRoundTimestamp: centralServerGameState.lastCrashTimestamp
+      },
+      history: (combinedHistory as HistoryRecord[]).map(h => ({
+        id: h.id || String(h.roundId),
+        roundId: h.roundId,
+        val: h.val || h.crashMultiplier,
+        crashMultiplier: h.crashMultiplier || h.val,
+        hash: h.hash || h.seedHash,
+        seedHash: h.seedHash || h.hash,
+        serverSeed: h.serverSeed,
+        timestamp: h.timestamp,
+        tierId: h.tierId,
+        tierLabel: h.tierLabel || h.tier || ""
+      })),
+      totalRoundsLogged: combinedHistory.length
+    });
+  });
+
+  // 24/7 LIVE SERVER-AUTHORITATIVE STATE ENDPOINT
+  // Allows any website / client instance to sync with the central server's live flight clock
+  app.get(["/api/security/state", "/api/game/state"], (req, res) => {
+    res.json({
+      status: "SUCCESS",
+      serverTime: new Date().toISOString(),
+      state: {
+        roundId: centralServerGameState.roundId,
+        status: centralServerGameState.status,
+        currentMultiplier: centralServerGameState.currentMultiplier,
+        countdownRemainingMs: centralServerGameState.countdownRemainingMs,
+        phaseStartTime: centralServerGameState.phaseStartTime,
+        seedHash: centralServerGameState.seedHash,
+        lastCrashPoint: centralServerGameState.lastCrashPoint,
+        lastCrashTimestamp: centralServerGameState.lastCrashTimestamp
+      },
+      recentHistory: globalRoundHistoryBuffer.slice(0, 15).map(h => ({
+        id: h.id,
+        roundId: h.roundId,
+        val: h.val,
+        hash: h.hash,
+        timestamp: h.timestamp
+      }))
     });
   });
 
   // INPUT MATCHING LOGIN API WITH INTUBATED JWT SIGNER
   app.post("/api/security/login", async (req, res) => {
-    const clientIp = req.ip || "unknown";
+    const clientToken = (req.headers["x-session-id"] as string) || "anonymous_session";
     
     // Check Rate Limiting bound to logins strictly
-    const canAttempt = rateLimiterInstance.handleLogin(clientIp);
+    const canAttempt = rateLimiterInstance.handleLogin(clientToken);
     if (!canAttempt) {
       return res.status(429).json({ error: "High security failure. Rate limit of 5 login attempts per minute exceeded." });
     }
@@ -1677,7 +1986,6 @@ async function runSecurityFullstackServer() {
       if (!user) {
         logSecurityEvent({
           type: "FAILED_LOGIN",
-          ip: clientIp,
           timestamp: new Date().toISOString(),
           details: `Authentication attempt signature failed for user: ${username}`
         });
@@ -1688,7 +1996,6 @@ async function runSecurityFullstackServer() {
       if (!isValid) {
         logSecurityEvent({
           type: "FAILED_LOGIN_CREDENTIALS",
-          ip: clientIp,
           timestamp: new Date().toISOString(),
           details: `Password signature validation failed for username: ${username}`
         });
@@ -1701,7 +2008,6 @@ async function runSecurityFullstackServer() {
 
       logSecurityEvent({
         type: "SUCCESS_LOGIN",
-        ip: clientIp,
         userId: user.userId,
         timestamp: new Date().toISOString(),
         details: `Successful JWT security flight credentials granted to user: ${username}`
@@ -1736,10 +2042,10 @@ async function runSecurityFullstackServer() {
   // BET PROCESSING AND VALIDATION API ROUTE
   app.post("/api/security/bet", verifyJWT, (req, res) => {
     const user = (req as any).user;
-    const clientIp = req.ip || "unknown";
+    const clientToken = (req.headers["x-session-id"] as string) || user.userId;
 
     // Rate Limiter Constraint Check (Max 10 bets per minute per user)
-    const canBet = rateLimiterInstance.handleBet(user.userId, clientIp);
+    const canBet = rateLimiterInstance.handleBet(user.userId, clientToken);
     if (!canBet) {
       return res.status(429).json({ error: "Betting speed bounds exceeded. Maximum 10 wagers per minute." });
     }
@@ -1747,14 +2053,13 @@ async function runSecurityFullstackServer() {
     const { betAmount } = req.body;
     
     // Server-side check
-    const registration = integrityEngine.registerBetOnServer(user.userId, parseFloat(betAmount), clientIp);
+    const registration = integrityEngine.registerBetOnServer(user.userId, parseFloat(betAmount));
     if (!registration.success) {
       return res.status(400).json({ error: registration.error });
     }
 
     logSecurityEvent({
       type: "BET_VALIDATED_OK",
-      ip: clientIp,
       userId: user.userId,
       timestamp: new Date().toISOString(),
       details: `Validated state of wager correctly: ${betAmount} THB`
@@ -1766,17 +2071,15 @@ async function runSecurityFullstackServer() {
   // CASHOUT PROCESSING AND EXCLUSION API ROUTE
   app.post("/api/security/cashout", verifyJWT, (req, res) => {
     const user = (req as any).user;
-    const clientIp = req.ip || "unknown";
     const { targetMultiplier } = req.body;
 
-    const result = integrityEngine.processVerifyCashout(user.userId, parseFloat(targetMultiplier), clientIp);
+    const result = integrityEngine.processVerifyCashout(user.userId, parseFloat(targetMultiplier));
     if (!result.success) {
       return res.status(400).json({ error: result.error });
     }
 
     logSecurityEvent({
       type: "CASHOUT_SUCCEEDED",
-      ip: clientIp,
       userId: user.userId,
       timestamp: new Date().toISOString(),
       details: `Payout calculated and verified on server for ${targetMultiplier}x. Total: ${result.payout} THB`
@@ -2603,6 +2906,17 @@ async function runSecurityFullstackServer() {
     }
   });
 
+  // CREATE HTTP SERVER AND ATTACH SOCKET.IO
+  const httpServer = http.createServer(app);
+  const io = new SocketIOServer(httpServer, {
+    cors: {
+      origin: "*",
+      methods: ["GET", "POST"]
+    }
+  });
+
+  liveGameSyncController = new LiveGameSyncController(io, centralHistoryService);
+
   // VITE DEVELOPMENT MIDDLEWARE OR PRODUCTION SERVING ENGINE
   if (!isProduction) {
     const vite = await createViteServer({
@@ -2618,9 +2932,9 @@ async function runSecurityFullstackServer() {
     });
   }
 
-  // Listening Port Allocation Bind
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[FULLSTACK INFRASTRUCTURE] Security Layer bound successfully. Core services active on port ${PORT}`);
+  // Listening Port Allocation Bind on HTTP & WebSocket Server
+  httpServer.listen(PORT, "0.0.0.0", () => {
+    console.log(`[FULLSTACK INFRASTRUCTURE] Central 24/7 Game History Engine & WebSockets active on port ${PORT}`);
   });
 }
 

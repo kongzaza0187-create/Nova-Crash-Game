@@ -125,9 +125,9 @@ export function generateRandomBotPool(config: BotPoolConfig = {}) {
 
   const bots = [];
 
-  // Weighted bet amounts up to max 30,000 THB
+  // Weighted bet amounts from min 20 up to max 8,000 (8K)
   const betAmounts = [
-    30, 50, 100, 150, 200, 250, 300, 400, 500, 800, 1000, 1500, 2000, 2500, 3000, 5000, 7500, 10000, 15000, 20000, 25000, 30000
+    20, 50, 100, 150, 200, 250, 300, 400, 500, 800, 1000, 1500, 2000, 2500, 3000, 5000, 6000, 8000
   ];
 
   for (let i = 0; i < count; i++) {
@@ -140,9 +140,10 @@ export function generateRandomBotPool(config: BotPoolConfig = {}) {
 
     const userName = `user_${num11}`;
     
-    // Pick realistic bet amount capped at 30,000 max
+    // Pick realistic bet amount capped at 8,000 (8K) max, min 20
     let amount = betAmounts[Math.floor(Math.random() * betAmounts.length)]!;
-    if (amount > 30000) amount = 30000;
+    if (amount > 8000) amount = 8000;
+    if (amount < 20) amount = 20;
 
     // Realistic target cashout multipliers
     // 40% quick conservative exit (1.10x - 1.80x)

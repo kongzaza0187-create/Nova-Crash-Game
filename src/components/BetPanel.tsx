@@ -79,7 +79,7 @@ const BetPanelComponent: React.FC<BetPanelProps> = ({
     audioManager.playClick();
     setBetAmount((prev) => {
       const next = prev * 2;
-      return next > 30000 ? 30000 : next;
+      return next > 8000 ? 8000 : next;
     });
   };
 
@@ -87,13 +87,13 @@ const BetPanelComponent: React.FC<BetPanelProps> = ({
     audioManager.playClick();
     setBetAmount((prev) => {
       const next = Math.floor(prev / 2);
-      return next < 30 ? 30 : next;
+      return next < 20 ? 20 : next;
     });
   };
 
   const setFixedAmount = (amt: number) => {
     audioManager.playClick();
-    setBetAmount(Math.min(30000, amt));
+    setBetAmount(Math.min(8000, Math.max(20, amt)));
   };
 
   // Safe decimal parsing for auto Cash Out
@@ -128,7 +128,10 @@ const BetPanelComponent: React.FC<BetPanelProps> = ({
         return {
           label: "CANCEL",
           sub: "Waiting...",
-          bgColor: "bg-amber-600 hover:bg-amber-500",
+          outerLayer: "bg-gradient-to-b from-amber-600 via-amber-800 to-amber-950 shadow-[0_6px_14px_rgba(217,119,6,0.35),0_3px_0_#451a03] border border-amber-500/40",
+          innerLayer: "bg-gradient-to-b from-amber-400 via-amber-500 to-amber-600 border-t border-amber-200/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]",
+          textClass: "text-slate-950 font-black",
+          subClass: "text-amber-950 font-bold bg-amber-300/70 border border-amber-200/50",
           action: onCancelBet,
           disabled: false,
         };
@@ -136,9 +139,12 @@ const BetPanelComponent: React.FC<BetPanelProps> = ({
         return {
           label: "BET",
           sub: `${betAmount.toLocaleString()}`,
-          bgColor: "bg-emerald-600 hover:bg-emerald-500",
-          action: () => onPlaceBet(Math.max(30, Math.min(30000, betAmount))),
-          disabled: userBalance < betAmount || betAmount < 30,
+          outerLayer: "bg-gradient-to-b from-emerald-500 via-emerald-700 to-emerald-950 shadow-[0_8px_18px_rgba(16,185,129,0.4),0_4px_0_#022c22,inset_0_1px_1px_rgba(255,255,255,0.4)] border border-emerald-400/40",
+          innerLayer: "bg-gradient-to-b from-emerald-300 via-emerald-500 to-teal-600 border-t border-emerald-100/70 shadow-[inset_0_1px_0_rgba(255,255,255,0.5),inset_0_-2px_6px_rgba(2,44,34,0.3)]",
+          textClass: "text-slate-950 font-black tracking-wider drop-shadow-[0_1px_0_rgba(255,255,255,0.4)]",
+          subClass: "text-emerald-950 font-extrabold bg-emerald-200/80 border border-emerald-100/60 shadow-sm",
+          action: () => onPlaceBet(Math.max(20, Math.min(8000, betAmount))),
+          disabled: userBalance < betAmount || betAmount < 20,
         };
       }
     } else if (roundState === "FLYING") {
@@ -147,7 +153,10 @@ const BetPanelComponent: React.FC<BetPanelProps> = ({
         return {
           label: "CASH OUT",
           sub: `${cashValue}`,
-          bgColor: "bg-amber-500 hover:bg-amber-400 text-slate-900 font-bold",
+          outerLayer: "bg-gradient-to-b from-amber-400 via-amber-600 to-amber-950 shadow-[0_8px_18px_rgba(245,158,11,0.5),0_4px_0_#451a03] border border-amber-300/60 animate-pulse",
+          innerLayer: "bg-gradient-to-b from-yellow-300 via-amber-400 to-amber-500 border-t border-yellow-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]",
+          textClass: "text-slate-950 font-black tracking-wider",
+          subClass: "text-slate-950 font-extrabold bg-yellow-200/90 border border-yellow-100/70",
           action: onCashOut,
           disabled: false,
         };
@@ -155,7 +164,10 @@ const BetPanelComponent: React.FC<BetPanelProps> = ({
         return {
           label: "CASHED OUT",
           sub: `+${(bet.winAmount || 0).toFixed(2)}`,
-          bgColor: "bg-slate-800 text-emerald-400 font-medium",
+          outerLayer: "bg-slate-900 border border-slate-800 shadow-[0_3px_0_#0f172a]",
+          innerLayer: "bg-slate-800/90 border-t border-slate-700",
+          textClass: "text-emerald-400 font-bold",
+          subClass: "text-emerald-300 font-mono bg-emerald-950/60 border border-emerald-800/40",
           action: () => {},
           disabled: true,
         };
@@ -165,7 +177,10 @@ const BetPanelComponent: React.FC<BetPanelProps> = ({
           return {
             label: "AUTO BET ACTIVE",
             sub: "Next Round",
-            bgColor: "bg-rose-950/60 border border-rose-500/30 text-rose-300 font-medium",
+            outerLayer: "bg-rose-950 border border-rose-800/40 shadow-[0_3px_0_#4c0519]",
+            innerLayer: "bg-rose-900/40 border-t border-rose-700/30",
+            textClass: "text-rose-300 font-bold",
+            subClass: "text-rose-400 font-mono bg-rose-950/50",
             action: () => {},
             disabled: true,
           };
@@ -173,9 +188,12 @@ const BetPanelComponent: React.FC<BetPanelProps> = ({
           return {
             label: "BET ON NEXT ROUND",
             sub: `${betAmount.toLocaleString()}`,
-            bgColor: "bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600 hover:from-amber-400 hover:via-yellow-300 hover:to-amber-500 text-slate-950 font-black shadow-[0_0_20px_rgba(245,158,11,0.4)] border border-yellow-300/60",
-            action: () => onPlaceBet(Math.max(30, Math.min(30000, betAmount))),
-            disabled: userBalance < betAmount || betAmount < 30,
+            outerLayer: "bg-gradient-to-b from-amber-500 via-amber-700 to-amber-950 shadow-[0_6px_14px_rgba(245,158,11,0.35),0_3px_0_#451a03] border border-yellow-400/40",
+            innerLayer: "bg-gradient-to-b from-yellow-400 via-amber-500 to-amber-600 border-t border-yellow-200/60",
+            textClass: "text-slate-950 font-black tracking-wide",
+            subClass: "text-amber-950 font-extrabold bg-yellow-200/80 border border-yellow-100/60",
+            action: () => onPlaceBet(Math.max(20, Math.min(8000, betAmount))),
+            disabled: userBalance < betAmount || betAmount < 20,
           };
         }
       }
@@ -185,7 +203,10 @@ const BetPanelComponent: React.FC<BetPanelProps> = ({
         return {
           label: "AUTO BET ACTIVE",
           sub: "Starting soon...",
-          bgColor: "bg-rose-950/60 border border-rose-500/30 text-rose-300 font-medium",
+          outerLayer: "bg-rose-950 border border-rose-800/40 shadow-[0_3px_0_#4c0519]",
+          innerLayer: "bg-rose-900/40 border-t border-rose-700/30",
+          textClass: "text-rose-300 font-bold",
+          subClass: "text-rose-400 font-mono bg-rose-950/50",
           action: () => {},
           disabled: true,
         };
@@ -193,7 +214,10 @@ const BetPanelComponent: React.FC<BetPanelProps> = ({
       return {
         label: "ROUND OVER",
         sub: "Starting soon...",
-        bgColor: "bg-slate-800 text-slate-500",
+        outerLayer: "bg-slate-900 border border-slate-800 shadow-[0_3px_0_#0f172a]",
+        innerLayer: "bg-slate-800/80 border-t border-slate-700",
+        textClass: "text-slate-500 font-bold",
+        subClass: "text-slate-600 font-mono",
         action: () => {},
         disabled: true,
       };
@@ -272,12 +296,12 @@ const BetPanelComponent: React.FC<BetPanelProps> = ({
                 if (isNaN(val)) {
                   setBetAmount(0);
                 } else {
-                  setBetAmount(Math.min(30000, val));
+                  setBetAmount(Math.min(8000, val));
                 }
               }}
               onBlur={() => {
-                if (betAmount < 30) {
-                  setBetAmount(30);
+                if (betAmount < 20) {
+                  setBetAmount(20);
                 }
               }}
               className="w-full text-center bg-transparent border-none text-white text-sm sm:text-base font-bold focus:outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none disabled:opacity-70"
@@ -295,7 +319,7 @@ const BetPanelComponent: React.FC<BetPanelProps> = ({
 
           {/* Quick numbers */}
           <div className="grid grid-cols-4 gap-1">
-            {[30, 50, 100, 500, 1000, 5000, 10000, 30000].map((val) => (
+            {[20, 50, 100, 200, 500, 1000, 5000, 8000].map((val) => (
               <button
                 key={val}
                 disabled={isLocked}
@@ -313,17 +337,40 @@ const BetPanelComponent: React.FC<BetPanelProps> = ({
           </div>
         </div>
 
-        {/* Massive Bet trigger Button */}
+        {/* Massive 2-Layer Bet trigger Button */}
         <button
           onClick={btn.action}
           disabled={btn.disabled}
-          className={`w-24 sm:w-28 md:w-36 rounded-xl flex flex-col items-center justify-center transition select-none touch-manipulation ${
-            btn.bgColor
-          } ${btn.disabled ? "cursor-not-allowed opacity-60" : "cursor-pointer active:scale-95 shadow-md shadow-emerald-950/20"}`}
+          className={`group relative w-24 sm:w-28 md:w-36 p-[3px] pb-[5px] rounded-2xl transition-all duration-150 select-none touch-manipulation flex flex-col items-stretch ${
+            btn.outerLayer
+          } ${
+            btn.disabled
+              ? "cursor-not-allowed opacity-60 grayscale-[15%]"
+              : "cursor-pointer active:translate-y-[2px] active:pb-[3px] hover:scale-[1.02]"
+          }`}
           id={`bet_action_btn_${id}`}
         >
-          <div className="text-xs sm:text-sm font-black tracking-wide leading-tight text-center px-1">{btn.label}</div>
-          {btn.sub && <div className="text-[9px] sm:text-xs opacity-90 mt-0.5 sm:mt-1 font-mono text-center px-1 truncate max-w-full">{btn.sub}</div>}
+          {/* Top Layer Deck */}
+          <div
+            className={`w-full h-full min-h-[92px] rounded-[13px] flex flex-col items-center justify-center relative overflow-hidden transition-all duration-150 p-1.5 ${
+              btn.innerLayer
+            }`}
+          >
+            {/* Top Gloss Reflection Highlight */}
+            <div className="absolute inset-x-0 top-0 h-[44%] bg-gradient-to-b from-white/35 via-white/10 to-transparent pointer-events-none rounded-t-[12px]" />
+
+            {/* Primary Action Label */}
+            <div className={`relative z-10 text-xs sm:text-sm leading-tight text-center px-1 font-black ${btn.textClass}`}>
+              {btn.label}
+            </div>
+
+            {/* Sub-label / Bet Amount pill */}
+            {btn.sub && (
+              <div className={`relative z-10 text-[9.5px] sm:text-[11px] px-2 py-0.5 rounded-full mt-1 sm:mt-1.5 font-mono text-center truncate max-w-full leading-normal ${btn.subClass}`}>
+                {btn.sub}
+              </div>
+            )}
+          </div>
         </button>
       </div>
 
