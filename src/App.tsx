@@ -35,6 +35,7 @@ import {
   Building2,
   Activity
 } from "lucide-react";
+import ambLogo from "./assets/amb-logo-full.png";
 
 // Memoized past rounds multiplier history bar
 const HistoryBar = memo(({ history, onOpenFairPlay }: { history: HistoryItem[]; onOpenFairPlay?: () => void }) => {
@@ -1416,12 +1417,12 @@ export default function App() {
               href="#" 
               onClick={(e) => e.preventDefault()} 
               className="flex items-center transition-transform hover:scale-105 duration-200 focus:outline-none"
-              title="LETMELMB"
+              title="AMB"
             >
               <img 
-                src="https://i.postimg.cc/6p1Pbj3q/LETMELMB.png" 
-                alt="LETMELMB" 
-                className="h-10 sm:h-12 md:h-14 lg:h-16 w-auto max-w-[220px] sm:max-w-[300px] md:max-w-[360px] object-contain drop-shadow-[0_2px_16px_rgba(244,63,94,0.45)] transition-all duration-300"
+                src={ambLogo} 
+                alt="AMB" 
+                className="h-6 xs:h-7 sm:h-8 md:h-9 lg:h-10 w-auto max-w-[135px] xs:max-w-[165px] sm:max-w-[200px] md:max-w-[230px] lg:max-w-[260px] object-contain drop-shadow-[0_2px_12px_rgba(244,63,94,0.35)] transition-all duration-300"
                 loading="eager"
                 decoding="async"
                 fetchPriority="high"
