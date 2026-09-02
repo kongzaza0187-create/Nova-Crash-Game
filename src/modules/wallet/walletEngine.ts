@@ -111,10 +111,9 @@ export class ModularWalletEngine {
     user_id: string;
     amount: number;
     game_id?: string;
-    ip?: string;
     trace_id?: string;
   }): Promise<{ status: "SUCCESS" | "FAILED"; currency: string; txn_id: string; amount_debited: number; balance: number; already_processed?: boolean; error?: string }> {
-    const { txn_id, user_id, amount, game_id = "SKY_RUSH", ip = "127.0.0.1", trace_id = logger.generateTraceId() } = params;
+    const { txn_id, user_id, amount, game_id = "SKY_RUSH", trace_id = logger.generateTraceId() } = params;
 
     return await this.userLocks.acquire(user_id, async () => {
       // Idempotency Check
@@ -151,7 +150,6 @@ export class ModularWalletEngine {
           http_status: 400,
           currency: user.currency,
           game_id,
-          ip,
           status: "REJECTED",
           error_message: "INSUFFICIENT_FUNDS"
         });
@@ -198,7 +196,6 @@ export class ModularWalletEngine {
         balance_after: balanceAfter,
         currency: user.currency,
         game_id,
-        ip,
         status: "SUCCESS"
       });
 
@@ -217,10 +214,9 @@ export class ModularWalletEngine {
     user_id: string;
     amount: number; // gross win
     game_id?: string;
-    ip?: string;
     trace_id?: string;
   }): Promise<{ status: "SUCCESS" | "FAILED"; currency: string; txn_id: string; gross_win: number; fee_deducted_3percent: number; net_win_added: number; balance: number; already_processed?: boolean; error?: string }> {
-    const { txn_id, user_id, amount, game_id = "SKY_RUSH", ip = "127.0.0.1", trace_id = logger.generateTraceId() } = params;
+    const { txn_id, user_id, amount, game_id = "SKY_RUSH", trace_id = logger.generateTraceId() } = params;
 
     return await this.userLocks.acquire(user_id, async () => {
       const existing = this.transactions.get(txn_id);
@@ -284,7 +280,6 @@ export class ModularWalletEngine {
         balance_after: balanceAfter,
         currency: user.currency,
         game_id,
-        ip,
         status: "SUCCESS"
       });
 
@@ -304,10 +299,9 @@ export class ModularWalletEngine {
     txn_id: string;
     ref_txn_id: string;
     user_id: string;
-    ip?: string;
     trace_id?: string;
   }): Promise<{ status: "SUCCESS" | "FAILED"; currency: string; txn_id: string; ref_txn_id: string; refunded_amount: number; balance: number; error?: string }> {
-    const { txn_id, ref_txn_id, user_id, ip = "127.0.0.1", trace_id = logger.generateTraceId() } = params;
+    const { txn_id, ref_txn_id, user_id, trace_id = logger.generateTraceId() } = params;
 
     return await this.userLocks.acquire(user_id, async () => {
       const orig = this.transactions.get(ref_txn_id);
@@ -370,7 +364,6 @@ export class ModularWalletEngine {
         balance_before: balanceBefore,
         balance_after: balanceAfter,
         currency: user.currency,
-        ip,
         status: "SUCCESS"
       });
 
@@ -391,10 +384,9 @@ export class ModularWalletEngine {
     user_id: string;
     loss_amount: number;
     game_id?: string;
-    ip?: string;
     trace_id?: string;
   }): Promise<{ status: "SUCCESS" | "FAILED"; currency: string; txn_id: string; loss_amount: number; cashback_added_10percent: number; balance: number; error?: string }> {
-    const { txn_id, bet_txn_id, user_id, loss_amount, game_id = "SKY_RUSH", ip = "127.0.0.1", trace_id = logger.generateTraceId() } = params;
+    const { txn_id, bet_txn_id, user_id, loss_amount, game_id = "SKY_RUSH", trace_id = logger.generateTraceId() } = params;
 
     return await this.userLocks.acquire(user_id, async () => {
       let user = this.users.get(user_id);
@@ -441,7 +433,6 @@ export class ModularWalletEngine {
         balance_after: balanceAfter,
         currency: user.currency,
         game_id,
-        ip,
         status: "SUCCESS"
       });
 
@@ -460,10 +451,9 @@ export class ModularWalletEngine {
     txn_id: string;
     user_id: string;
     amount: number;
-    ip?: string;
     trace_id?: string;
   }): Promise<{ status: "SUCCESS" | "FAILED"; currency: string; txn_id: string; amount_credited: number; balance: number; error?: string }> {
-    const { txn_id, user_id, amount, ip = "127.0.0.1", trace_id = logger.generateTraceId() } = params;
+    const { txn_id, user_id, amount, trace_id = logger.generateTraceId() } = params;
 
     return await this.userLocks.acquire(user_id, async () => {
       let user = this.users.get(user_id);
@@ -503,7 +493,6 @@ export class ModularWalletEngine {
         balance_before: balanceBefore,
         balance_after: balanceAfter,
         currency: user.currency,
-        ip,
         status: "SUCCESS"
       });
 

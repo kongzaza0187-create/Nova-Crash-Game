@@ -23,14 +23,13 @@ import {
   Plane, 
   TrendingUp, 
   Info, 
-  Sparkles,
+  Coins,
   Award,
   Zap,
   ShieldCheck,
   TrendingDown,
   Percent,
   Terminal,
-  Key,
   Lock,
   Unlock,
   Building2,
@@ -391,24 +390,13 @@ export default function App() {
     currentCycleRoundNum: number;
   } | null>(null);
 
-  // Cashback system state in React
-  const [cashbackPopup, setCashbackPopup] = useState<{
-    show: boolean;
-    amount: number;
-  }>({ show: false, amount: 0 });
-  const cashbackPopupTimeoutRef = useRef<any>(null);
-
   // SECURE ADMINISTRATOR PORTAL STATES
   const [isAdminModalOpen, setIsAdminModalOpen] = useState<boolean>(false);
   const [isAdminAuthenticated, setIsAdminAuthenticated] = useState<boolean>(false);
   const [adminPasswordInput, setAdminPasswordInput] = useState<string>("");
   const [adminErrorMessage, setAdminErrorMessage] = useState<string>("");
 
-  // SPLASH SCREEN AND BACKGROUND HARDWARE DIAGNOSTICS STATE
-  const [isSplashActive, setIsSplashActive] = useState<boolean>(true);
-  const [isFadeOut, setIsFadeOut] = useState<boolean>(false);
-  const [splashProgress, setSplashProgress] = useState<number>(0);
-  const [failedChecks, setFailedChecks] = useState<string[]>([]);
+  // Pre-Game Responsible Gaming Warning Modal state
   const [isResponsibleGamingOpen, setIsResponsibleGamingOpen] = useState<boolean>(false);
 
   // Sync state values with reference handles to bypass dependency-array resets
@@ -469,110 +457,13 @@ export default function App() {
     }
   }, [roundState]);
 
-  // Initial insights fetch at app load
+  // Initial insights and state initialization at app load
   useEffect(() => {
     fetchTelemetryInsightsFromBackend();
-  }, []);
-
-  // Splash and pre-game background hardware evaluation cycle (3 seconds duration)
-  useEffect(() => {
-    let currentPercentage = 0;
-    
-    const intervalId = setInterval(() => {
-      currentPercentage += 1;
-      setSplashProgress(currentPercentage);
-      
-      if (currentPercentage >= 100) {
-        clearInterval(intervalId);
-        
-        // Background System Checks precisely at 100% load completions
-        const validationFailures: string[] = [];
-
-        // Check 1: Game canvas exists and is rendering correctly
-        try {
-          const canvasElement = document.getElementById("aviator_game_canvas") as HTMLCanvasElement | null;
-          if (!canvasElement) {
-            validationFailures.push("Hardware Canvas Missing");
-          } else {
-            const contextType = canvasElement.getContext("2d");
-            if (!contextType) {
-              validationFailures.push("Canvas Rendering Pipeline Blocked");
-            }
-          }
-        } catch (e: any) {
-          validationFailures.push(`Canvas Check: ${e?.message || e}`);
-        }
-
-        // Check 2: Multiplier calculation function is present and returns a number
-        try {
-          const rEngine = SkyRushEngine.getInstance();
-          if (typeof rEngine.generateSecureGlobalOutcome !== "function") {
-            validationFailures.push("Core Probability Engine Offline");
-          } else {
-            const dummyRoom: GameRoomState = { totalRealLiability: 0, totalRealLiabilityTHB: 0, globalCrashMultiplier: 1.00, isRealPlayerActive: false };
-            const dummyOutcome = rEngine.generateSecureGlobalOutcome(dummyRoom, false, false, 0);
-            if (!dummyOutcome || typeof dummyOutcome.multiplier !== "number" || isNaN(dummyOutcome.multiplier)) {
-              validationFailures.push("Outcome Output Invalid Format");
-            }
-          }
-        } catch (e: any) {
-          validationFailures.push(`Multiplier Formula: ${e?.message || e}`);
-        }
-
-        // Check 3: Bet/cashout button event listeners are attached (elements exist in DOM)
-        try {
-          const lActionBtn = document.getElementById("bet_action_btn_left");
-          const rActionBtn = document.getElementById("bet_action_btn_right");
-          if (!lActionBtn || !rActionBtn) {
-            validationFailures.push("Interactive Wager Controls Detached");
-          }
-        } catch (e: any) {
-          validationFailures.push(`Button Integrity: ${e?.message || e}`);
-        }
-
-        // Check 4: Balance display is showing a valid number
-        const curBalance = balanceRef.current;
-        if (typeof curBalance !== "number" || isNaN(curBalance) || curBalance < 0) {
-          validationFailures.push("Wallet Cash Balance Out of Range");
-        }
-
-        // Check 5: Round history array is initialized
-        const curHistory = (historyRef.current && historyRef.current.length > 0) ? historyRef.current : history;
-        if (!Array.isArray(curHistory) || curHistory.length === 0) {
-          setHistory(INITIAL_HISTORY);
-        }
-
-        // Check 6: RNG / crash point generator function exists
-        if (typeof generateNewCrashPoint !== "function") {
-          validationFailures.push("Secure Seed Generator Missing");
-        } else {
-          try {
-            const testResultPt = generateNewCrashPoint(false, true);
-            if (typeof testResultPt !== "number" || isNaN(testResultPt) || testResultPt < 1.00) {
-              validationFailures.push("Seed Math Constraint Infringements");
-            }
-          } catch (e: any) {
-            validationFailures.push(`RNG Core: ${e?.message || e}`);
-          }
-        }
-
-        // Apply findings to state
-        setFailedChecks(validationFailures);
-        
-        // Wait 0.5s (500ms) then fade out splash smoothly and reveal the game
-        setTimeout(() => {
-          setIsFadeOut(true);
-          setTimeout(() => {
-            setIsSplashActive(false);
-            setIsResponsibleGamingOpen(true);
-          }, 800); // 800ms duration for fade animations
-        }, 500);
-      }
-    }, 30); // 30ms interval ticks * 100 ticks = 3000ms total animation lifecycle
-
-    return () => {
-      clearInterval(intervalId);
-    };
+    const curHistory = (historyRef.current && historyRef.current.length > 0) ? historyRef.current : history;
+    if (!Array.isArray(curHistory) || curHistory.length === 0) {
+      setHistory(INITIAL_HISTORY);
+    }
   }, []);
 
   // REAL-TIME BACKEND INTEGRATION METHODS
@@ -710,10 +601,9 @@ export default function App() {
     setIsMuted(nextMuted);
   };
 
-  // Helper to calculate turnover platform fee (3%) dynamically from SkyRushEngine
-  const getTaxForWager = (amount: number): number => {
-    const engine = SkyRushEngine.getInstance();
-    return engine.processTurnoverCommission(amount);
+  // Helper to calculate wager amounts cleanly without fee deduction
+  const getTaxForWager = (_amount: number): number => {
+    return 0;
   };
 
   // Pre-calculations for generating random crash targets under Server-Authoritative Math specs
@@ -871,8 +761,7 @@ export default function App() {
     hasCashedOutLeftRef.current = false;
     isCashingOutLeftRef.current = false;
     const amount = Math.min(8000, Math.max(20, rawAmount));
-    const tax = getTaxForWager(amount);
-    const totalCost = amount + tax;
+    const totalCost = amount;
     
     const currentBal = walletModeRef.current === "REAL" ? realBalanceRef.current : demoBalanceRef.current;
     if (currentBal < totalCost) {
@@ -908,8 +797,7 @@ export default function App() {
     hasCashedOutRightRef.current = false;
     isCashingOutRightRef.current = false;
     const amount = Math.min(8000, Math.max(20, rawAmount));
-    const tax = getTaxForWager(amount);
-    const totalCost = amount + tax;
+    const totalCost = amount;
     
     const currentBal = walletModeRef.current === "REAL" ? realBalanceRef.current : demoBalanceRef.current;
     if (currentBal < totalCost) {
@@ -1416,15 +1304,8 @@ export default function App() {
       }
       setLastRoundResultWasLoss(userLostThisRound);
 
-      // Cashback calculations & backend loss settlement
-      let totalCashbackThisRound = 0;
-      let leftCashback = 0;
-      let rightCashback = 0;
-
+      // Process backend loss settlement for un-cashed out wagers
       if (betLeft.isPlaced && !betLeft.hasCashedOut) {
-        leftCashback = parseFloat((betLeft.amount * 0.10).toFixed(2));
-        totalCashbackThisRound += leftCashback;
-
         if (walletModeRef.current === "REAL" && betLeft.betTxnId) {
           const lossTxnId = `LOSS_${Date.now()}_L_${Math.random().toString(36).substring(2, 6)}`;
           seamlessWalletClient.processLoss(lossTxnId, betLeft.betTxnId, betLeft.amount, realUserId).then((res) => {
@@ -1435,9 +1316,6 @@ export default function App() {
         }
       }
       if (betRight.isPlaced && !betRight.hasCashedOut) {
-        rightCashback = parseFloat((betRight.amount * 0.10).toFixed(2));
-        totalCashbackThisRound += rightCashback;
-
         if (walletModeRef.current === "REAL" && betRight.betTxnId) {
           const lossTxnId = `LOSS_${Date.now()}_R_${Math.random().toString(36).substring(2, 6)}`;
           seamlessWalletClient.processLoss(lossTxnId, betRight.betTxnId, betRight.amount, realUserId).then((res) => {
@@ -1448,34 +1326,19 @@ export default function App() {
         }
       }
 
-      if (walletModeRef.current === "DEMO" && totalCashbackThisRound > 0) {
-        setDemoBalance((prev) => parseFloat((prev + totalCashbackThisRound).toFixed(2)));
-      }
-
-      if (totalCashbackThisRound > 0) {
-        setCashbackPopup({ show: true, amount: totalCashbackThisRound });
-        if (cashbackPopupTimeoutRef.current) {
-          clearTimeout(cashbackPopupTimeoutRef.current);
-        }
-        cashbackPopupTimeoutRef.current = setTimeout(() => {
-          setCashbackPopup((prev) => ({ ...prev, show: false }));
-        }, 3000);
-      }
-
       // Handle un-cashed out personal bets (they loss/bust)
       if (betLeft.isPlaced && !betLeft.hasCashedOut) {
         setUserStats((prev) => ({
           ...prev,
           totalBets: prev.totalBets + 1,
           totalWagered: prev.totalWagered + betLeft.amount,
-          netProfit: parseFloat((prev.netProfit - (betLeft.amount - leftCashback)).toFixed(2)),
+          netProfit: parseFloat((prev.netProfit - betLeft.amount).toFixed(2)),
         }));
         setMyHistory((prev) => [
           {
             id: `my_bet_${Date.now()}_l_col`,
             amount: betLeft.amount,
             timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-            cashbackAmount: leftCashback,
           },
           ...prev,
         ]);
@@ -1485,14 +1348,13 @@ export default function App() {
           ...prev,
           totalBets: prev.totalBets + 1,
           totalWagered: prev.totalWagered + betRight.amount,
-          netProfit: parseFloat((prev.netProfit - (betRight.amount - rightCashback)).toFixed(2)),
+          netProfit: parseFloat((prev.netProfit - betRight.amount).toFixed(2)),
         }));
         setMyHistory((prev) => [
           {
             id: `my_bet_${Date.now()}_r_col`,
             amount: betRight.amount,
             timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
-            cashbackAmount: rightCashback,
           },
           ...prev,
         ]);
@@ -1581,23 +1443,6 @@ export default function App() {
               {isMuted ? <VolumeX size={16} /> : <Volume2 size={16} />}
             </button>
 
-            {/* Admin Ops Terminal Trigger */}
-            <button
-              onClick={() => {
-                audioManager.playClick();
-                setIsAdminModalOpen(true);
-              }}
-              className={`p-1.5 rounded-lg border transition-all flex items-center justify-center ${
-                isAdminAuthenticated 
-                  ? "bg-rose-950/40 text-rose-400 border-rose-500/30 animate-pulse" 
-                  : "text-slate-400 hover:text-slate-200 bg-[#281117] border-[#52252e] hover:bg-[#4A1F29]"
-              }`}
-              title="Actuary Ops Terminal (Credentials Required)"
-              id="admin_ops_trigger_btn"
-            >
-              <Key size={15} />
-            </button>
-
             {/* Help guidelines modal trigger */}
             <button
               onClick={() => {
@@ -1652,53 +1497,13 @@ export default function App() {
         </div>
       </header>
 
-      {/* Pre-Game Diagnostics Warnings (only renders after 3 seconds loader finishes) */}
-      {!isSplashActive && failedChecks.length > 0 && (
-        <div className="bg-rose-950/90 border-b border-rose-500/40 text-rose-200 py-2.5 px-4 text-xs font-mono flex items-center justify-between gap-3 backdrop-blur-sm shadow-lg animate-pulse" id="system_check_warning_banner">
-          <div className="flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-rose-500 animate-ping shrink-0" />
-            <span className="font-bold uppercase tracking-wider">SYSTEM WARNING: PRE-GAME TESTS COMPLETED WITH FAILURES</span>
-            <span className="text-slate-300">({failedChecks.join(', ')})</span>
-          </div>
-          <button 
-            onClick={() => setFailedChecks([])}
-            className="text-slate-200 hover:text-white border border-[#52252e] hover:border-rose-500/40 bg-[#281117] px-2.5 py-1 rounded text-[10px] font-sans"
-          >
-            Acknowledge & Dismiss
-          </button>
-        </div>
-      )}
-
       {/* Refill Notify Toast */}
       {showRefillNotify && (
         <div className="fixed top-20 right-6 z-50 bg-emerald-950/90 border border-emerald-500/20 text-emerald-300 px-4 py-2.5 rounded-xl flex items-center gap-2 text-xs shadow-xl animate-bounce-short">
-          <Sparkles size={14} className="text-emerald-400" />
+          <Coins size={14} className="text-emerald-400" />
           <span>Credits Refilled to 150,000!</span>
         </div>
       )}
-
-      {/* Cashback Popup Toast (bottom-right corner) */}
-      <div 
-        className={`fixed bottom-6 right-6 z-50 bg-[#16080b] border-2 border-[#32CD32] text-white px-5 py-4 rounded-xl shadow-2xl flex flex-col gap-1.5 transition-all duration-300 transform ${
-          cashbackPopup.show 
-            ? "opacity-100 translate-y-0 scale-100" 
-            : "opacity-0 translate-y-4 scale-95 pointer-events-none"
-        }`}
-        id="cashback_popup_notification"
-      >
-        <div className="flex items-center gap-2">
-          <span className="text-base">💰</span>
-          <span className="font-bold tracking-wider text-xs uppercase text-slate-100">
-            CASHBACK RECEIVED
-          </span>
-        </div>
-        <div className="text-[14px] font-black text-[#32CD32] font-mono leading-tight">
-          +{cashbackPopup.amount.toLocaleString(undefined, { minimumFractionDigits: 1 })}
-        </div>
-        <div className="text-[10px] text-slate-400 font-medium">
-          added to your balance
-        </div>
-      </div>
 
       {/* Main Content Layout */}
       <main className="flex-1 max-w-7xl mx-auto w-full p-2.5 sm:p-4 flex flex-col gap-3 sm:gap-4 min-h-0">
@@ -1912,11 +1717,11 @@ export default function App() {
                     </div>
 
                     <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex flex-col gap-1">
-                      <span className="text-[9px] text-slate-400 uppercase tracking-widest font-black">Commission Fee (3.5%)</span>
+                      <span className="text-[9px] text-slate-400 uppercase tracking-widest font-black">Platform Turnover</span>
                       <span className="text-sm font-black text-rose-50">
                         {accumulatedFuelTax.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                       </span>
-                      <span className="text-[8px] text-slate-500 mt-1 leading-none font-sans">Flat 3.5% fee committed at t = 0s</span>
+                      <span className="text-[8px] text-slate-500 mt-1 leading-none font-sans">Turnover metrics logged</span>
                     </div>
 
                     <div className="bg-slate-900 border border-slate-800 p-3.5 rounded-xl flex flex-col gap-1">
@@ -2114,59 +1919,6 @@ export default function App() {
         isOpen={isResponsibleGamingOpen}
         onClose={() => setIsResponsibleGamingOpen(false)}
       />
-
-      {/* 3-Second Loading / Splash Screen Overlay */}
-      {isSplashActive && (
-        <div 
-          className={`fixed inset-0 bg-[#0a0a1a] z-[9999] flex flex-row transition-opacity duration-800 ${
-            isFadeOut ? "opacity-0 pointer-events-none" : "opacity-100"
-          }`}
-          id="game_splash_screen"
-        >
-          {/* LEFT COLUMN (80% width on wider screens, 85% on mobile ≤ 600px) */}
-          <div className="w-[80%] max-[600px]:w-[85%] h-screen bg-[#0a0a1a] flex items-center justify-center shrink-0 overflow-hidden relative">
-            <img 
-              src="https://i.postimg.cc/RZMGKtYM/1780092343682css.webp" 
-              alt="Sky Rush Cover Side" 
-              className="w-full h-full object-contain select-none block"
-              referrerPolicy="no-referrer"
-              id="splash_cover_image"
-            />
-          </div>
-
-          {/* RIGHT COLUMN (20% width on wider screens, 15% on mobile ≤ 600px) */}
-          <div className="w-[20%] max-[600px]:w-[15%] h-screen bg-[#0a0a1a] flex flex-col justify-center items-center py-8 px-2 shrink-0 relative gap-5 select-none">
-            {/* 1. "LOADING" text */}
-            <span className="text-white text-[10px] min-[601px]:text-xs font-mono font-bold tracking-[2px] uppercase select-none">
-              LOADING
-            </span>
-
-            {/* 2. Progress bar — VERTICAL orientation (Fills bottom-to-top) */}
-            <div className="relative w-[10px] h-[200px] bg-slate-950 border border-slate-900 rounded-full overflow-hidden p-[1px] shadow-[inset_0_2px_4px_rgba(0,0,0,0.8)] flex flex-col justify-end">
-              <div 
-                className="w-full rounded-full bg-gradient-to-t from-[#ff2d78] to-[#7b2fff] transition-all duration-75"
-                style={{ 
-                  height: `${splashProgress}%`,
-                  boxShadow: "0 0 10px #ff2d78"
-                }}
-              />
-            </div>
-
-            {/* 3. Percentage number below the bar */}
-            <div className="text-white font-bold font-mono text-[11px] min-[601px]:text-xs tracking-wider">
-              {splashProgress}%
-            </div>
-
-            {/* 4. Status text (small, gray) */}
-            <span className="text-slate-500 font-mono text-[9px] min-[601px]:text-[10px] uppercase tracking-wide text-center max-w-full px-1">
-              {splashProgress <= 30 && "Initializing..."}
-              {splashProgress > 30 && splashProgress <= 60 && "Loading..."}
-              {splashProgress > 60 && splashProgress <= 90 && "Preparing..."}
-              {splashProgress > 90 && "Ready!"}
-            </span>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

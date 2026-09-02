@@ -17,7 +17,6 @@ export interface FinancialAuditLog {
   balance_after?: number;
   currency: string;
   game_id?: string;
-  ip?: string;
   duration_ms?: number;
   status: "SUCCESS" | "FAILED" | "REJECTED";
   error_message?: string;
@@ -46,7 +45,12 @@ const SENSITIVE_KEYS = [
   "fingerprint",
   "serial",
   "email",
-  "real_ip"
+  "real_ip",
+  "user_agent",
+  "useragent",
+  "user-agent",
+  "referer",
+  "referrer"
 ];
 
 export function maskSensitiveData(obj: any): any {
@@ -65,7 +69,8 @@ export function maskSensitiveData(obj: any): any {
     );
 
     if (isSensitive) {
-      masked[key] = "[PROTECTED_ANONYMIZED]";
+      // Strip completely
+      continue;
     } else if (val && typeof val === "object") {
       masked[key] = maskSensitiveData(val);
     } else {
@@ -120,10 +125,8 @@ class StructuredLogger {
   }
 
   public logFinancialAudit(auditEntry: FinancialAuditLog) {
-    // Zero out any IP/hardware identifier to maintain absolute privacy
     const sanitizedEntry: FinancialAuditLog = {
-      ...auditEntry,
-      ip: "[ANONYMIZED_SECURE]"
+      ...auditEntry
     };
 
     this.inMemoryAuditLedger.push(sanitizedEntry);
@@ -146,4 +149,3 @@ class StructuredLogger {
 }
 
 export const logger = new StructuredLogger();
-

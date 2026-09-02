@@ -2210,7 +2210,7 @@ async function runSecurityFullstackServer() {
   app.post("/api/wallet/v1/debit", verifySignatureMiddleware, handleDebit);
   app.post("/api/wallet/v1/bet", verifySignatureMiddleware, handleDebit);
 
-  // 4. [C] CREDIT / WIN (หักค่าน้ำ 3% แล้วโอนเงินสุทธิเข้ากระเป๋า)
+  // 4. [C] CREDIT / WIN (โอนเงินชนะเข้ากระเป๋าผู้เล่น)
   const handleCredit = async (req: Request, res: Response) => {
     try {
       const { txn_id, user_id, win_amount, amount, game_id, operator_id } = req.body;
@@ -2241,7 +2241,7 @@ async function runSecurityFullstackServer() {
   app.post("/api/wallet/v1/credit", verifySignatureMiddleware, handleCredit);
   app.post("/api/wallet/v1/win", verifySignatureMiddleware, handleCredit);
 
-  // 5. [D] LOSS (สรุปผลแพ้ คืนเงิน Cashback 10% เข้ากระเป๋าผู้เล่นทันที)
+  // 5. [D] LOSS (สรุปผลแพ้)
   const handleLoss = async (req: Request, res: Response) => {
     try {
       const { txn_id, bet_txn_id, user_id, loss_amount, amount, game_id, operator_id } = req.body;
@@ -2642,7 +2642,7 @@ async function runSecurityFullstackServer() {
         },
         "/api/wallet/v1/win": {
           post: {
-            summary: "Credit / Win Settlement (with 3% house commission)",
+            summary: "Credit / Win Settlement",
             requestBody: {
               content: {
                 "application/json": {
@@ -2666,7 +2666,7 @@ async function runSecurityFullstackServer() {
         },
         "/api/wallet/v1/loss": {
           post: {
-            summary: "Loss Notification (with 10% instant player cashback)",
+            summary: "Loss Notification",
             requestBody: {
               content: {
                 "application/json": {
@@ -2684,7 +2684,7 @@ async function runSecurityFullstackServer() {
               }
             },
             responses: {
-              200: { description: "Loss recorded and cashback credited." }
+              200: { description: "Loss recorded successfully." }
             }
           }
         },
@@ -2768,7 +2768,7 @@ async function runSecurityFullstackServer() {
           }
         },
         {
-          name: "4. Credit / Win (3% Comm)",
+          name: "4. Credit / Win",
           request: {
             method: "POST",
             header: [{ key: "Content-Type", value: "application/json" }],
@@ -2786,7 +2786,7 @@ async function runSecurityFullstackServer() {
           }
         },
         {
-          name: "5. Loss Settlement (10% Cashback)",
+          name: "5. Loss Settlement",
           request: {
             method: "POST",
             header: [{ key: "Content-Type", value: "application/json" }],

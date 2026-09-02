@@ -141,8 +141,7 @@ export const LivePerformanceLoop: React.FC<LivePerformanceLoopProps> = memo(({
       if (isWin) {
         roundNet = (item.winAmount || 0) - item.amount;
       } else {
-        const cb = item.cashbackAmount || item.amount * 0.10;
-        roundNet = -(item.amount - cb);
+        roundNet = -item.amount;
       }
 
       runningPnL += roundNet;

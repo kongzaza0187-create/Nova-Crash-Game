@@ -487,24 +487,17 @@ export class SkyRushEngine {
   }
 
   /**
-   * Commission Turnover (3.5% Platform Fee deducted on placed stakes)
+   * Commission Turnover (No Commission)
    */
-  public processTurnoverCommission(betAmount: number): number {
-    const feeRate = 0.035; // 3.5% turnover fee
-    const fee = Math.floor(betAmount * feeRate * 100) / 100;
-    this.accumulatedTurnoverFee += fee;
-    this.totalSimulatedWager += betAmount;
-    return fee;
+  public processTurnoverCommission(_betAmount: number): number {
+    return 0;
   }
 
   /**
-   * Loss Cashback Rebate (10% refund on lost stakes)
+   * Loss Cashback Rebate (No Cashback)
    */
-  public processLossCashback(lostStake: number): number {
-    const cashbackRate = 0.10; // 10% loss cashback
-    const cashback = Math.floor(lostStake * cashbackRate * 100) / 100;
-    this.accumulatedLossCashback += cashback;
-    return cashback;
+  public processLossCashback(_lostStake: number): number {
+    return 0;
   }
 
   /**

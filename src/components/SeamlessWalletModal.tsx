@@ -761,7 +761,7 @@ export const SeamlessWalletModal: React.FC<Props> = ({ isOpen, onClose, onBalanc
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                HMAC-SHA256 Signatures • SELECT ... FOR UPDATE Row Locks • 59:41 Risk Assurance • 1.02x-1.05x Explosion Cushion • 3% Comm / 10% Cashback
+                HMAC-SHA256 Signatures • SELECT ... FOR UPDATE Row Locks • 59:41 Risk Assurance • 1.02x-1.05x Explosion Cushion
               </p>
             </div>
           </div>
@@ -1002,7 +1002,7 @@ export const SeamlessWalletModal: React.FC<Props> = ({ isOpen, onClose, onBalanc
                     >
                       <div className="flex items-center gap-1 font-bold text-xs">
                         <Percent className="w-3.5 h-3.5 text-amber-400" />
-                        Win (3% House Fee)
+                        Win Settlement
                       </div>
                       <div className="text-[10px] text-slate-400 mt-0.5">/wallet/v1/win</div>
                     </button>
@@ -1017,7 +1017,7 @@ export const SeamlessWalletModal: React.FC<Props> = ({ isOpen, onClose, onBalanc
                     >
                       <div className="flex items-center gap-1 font-bold text-xs">
                         <RotateCcw className="w-3.5 h-3.5 text-purple-400" />
-                        Loss (10% Cashback)
+                        Loss Settlement
                       </div>
                       <div className="text-[10px] text-slate-400 mt-0.5">/wallet/v1/loss</div>
                     </button>

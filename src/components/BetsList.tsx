@@ -257,11 +257,6 @@ const BetsListComponent: React.FC<BetsListProps> = ({
                       <span className="font-bold text-slate-200">
                         {item.amount.toLocaleString()}{!item.multiplier && " — LOSS"}
                       </span>
-                      {item.cashbackAmount !== undefined && item.cashbackAmount > 0 && (
-                        <span className="text-[11px] font-semibold font-mono text-[#32CD32] mt-1">
-                          CASHBACK +{item.cashbackAmount.toLocaleString()}
-                        </span>
-                      )}
                     </div>
 
                     {/* Result details */}

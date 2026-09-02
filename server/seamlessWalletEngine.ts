@@ -341,9 +341,9 @@ class SeamlessWalletStore {
         return { status: "FAILED", error: "INVALID_AMOUNT" };
       }
 
-      // Exact 3% House Fee calculation
-      const houseFee = parseFloat((grossWin * 0.03).toFixed(2));
-      const netWin = parseFloat((grossWin - houseFee).toFixed(2));
+      // No House Fee / Commission (100% Net Win Payout)
+      const houseFee = 0.00;
+      const netWin = grossWin;
 
       const newBalance = parseFloat((user.balance + netWin).toFixed(2));
       user.balance = newBalance;
@@ -352,7 +352,6 @@ class SeamlessWalletStore {
       const op = this.operators.get(operatorId);
       if (op) {
         op.total_credit_volume = parseFloat((op.total_credit_volume + netWin).toFixed(2));
-        op.total_commission_paid = parseFloat((op.total_commission_paid + houseFee).toFixed(2));
       }
 
       const txRecord: WalletTransaction = {
@@ -440,16 +439,9 @@ class SeamlessWalletStore {
         return { status: "FAILED", error: "INVALID_AMOUNT" };
       }
 
-      // Exact 10% Cashback calculation
-      const cashbackAmount = parseFloat((lossVal * 0.10).toFixed(2));
-      const newBalance = parseFloat((user.balance + cashbackAmount).toFixed(2));
-      user.balance = newBalance;
-
-      // Update operator stats
-      const op = this.operators.get(operatorId);
-      if (op) {
-        op.total_loss_cashback = parseFloat((op.total_loss_cashback + cashbackAmount).toFixed(2));
-      }
+      // Loss Settlement (No Cashback)
+      const cashbackAmount = 0.00;
+      const newBalance = user.balance;
 
       const txRecord: WalletTransaction = {
         id: this.autoIncrementId++,
@@ -457,12 +449,12 @@ class SeamlessWalletStore {
         ref_txn_id: betTxnId,
         user_id: userId,
         operator_id: operatorId,
-        amount: cashbackAmount,
+        amount: 0.00,
         gross_amount: lossVal,
         fee: 0.00,
-        cashback: cashbackAmount,
+        cashback: 0.00,
         balance_after: newBalance,
-        type: "CASHBACK_10%",
+        type: "BET",
         game_id: gameId,
         status: "SUCCESS",
         created_at: new Date().toISOString()

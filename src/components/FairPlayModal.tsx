@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { X, ShieldCheck, CheckCircle2, Lock, RefreshCw, Copy, Check, Sparkles, Scale, Cpu, Hash } from "lucide-react";
+import { X, ShieldCheck, CheckCircle2, Lock, RefreshCw, Copy, Check, Cpu, Scale, Hash } from "lucide-react";
 
 interface FairPlayModalProps {
   isOpen: boolean;
@@ -137,7 +137,7 @@ export const FairPlayModal: React.FC<FairPlayModalProps> = ({
           <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3 font-mono">
             <div className="flex items-center justify-between text-xs border-b border-slate-800 pb-2">
               <span className="font-bold text-white flex items-center gap-1.5 font-sans">
-                <Sparkles size={14} className="text-amber-400" /> Current Round Cryptographic Seeds
+                <Cpu size={14} className="text-amber-400" /> Current Round Cryptographic Seeds
               </span>
               <span className="text-[10px] text-slate-500">Auto-Generated</span>
             </div>
