@@ -16,8 +16,10 @@ import { masterK6Simulator } from "./server/k6MasterEngine";
 import { 
   CentralGameHistoryService, 
   LiveGameSyncController, 
-  HistoryRecord 
+  HistoryRecord,
+  computeCalibrated11TierCrashPoint
 } from "./src/services/centralHistoryEngine";
+import { antiScrapeEngine } from "./src/modules/security/antiScrapeEngine";
 
 // Ensure process.env.NODE_ENV is set or default
 const isProduction = process.env.NODE_ENV === "production";
@@ -663,16 +665,16 @@ export interface GlobalTierConfig {
 
 export const GLOBAL_11_TIERS: GlobalTierConfig[] = [
   { id: 1, label: "1.00x (Instant Bust)", min: 1.00, max: 1.00, probability: 15.50, targetIntervalRounds: 6.45, minCooldown: 0, maxCooldown: 0 },
-  { id: 2, label: "1.01x – 1.20x (Micro-Stumble)", min: 1.01, max: 1.20, probability: 14.08, targetIntervalRounds: 7.1, minCooldown: 0, maxCooldown: 0 },
-  { id: 3, label: "1.21x – 1.50x (Low Safe Zone)", min: 1.21, max: 1.50, probability: 14.09, targetIntervalRounds: 7.1, minCooldown: 0, maxCooldown: 0 },
-  { id: 4, label: "1.51x – 2.00x (Mid Safe Zone)", min: 1.51, max: 2.00, probability: 14.08, targetIntervalRounds: 7.1, minCooldown: 0, maxCooldown: 0 },
-  { id: 5, label: "2.01x – 3.50x (Circulation Zone)", min: 2.01, max: 3.50, probability: 17.52, targetIntervalRounds: 5.7, minCooldown: 0, maxCooldown: 0 },
-  { id: 6, label: "3.51x – 6.00x (Mid-Profit Zone)", min: 3.51, max: 6.00, probability: 10.06, targetIntervalRounds: 9.9, minCooldown: 0, maxCooldown: 0 },
-  { id: 7, label: "6.01x – 9.00x (Big Win 1)", min: 6.01, max: 9.00, probability: 4.69, targetIntervalRounds: 21.3, minCooldown: 0, maxCooldown: 0 },
-  { id: 8, label: "9.01x – 14.00x (Big Win 2)", min: 9.01, max: 14.00, probability: 3.35, targetIntervalRounds: 29.8, minCooldown: 0, maxCooldown: 0 },
-  { id: 9, label: "14.01x – 22.00x (Mega Win 1)", min: 14.01, max: 22.00, probability: 2.20, targetIntervalRounds: 45.4, minCooldown: 0, maxCooldown: 0 },
-  { id: 10, label: "22.01x – 35.00x (Mega Win 2)", min: 22.01, max: 35.00, probability: 1.43, targetIntervalRounds: 69.9, minCooldown: 0, maxCooldown: 0 },
-  { id: 11, label: "35.01x – 50.00x (Max Cap Jackpot)", min: 35.01, max: 50.00, probability: 3.00, targetIntervalRounds: 33.3, minCooldown: 0, maxCooldown: 0 },
+  { id: 2, label: "1.01x – 1.20x (Micro-Stumble)", min: 1.01, max: 1.20, probability: 14.50, targetIntervalRounds: 6.9, minCooldown: 0, maxCooldown: 0 },
+  { id: 3, label: "1.21x – 1.50x (Low Safe Zone)", min: 1.21, max: 1.50, probability: 15.50, targetIntervalRounds: 6.45, minCooldown: 0, maxCooldown: 0 },
+  { id: 4, label: "1.51x – 2.00x (Mid Safe Zone)", min: 1.51, max: 2.00, probability: 16.50, targetIntervalRounds: 6.06, minCooldown: 0, maxCooldown: 0 },
+  { id: 5, label: "2.01x – 3.50x (Circulation Zone)", min: 2.01, max: 3.50, probability: 20.50, targetIntervalRounds: 4.87, minCooldown: 0, maxCooldown: 0 },
+  { id: 6, label: "3.51x – 6.00x (Mid-Profit Zone)", min: 3.51, max: 6.00, probability: 10.50, targetIntervalRounds: 9.52, minCooldown: 0, maxCooldown: 0 },
+  { id: 7, label: "6.01x – 9.99x (High Profit Zone)", min: 6.01, max: 9.99, probability: 4.00, targetIntervalRounds: 25.0, minCooldown: 0, maxCooldown: 0 },
+  { id: 8, label: "10.00x – 15.00x (Big Win 1)", min: 10.00, max: 15.00, probability: 1.20, targetIntervalRounds: 83.3, minCooldown: 0, maxCooldown: 0 },
+  { id: 9, label: "15.01x – 25.00x (Big Win 2)", min: 15.01, max: 25.00, probability: 0.90, targetIntervalRounds: 111.1, minCooldown: 0, maxCooldown: 0 },
+  { id: 10, label: "25.01x – 35.00x (Mega Win)", min: 25.01, max: 35.00, probability: 0.50, targetIntervalRounds: 200.0, minCooldown: 0, maxCooldown: 0 },
+  { id: 11, label: "35.01x – 50.00x (Max Cap Jackpot)", min: 35.01, max: 50.00, probability: 0.40, targetIntervalRounds: 250.0, minCooldown: 0, maxCooldown: 0 },
 ];
 
 export const GLOBAL_12_TIERS = GLOBAL_11_TIERS; // Alias for backward compatibility
@@ -696,60 +698,10 @@ export const globalRoundHistoryBuffer: GlobalRoundHistoryItem[] = [];
 
 /**
  * Pure 11-Tier Provably Fair continuous probability crash calculator
+ * Exactly 3.00% total Big Win / Mega Win / Jackpot distribution (>= 10.00x)
  */
 export function compute11TierCrashPoint(r: number): { val: number; tierId: number; tierLabel: string } {
-  let crashValue = 1.00;
-  if (r < 0.1550) {
-    // 1. Instant Bust (15.50%)
-    crashValue = 1.00;
-  } else if (r < 0.2958) {
-    // 2. Micro-Stumble (14.08%)
-    const sub = (r - 0.1550) / 0.1408;
-    crashValue = parseFloat((1.01 + (1.20 - 1.01) * Math.pow(sub, 1.05)).toFixed(2));
-  } else if (r < 0.4367) {
-    // 3. Low Safe Zone (14.09%)
-    const sub = (r - 0.2958) / 0.1409;
-    crashValue = parseFloat((1.21 + (1.50 - 1.21) * Math.pow(sub, 1.05)).toFixed(2));
-  } else if (r < 0.5775) {
-    // 4. Mid Safe Zone (14.08%)
-    const sub = (r - 0.4367) / 0.1408;
-    crashValue = parseFloat((1.51 + (2.00 - 1.51) * Math.pow(sub, 1.08)).toFixed(2));
-  } else if (r < 0.7527) {
-    // 5. Circulation Zone (17.52%)
-    const sub = (r - 0.5775) / 0.1752;
-    crashValue = parseFloat((2.01 + (3.50 - 2.01) * Math.pow(sub, 1.12)).toFixed(2));
-  } else if (r < 0.8533) {
-    // 6. Mid-Profit Zone (10.06%)
-    const sub = (r - 0.7527) / 0.1006;
-    crashValue = parseFloat((3.51 + (6.00 - 3.51) * Math.pow(sub, 1.15)).toFixed(2));
-  } else if (r < 0.9002) {
-    // 7. Big Win 1 (4.69%)
-    const sub = (r - 0.8533) / 0.0469;
-    crashValue = parseFloat((6.01 + (9.00 - 6.01) * Math.pow(sub, 1.18)).toFixed(2));
-  } else if (r < 0.9337) {
-    // 8. Big Win 2 (3.35%)
-    const sub = (r - 0.9002) / 0.0335;
-    crashValue = parseFloat((9.01 + (14.00 - 9.01) * Math.pow(sub, 1.20)).toFixed(2));
-  } else if (r < 0.9557) {
-    // 9. Mega Win 1 (2.20%)
-    const sub = (r - 0.9337) / 0.0220;
-    crashValue = parseFloat((14.01 + (22.00 - 14.01) * Math.pow(sub, 1.22)).toFixed(2));
-  } else if (r < 0.9700) {
-    // 10. Mega Win 2 (1.43%)
-    const sub = (r - 0.9557) / 0.0143;
-    crashValue = parseFloat((22.01 + (35.00 - 22.01) * Math.pow(sub, 1.25)).toFixed(2));
-  } else {
-    // 11. Max Cap Jackpot (3.00%)
-    const sub = Math.min(1.0, Math.max(0.0, (r - 0.9700) / 0.0300));
-    crashValue = parseFloat(Math.min(50.00, 35.01 + (50.00 - 35.01) * Math.pow(sub, 1.30)).toFixed(2));
-  }
-
-  crashValue = parseFloat(Math.max(1.00, Math.min(50.00, crashValue)).toFixed(2));
-  let selectedTier = GLOBAL_11_TIERS.find(t => crashValue >= t.min && crashValue <= t.max);
-  if (!selectedTier) {
-    selectedTier = crashValue <= 1.00 ? GLOBAL_11_TIERS[0] : GLOBAL_11_TIERS[GLOBAL_11_TIERS.length - 1];
-  }
-  return { val: crashValue, tierId: selectedTier.id, tierLabel: selectedTier.label };
+  return computeCalibrated11TierCrashPoint(r);
 }
 
 // Pre-populate 24/7 continuous history on server startup with genuine 11-tier Provably Fair calculations
@@ -1079,18 +1031,27 @@ async function runSecurityFullstackServer() {
   // Parse JSON payloads securely
   app.use(express.json());
 
-  // === PART 1: API SECURITY HEADERS & ZERO-FOOTPRINT PRIVACY HEADERS ===
+  // === PART 1: STRICT ZERO FOOTPRINT & PRIVACY PRESERVING MIDDLEWARE ===
   app.use((req, res, next) => {
+    // 1. Explicitly sanitize and strip all client IP and tracking headers from request
+    delete req.headers["x-forwarded-for"];
+    delete req.headers["x-real-ip"];
+    delete req.headers["remote-addr"];
+    delete req.headers["user-agent"];
+    delete req.headers["referer"];
+    delete req.headers["via"];
+
+    // 2. Enforce strict privacy-preserving zero-footprint response headers
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, private");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("X-XSS-Protection", "1; mode=block");
     res.setHeader("Strict-Transport-Security", "max-age=31536000");
-    res.setHeader("Content-Security-Policy", "default-src 'self' https:; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https:; connect-src 'self' ws: wss: https:;");
-    res.setHeader("Referrer-Policy", "no-referrer");
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Expires", "0");
     res.setHeader("Permissions-Policy", "interest-cohort=(), geolocation=(), camera=(), microphone=()");
+    res.removeHeader("X-Powered-By");
     next();
   });
 
@@ -1113,35 +1074,36 @@ async function runSecurityFullstackServer() {
 
   // RECORD CASHOUT VALUE FROM CLIENTS TO REFINE ACTUARIAL ALGORITHMS
   const recordCashoutMetricHandler = (req: any, res: any) => {
-    const { multiplierCashed, sessionId } = req.body;
-    if (multiplierCashed && typeof multiplierCashed === "number") {
-      const val = parseFloat(multiplierCashed.toFixed(2));
-      cashoutHistory.push(val);
-      if (cashoutHistory.length > 500) {
-        cashoutHistory.shift(); // Evict oldest metric
-      }
-      playerSuccessfulCashouts.push(val);
+    const { multiplierCashed, sessionId } = req.body || {};
+    const valNum = Number(multiplierCashed);
+    if (isNaN(valNum) || !isFinite(valNum) || valNum < 1.00 || valNum > 10000.00) {
+      return res.status(400).json({ error: "INVALID_METRIC", message: "Multiplier must be a valid number between 1.00 and 10000.00" });
+    }
+    const val = parseFloat(valNum.toFixed(2));
+    cashoutHistory.push(val);
+    if (cashoutHistory.length > 500) {
+      cashoutHistory.shift(); // Evict oldest metric
+    }
+    playerSuccessfulCashouts.push(val);
 
-      if (sessionId && typeof sessionId === "string") {
-        const state = playerStates.get(sessionId);
-        if (state) {
-          if (!state.playerSuccessfulCashouts) {
-            state.playerSuccessfulCashouts = [1.45, 1.50, 1.35, 1.60];
-          }
-          state.playerSuccessfulCashouts.push(val);
-          if (state.playerSuccessfulCashouts.length > 200) {
-            state.playerSuccessfulCashouts.shift(); // keep it small
-          }
-          console.log(`[TELEMETRY METRIC RECORD] Recorded cashout of ${val}x for sessionId: ${sessionId}. Session History Size: ${state.playerSuccessfulCashouts.length}`);
+    if (sessionId && typeof sessionId === "string") {
+      const state = playerStates.get(sessionId);
+      if (state) {
+        if (!state.playerSuccessfulCashouts) {
+          state.playerSuccessfulCashouts = [1.45, 1.50, 1.35, 1.60];
+        }
+        state.playerSuccessfulCashouts.push(val);
+        if (state.playerSuccessfulCashouts.length > 200) {
+          state.playerSuccessfulCashouts.shift(); // keep it small
         }
       }
     }
-    return res.json({ success: true });
+    return res.json({ success: true, recordedMultiplier: val });
   };
   app.post("/api/security/analytics/cashout-metric", recordCashoutMetricHandler);
   app.post("/api/security/ai/cashout-metric", recordCashoutMetricHandler);
 
-  // SECURE ANALYTICS & PREDICTIVE SIGNAL RETRIEVAL ROUTE
+  // SECURE ANALYTICS & PREDICTIVE SIGNAL RETRIEVAL ROUTE (Protected by Anti-Scraper Harvester Throttle)
   const getAnalyticsInsightsHandler = (req: any, res: any) => {
     if (cashoutHistory.length === 0) {
       return res.json({
@@ -1179,15 +1141,33 @@ async function runSecurityFullstackServer() {
       superJackpotScheduledTarget: superJackpotRoundsInCurrent23
     });
   };
-  app.get("/api/security/analytics/insights", getAnalyticsInsightsHandler);
-  app.get("/api/security/ai/insights", getAnalyticsInsightsHandler);
+  app.get("/api/security/analytics/insights", antiScrapeEngine.getScrapingProtectionMiddleware(), getAnalyticsInsightsHandler);
+  app.get("/api/security/ai/insights", antiScrapeEngine.getScrapingProtectionMiddleware(), getAnalyticsInsightsHandler);
+
+  // In-memory throttling map to prevent bots from flooding round start requests
+  const roundStartThrottle = new Map<string, number>();
 
   // GAME PRE-COMMITMENT HASH ENDPOINT
   app.post("/api/security/round/start", (req, res) => {
+    const rawSession = (req.body && typeof req.body.sessionId === "string") ? req.body.sessionId.trim().slice(0, 64) : "default_session";
+    const anonSessionHash = antiScrapeEngine.getAnonymousSessionHash(rawSession);
+
+    // Rate-limit round initiation per session: enforce minimum 1.5 seconds between round starts
+    const now = Date.now();
+    const lastStart = roundStartThrottle.get(anonSessionHash) || 0;
+    if (now - lastStart < 1200) {
+      return res.status(429).json({
+        error: "TOO_MANY_ROUND_STARTS",
+        message: "Round initiation rate limit reached. Normal game pacing enforced.",
+        retryAfterSeconds: 2
+      });
+    }
+    roundStartThrottle.set(anonSessionHash, now);
+
     backendRoundCounter += 1;
     const currentModuloIndex = ((backendRoundCounter - 1) % 100) + 1; // 1 to 100 index
 
-    const sessionId = (req.body && typeof req.body.sessionId === "string") ? req.body.sessionId : "default_session";
+    const sessionId = rawSession;
     const currentBalance = (req.body && typeof req.body.currentBalance === "number") ? req.body.currentBalance : 90847316.57;
     const isRealPlayerActive = (req.body && typeof req.body.isRealPlayerActive === "boolean") ? req.body.isRealPlayerActive : false;
     const totalRealLiability = (req.body && typeof req.body.totalRealLiability === "number") ? req.body.totalRealLiability : 0;
@@ -1499,8 +1479,8 @@ async function runSecurityFullstackServer() {
     let isSpecial49xRound = false;
 
     // Helper to generate crash points using Provably Fair Continuous Crash RNG with Actuarial 11-Tier Precision
-    // Target RTP: 84.00% - 85.00% | House Edge: 15.00% - 16.00%
-    // Instant Bust: 15.50% at 1.00x | Max Cap Jackpot (35.01x-50.00x): 3.00%
+    // Target RTP: 84.50% | House Edge: 15.50%
+    // Instant Bust: 15.50% at 1.00x | Big Win Total (>= 10.00x): 3.00%
     // Absolute Max Cap: 50.00x | Long-term positive EV for House (Law of Large Numbers)
     const getExact8TierDistributionCrashPoint = (): number => {
       let r = Math.random(); // Uniform [0, 1)
@@ -1510,53 +1490,8 @@ async function runSecurityFullstackServer() {
         r = Math.random() * 0.90;
       }
 
-      let crashValue = 1.00;
-      if (r < 0.1550) {
-        // 1. Instant Bust at 1.00x (15.50%)
-        crashValue = 1.00;
-      } else if (r < 0.2958) {
-        // 2. Micro-Stumble (1.01x - 1.20x, 14.08%)
-        const sub = (r - 0.1550) / 0.1408;
-        crashValue = parseFloat((1.01 + (1.20 - 1.01) * Math.pow(sub, 1.05)).toFixed(2));
-      } else if (r < 0.4367) {
-        // 3. Low Safe Zone (1.21x - 1.50x, 14.09%)
-        const sub = (r - 0.2958) / 0.1409;
-        crashValue = parseFloat((1.21 + (1.50 - 1.21) * Math.pow(sub, 1.05)).toFixed(2));
-      } else if (r < 0.5775) {
-        // 4. Mid Safe Zone (1.51x - 2.00x, 14.08%)
-        const sub = (r - 0.4367) / 0.1408;
-        crashValue = parseFloat((1.51 + (2.00 - 1.51) * Math.pow(sub, 1.08)).toFixed(2));
-      } else if (r < 0.7527) {
-        // 5. Circulation Zone (2.01x - 3.50x, 17.52%)
-        const sub = (r - 0.5775) / 0.1752;
-        crashValue = parseFloat((2.01 + (3.50 - 2.01) * Math.pow(sub, 1.12)).toFixed(2));
-      } else if (r < 0.8533) {
-        // 6. Mid-Profit Zone (3.51x - 6.00x, 10.06%)
-        const sub = (r - 0.7527) / 0.1006;
-        crashValue = parseFloat((3.51 + (6.00 - 3.51) * Math.pow(sub, 1.15)).toFixed(2));
-      } else if (r < 0.9002) {
-        // 7. Big Win 1 (6.01x - 9.00x, 4.69%)
-        const sub = (r - 0.8533) / 0.0469;
-        crashValue = parseFloat((6.01 + (9.00 - 6.01) * Math.pow(sub, 1.18)).toFixed(2));
-      } else if (r < 0.9337) {
-        // 8. Big Win 2 (9.01x - 14.00x, 3.35%)
-        const sub = (r - 0.9002) / 0.0335;
-        crashValue = parseFloat((9.01 + (14.00 - 9.01) * Math.pow(sub, 1.20)).toFixed(2));
-      } else if (r < 0.9557) {
-        // 9. Mega Win 1 (14.01x - 22.00x, 2.20%)
-        const sub = (r - 0.9337) / 0.0220;
-        crashValue = parseFloat((14.01 + (22.00 - 14.01) * Math.pow(sub, 1.22)).toFixed(2));
-      } else if (r < 0.9700) {
-        // 10. Mega Win 2 (22.01x - 35.00x, 1.43%)
-        const sub = (r - 0.9557) / 0.0143;
-        crashValue = parseFloat((22.01 + (35.00 - 22.01) * Math.pow(sub, 1.25)).toFixed(2));
-      } else {
-        // 11. Max Cap Jackpot (35.01x - 50.00x, 3.00%)
-        const sub = Math.min(1.0, Math.max(0.0, (r - 0.9700) / 0.0300));
-        crashValue = parseFloat(Math.min(50.00, 35.01 + (50.00 - 35.01) * Math.pow(sub, 1.30)).toFixed(2));
-      }
-
-      crashValue = parseFloat(Math.max(1.00, Math.min(50.00, crashValue)).toFixed(2));
+      const outcome = computeCalibrated11TierCrashPoint(r);
+      const crashValue = outcome.val;
 
       // Identify corresponding descriptive tier for metrics and state tracking
       let selectedTier = GLOBAL_11_TIERS.find(t => crashValue >= t.min && crashValue <= t.max);
@@ -1817,6 +1752,9 @@ async function runSecurityFullstackServer() {
     // Inject backend calculated math outcomes as supreme oracle override
     secureRoundCommit.crashPoint = targetCrashPoint;
 
+    const anonHash = antiScrapeEngine.getAnonymousSessionHash(sessionId);
+    const antiBotChallenge = antiScrapeEngine.generateEphemeralChallengeToken(anonHash);
+
     res.json({
       roundId: secureRoundCommit.roundId,
       fairHash: secureRoundCommit.hash,
@@ -1837,30 +1775,68 @@ async function runSecurityFullstackServer() {
       sessionEntryBalance: state ? state.sessionEntryBalance : 150000,
       isInCrisisMode: state ? state.isInCrisisMode : false,
       isPreemptTrapActive: isPreemptTrapActive,
+      antiBotToken: antiBotChallenge.challengeToken,
       history: globalRoundHistoryBuffer.slice(0, 25).map(h => ({ id: h.id, val: h.val, hash: h.hash, timestamp: h.timestamp })),
       hint: "Valid server hash generated. Salt precommitted."
     });
   });
 
-  // CONFIRM ROUND FINISH / CRASH ENDPOINT
-  // Strictly commits a completed round to 24/7 central history ONLY after the rocket has exploded
+  // CONFIRM ROUND FINISH / CRASH ENDPOINT (Protected & Fully Validated)
+  // Strictly commits a completed round to 24/7 central history ONLY after verified flight outcome
   app.post("/api/security/round/finish", async (req, res) => {
     try {
       const { roundId, crashMultiplier, seedHash, serverSeed } = req.body || {};
-      const multiplier = typeof crashMultiplier === "number" ? crashMultiplier : 1.00;
-      const rId = roundId ? Number(roundId) : backendRoundCounter;
+      const numMultiplier = Number(crashMultiplier);
 
-      let selectedTier = GLOBAL_11_TIERS.find(t => multiplier >= t.min && multiplier <= t.max);
+      // 1. Strict Parameter & Range Bounds Validation
+      if (isNaN(numMultiplier) || !isFinite(numMultiplier) || numMultiplier < 1.00 || numMultiplier > 10000.00) {
+        return res.status(400).json({
+          status: "ERROR",
+          error: "INVALID_CRASH_MULTIPLIER",
+          message: "Crash multiplier must be a finite number between 1.00 and 10000.00"
+        });
+      }
+
+      backendRoundCounter += 1;
+      const rawRoundId = roundId ? String(roundId) : `round_${backendRoundCounter}_${Date.now()}`;
+      const parsedNum = Number(req.body?.numericRoundId || rawRoundId);
+      const numericRoundId = (!isNaN(parsedNum) && parsedNum > 0) ? parsedNum : backendRoundCounter;
+
+      // 2. Provably Fair Seed Verification (Cryptographic Pre-Commitment Check)
+      if (serverSeed && seedHash) {
+        const computedHash = crypto.createHash("sha256").update(String(serverSeed)).digest("hex");
+        if (computedHash !== seedHash) {
+          return res.status(400).json({
+            status: "ERROR",
+            error: "SEED_HASH_MISMATCH",
+            message: "Provably fair cryptographic validation failed."
+          });
+        }
+      }
+
+      // 3. Idempotency Check: Prevent duplicate recording of the exact same unique round
+      const existingRecord = globalRoundHistoryBuffer.find(h => String(h.id) === rawRoundId);
+      if (existingRecord) {
+        return res.json({
+          status: "SUCCESS",
+          message: "Round already finalized and committed to central history",
+          record: existingRecord,
+          idempotent: true
+        });
+      }
+
+      const cleanMultiplier = parseFloat(numMultiplier.toFixed(2));
+      let selectedTier = GLOBAL_11_TIERS.find(t => cleanMultiplier >= t.min && cleanMultiplier <= t.max);
       if (!selectedTier) {
-        selectedTier = multiplier <= 1.00 ? GLOBAL_11_TIERS[0] : GLOBAL_11_TIERS[GLOBAL_11_TIERS.length - 1];
+        selectedTier = cleanMultiplier <= 1.00 ? GLOBAL_11_TIERS[0] : GLOBAL_11_TIERS[GLOBAL_11_TIERS.length - 1];
       }
 
       const timestamp = new Date().toISOString();
       const newRecord: HistoryRecord = {
-        id: String(rId),
-        roundId: rId,
-        crashMultiplier: multiplier,
-        val: multiplier,
+        id: rawRoundId,
+        roundId: numericRoundId,
+        crashMultiplier: cleanMultiplier,
+        val: cleanMultiplier,
         seedHash: seedHash || "",
         hash: seedHash || "",
         serverSeed: serverSeed || "",
@@ -1870,59 +1846,60 @@ async function runSecurityFullstackServer() {
         tier: selectedTier.label
       };
 
-      // Check if already in history buffer to prevent double recording
-      const exists = globalRoundHistoryBuffer.some(h => String(h.id) === String(rId) || h.roundId === rId);
-      if (!exists) {
-        globalRoundHistoryBuffer.unshift({
-          id: String(rId),
-          roundId: rId,
-          val: multiplier,
-          hash: seedHash || "",
-          serverSeed: serverSeed || "",
-          timestamp,
-          tierId: selectedTier.id,
-          tierLabel: selectedTier.label
-        });
-        if (globalRoundHistoryBuffer.length > 100) {
-          globalRoundHistoryBuffer.pop();
-        }
-
-        // Commit to Redis and broadcast to all connected web clients in real-time
-        if (liveGameSyncController) {
-          await liveGameSyncController.handleRoundCrash(newRecord);
-        } else {
-          await centralHistoryService.pushHistory(newRecord);
-        }
+      globalRoundHistoryBuffer.unshift({
+        id: rawRoundId,
+        roundId: numericRoundId,
+        val: cleanMultiplier,
+        hash: seedHash || "",
+        serverSeed: serverSeed || "",
+        timestamp,
+        tierId: selectedTier.id,
+        tierLabel: selectedTier.label
+      });
+      if (globalRoundHistoryBuffer.length > 100) {
+        globalRoundHistoryBuffer.pop();
       }
 
-      res.json({
+      // Commit to Redis and broadcast to all connected web clients in real-time
+      if (liveGameSyncController) {
+        await liveGameSyncController.handleRoundCrash(newRecord);
+      } else {
+        await centralHistoryService.pushHistory(newRecord);
+      }
+
+      return res.json({
         status: "SUCCESS",
         message: "Round recorded to central 24/7 history after crash confirmed",
         record: newRecord
       });
     } catch (err) {
       console.error("Error in /api/security/round/finish:", err);
-      res.status(500).json({ status: "ERROR", error: "Failed to commit round to central history" });
+      return res.status(500).json({ status: "ERROR", error: "Failed to commit round to central history" });
     }
   });
 
   // 24/7 GLOBAL ROUND MULTIPLIER HISTORY API ENDPOINT
-  // Provides authentic historical round multipliers from the Redis Provably Fair RNG engine
-  app.get(["/api/security/history", "/api/game/history"], async (req, res) => {
-    const redisHistory = await centralHistoryService.getRecentHistory(50);
-    const combinedHistory = redisHistory.length > 0 ? redisHistory : globalRoundHistoryBuffer;
+  // Protected by Anti-Scraping Harvester Defense against long-term automated statistical collectors
+  app.get(["/api/security/history", "/api/game/history"], antiScrapeEngine.getScrapingProtectionMiddleware(), async (req, res) => {
+    const requestedLimit = parseInt(req.query.limit as string, 10);
+    const safeLimit = (!isNaN(requestedLimit) && requestedLimit > 0) ? Math.min(requestedLimit, 50) : 50;
+
+    const redisHistory = await centralHistoryService.getRecentHistory(safeLimit);
+    const combinedHistory = (redisHistory.length > 0 ? redisHistory : globalRoundHistoryBuffer).slice(0, safeLimit);
+
+    const activeGameState = liveGameSyncController ? liveGameSyncController.getGameState() : centralServerGameState;
 
     res.json({
       status: "SUCCESS",
-      globalRoundNum: backendRoundCounter,
+      globalRoundNum: activeGameState.roundId,
       serverTime: new Date().toISOString(),
       currentServerRound: {
-        roundId: centralServerGameState.roundId,
-        status: centralServerGameState.status,
-        currentMultiplier: centralServerGameState.currentMultiplier,
-        countdownRemainingMs: centralServerGameState.countdownRemainingMs,
-        lastCompletedRoundCrashPoint: centralServerGameState.lastCrashPoint,
-        lastCompletedRoundTimestamp: centralServerGameState.lastCrashTimestamp
+        roundId: activeGameState.roundId,
+        status: activeGameState.status,
+        currentMultiplier: activeGameState.currentMultiplier,
+        countdownRemainingMs: (activeGameState as any).countdownRemainingMs || 0,
+        lastCompletedRoundCrashPoint: activeGameState.lastCrashPoint,
+        lastCompletedRoundTimestamp: activeGameState.lastCrashTimestamp
       },
       history: (combinedHistory as HistoryRecord[]).map(h => ({
         id: h.id || String(h.roundId),
@@ -1941,29 +1918,61 @@ async function runSecurityFullstackServer() {
   });
 
   // 24/7 LIVE SERVER-AUTHORITATIVE STATE ENDPOINT
-  // Allows any website / client instance to sync with the central server's live flight clock
-  app.get(["/api/security/state", "/api/game/state"], (req, res) => {
+  // Protected by Anti-Scraping Harvester Defense against continuous state scraping loops
+  app.get(["/api/security/state", "/api/game/state"], antiScrapeEngine.getScrapingProtectionMiddleware(), async (req, res) => {
+    const activeGameState = liveGameSyncController ? liveGameSyncController.getGameState() : centralServerGameState;
+    const redisHistory = await centralHistoryService.getRecentHistory(15);
+    const recent = redisHistory.length > 0 ? redisHistory : globalRoundHistoryBuffer.slice(0, 15);
+
     res.json({
       status: "SUCCESS",
       serverTime: new Date().toISOString(),
-      state: {
-        roundId: centralServerGameState.roundId,
-        status: centralServerGameState.status,
-        currentMultiplier: centralServerGameState.currentMultiplier,
-        countdownRemainingMs: centralServerGameState.countdownRemainingMs,
-        phaseStartTime: centralServerGameState.phaseStartTime,
-        seedHash: centralServerGameState.seedHash,
-        lastCrashPoint: centralServerGameState.lastCrashPoint,
-        lastCrashTimestamp: centralServerGameState.lastCrashTimestamp
-      },
-      recentHistory: globalRoundHistoryBuffer.slice(0, 15).map(h => ({
-        id: h.id,
-        roundId: h.roundId,
-        val: h.val,
-        hash: h.hash,
+      state: activeGameState,
+      recentHistory: recent.map(h => ({
+        id: h.id || String(h.roundId),
+        val: h.val || (h as any).crashMultiplier,
+        hash: h.hash || (h as any).seedHash,
         timestamp: h.timestamp
       }))
     });
+  });
+
+  // ============================================================================
+  // ANTI-BOT CHALLENGE & STATISTICAL HARVESTER DEFENSE SUITE
+  // ============================================================================
+  app.post("/api/security/anti-bot/challenge", (req: Request, res: Response) => {
+    const rawSession = (req.headers["x-session-id"] as string) || (req.body && req.body.sessionId) || "anonymous_session";
+    const anonHash = antiScrapeEngine.getAnonymousSessionHash(rawSession);
+    const tokenInfo = antiScrapeEngine.generateEphemeralChallengeToken(anonHash);
+    res.json({
+      status: "SUCCESS",
+      anonymousHash: anonHash,
+      challengeToken: tokenInfo.challengeToken,
+      expiresAt: tokenInfo.expiresAt
+    });
+  });
+
+  app.post("/api/security/anti-bot/verify", (req: Request, res: Response) => {
+    const { challengeToken, sessionId } = req.body || {};
+    const rawSession = (req.headers["x-session-id"] as string) || sessionId || "anonymous_session";
+    const anonHash = antiScrapeEngine.getAnonymousSessionHash(rawSession);
+    const isValid = antiScrapeEngine.verifyEphemeralChallengeToken(challengeToken, anonHash);
+    if (!isValid) {
+      return res.status(401).json({
+        status: "REJECTED",
+        error: "INVALID_OR_EXPIRED_TOKEN",
+        message: "Anti-bot challenge validation failed."
+      });
+    }
+    return res.json({
+      status: "SUCCESS",
+      verified: true,
+      message: "Anti-bot session cleared."
+    });
+  });
+
+  app.get("/api/security/anti-bot/status", (req: Request, res: Response) => {
+    res.json(antiScrapeEngine.getTelemetryStatus());
   });
 
   // INPUT MATCHING LOGIN API WITH INTUBATED JWT SIGNER
@@ -2050,10 +2059,14 @@ async function runSecurityFullstackServer() {
       return res.status(429).json({ error: "Betting speed bounds exceeded. Maximum 10 wagers per minute." });
     }
 
-    const { betAmount } = req.body;
+    const { betAmount } = req.body || {};
+    const numBet = Number(betAmount);
+    if (isNaN(numBet) || !isFinite(numBet) || numBet <= 0) {
+      return res.status(400).json({ error: "INVALID_BET_AMOUNT", message: "Bet amount must be a positive finite number." });
+    }
     
     // Server-side check
-    const registration = integrityEngine.registerBetOnServer(user.userId, parseFloat(betAmount));
+    const registration = integrityEngine.registerBetOnServer(user.userId, numBet);
     if (!registration.success) {
       return res.status(400).json({ error: registration.error });
     }
@@ -2062,7 +2075,7 @@ async function runSecurityFullstackServer() {
       type: "BET_VALIDATED_OK",
       userId: user.userId,
       timestamp: new Date().toISOString(),
-      details: `Validated state of wager correctly: ${betAmount} THB`
+      details: `Validated state of wager correctly: ${numBet} THB`
     });
 
     res.json({ success: true, message: "Security deposit and gameplay wager validated and registered on server." });
@@ -2071,9 +2084,13 @@ async function runSecurityFullstackServer() {
   // CASHOUT PROCESSING AND EXCLUSION API ROUTE
   app.post("/api/security/cashout", verifyJWT, (req, res) => {
     const user = (req as any).user;
-    const { targetMultiplier } = req.body;
+    const { targetMultiplier } = req.body || {};
+    const numMultiplier = Number(targetMultiplier);
+    if (isNaN(numMultiplier) || !isFinite(numMultiplier) || numMultiplier < 1.00) {
+      return res.status(400).json({ error: "INVALID_TARGET_MULTIPLIER", message: "Target multiplier must be at least 1.00x." });
+    }
 
-    const result = integrityEngine.processVerifyCashout(user.userId, parseFloat(targetMultiplier));
+    const result = integrityEngine.processVerifyCashout(user.userId, numMultiplier);
     if (!result.success) {
       return res.status(400).json({ error: result.error });
     }

@@ -952,16 +952,114 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
 
           ctx.restore();
         } else if (curState === "FLEW_AWAY") {
-          const flewAwayFontSize = Math.min(48, Math.max(26, Math.floor(width * 0.065)));
-          const flewAwaySubSize = Math.min(34, Math.max(18, Math.floor(width * 0.045)));
+          ctx.save();
+          const flewAwayFontSize = Math.min(52, Math.max(28, Math.floor(width * 0.075)));
+          const flewAwaySubSize = Math.min(40, Math.max(22, Math.floor(width * 0.055)));
 
-          ctx.fillStyle = "#f43f5e";
-          ctx.font = `800 ${flewAwayFontSize}px 'Rajdhani', 'Orbitron', 'Montserrat', sans-serif`;
-          ctx.fillText("FLEW AWAY", hudX, hudY - 15);
+          // 1. "FLEW AWAY" Title with bold arcade/esports typography & multi-layer glow
+          ctx.font = `900 ${flewAwayFontSize}px 'Russo One', 'Orbitron', 'Syne', sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
 
-          ctx.fillStyle = "#9ca3af";
-          ctx.font = `700 ${flewAwaySubSize}px 'Chakra Petch', monospace`;
-          ctx.fillText(`${curMultiplier.toFixed(2)}x`, hudX, hudY + 30);
+          const titleY = hudY - 22;
+
+          // Outer ambient neon glow
+          ctx.shadowColor = "rgba(244, 63, 94, 0.85)";
+          ctx.shadowBlur = 24;
+
+          // High-contrast deep slate outer border for razor-sharp legibility
+          ctx.strokeStyle = "rgba(10, 15, 29, 0.95)";
+          ctx.lineWidth = 7;
+          ctx.lineJoin = "round";
+          ctx.strokeText("FLEW AWAY", hudX, titleY);
+
+          // Vivid metallic ruby-crimson gradient
+          const titleGrad = ctx.createLinearGradient(hudX, titleY - flewAwayFontSize * 0.5, hudX, titleY + flewAwayFontSize * 0.5);
+          titleGrad.addColorStop(0, "#ffe4e6"); // crystal rose white highlight
+          titleGrad.addColorStop(0.25, "#fb7185"); // neon coral
+          titleGrad.addColorStop(0.65, "#f43f5e"); // vibrant crash rose
+          titleGrad.addColorStop(1, "#be123c"); // deep crimson base
+
+          ctx.fillStyle = titleGrad;
+          ctx.fillText("FLEW AWAY", hudX, titleY);
+
+          // Inner subtle glossy highlight stroke
+          ctx.shadowBlur = 0;
+          ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
+          ctx.lineWidth = 1;
+          ctx.strokeText("FLEW AWAY", hudX, titleY);
+
+          // 2. End-game Crash Multiplier with Sleek Cyber Telemetry Badge
+          const multText = `${curMultiplier.toFixed(2)}x`;
+          ctx.font = `900 ${flewAwaySubSize}px 'Russo One', 'Orbitron', 'Exo 2', sans-serif`;
+
+          const textMetrics = ctx.measureText(multText);
+          const badgeWidth = Math.max(textMetrics.width + 38, 126);
+          const badgeHeight = flewAwaySubSize + 16;
+          const badgeX = hudX - badgeWidth / 2;
+          const badgeY = hudY + 14;
+          const badgeRadius = 10;
+
+          // Cyber badge container background
+          ctx.save();
+          ctx.beginPath();
+          if (typeof (ctx as any).roundRect === "function") {
+            (ctx as any).roundRect(badgeX, badgeY, badgeWidth, badgeHeight, badgeRadius);
+          } else {
+            ctx.rect(badgeX, badgeY, badgeWidth, badgeHeight);
+          }
+          ctx.fillStyle = "rgba(10, 15, 29, 0.88)";
+          ctx.shadowColor = "rgba(0, 0, 0, 0.65)";
+          ctx.shadowBlur = 14;
+          ctx.fill();
+
+          // Cyber badge border (illuminated ruby or gold depending on multiplier tier)
+          const isHighMult = curMultiplier >= 10.0;
+          const isMegaMult = curMultiplier >= 50.0;
+          const borderColor = isMegaMult
+            ? "rgba(234, 179, 8, 0.85)"
+            : isHighMult
+            ? "rgba(245, 158, 11, 0.75)"
+            : "rgba(244, 63, 94, 0.55)";
+
+          ctx.strokeStyle = borderColor;
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          ctx.restore();
+
+          // Multiplier text rendering inside badge
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          const multCenterY = badgeY + badgeHeight / 2;
+
+          // Multiplier outer dark stroke
+          ctx.strokeStyle = "rgba(0, 0, 0, 0.92)";
+          ctx.lineWidth = 4;
+          ctx.lineJoin = "round";
+          ctx.strokeText(multText, hudX, multCenterY);
+
+          // Multiplier vibrant gradient fill
+          const multGrad = ctx.createLinearGradient(hudX, multCenterY - flewAwaySubSize * 0.5, hudX, multCenterY + flewAwaySubSize * 0.5);
+          if (isMegaMult) {
+            multGrad.addColorStop(0, "#ffffff");
+            multGrad.addColorStop(0.3, "#fef08a");
+            multGrad.addColorStop(1, "#eab308");
+          } else if (isHighMult) {
+            multGrad.addColorStop(0, "#ffffff");
+            multGrad.addColorStop(0.3, "#fde68a");
+            multGrad.addColorStop(1, "#f59e0b");
+          } else {
+            multGrad.addColorStop(0, "#ffffff");
+            multGrad.addColorStop(0.35, "#fecdd3");
+            multGrad.addColorStop(1, "#f43f5e");
+          }
+
+          ctx.fillStyle = multGrad;
+          ctx.shadowColor = isHighMult ? "rgba(245, 158, 11, 0.7)" : "rgba(244, 63, 94, 0.7)";
+          ctx.shadowBlur = 12;
+          ctx.fillText(multText, hudX, multCenterY);
+
+          ctx.restore();
         }
       }
 

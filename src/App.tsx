@@ -210,9 +210,27 @@ export default function App() {
               });
             }
           }
-          setHistory(uniqueItems);
+          if (stateRef.current !== "FLYING") {
+            setHistory((prev) => {
+              if (prev.length === 0 || prev === INITIAL_HISTORY) {
+                return uniqueItems;
+              }
+              const seen = new Set<string>();
+              const merged: HistoryItem[] = [];
+              for (const item of [...prev, ...uniqueItems]) {
+                const key = `${item.id}_${item.val}`;
+                if (!seen.has(key) && !seen.has(item.id)) {
+                  seen.add(key);
+                  seen.add(item.id);
+                  merged.push(item);
+                }
+              }
+              return merged.slice(0, 50);
+            });
+          }
           if (typeof data.globalRoundNum === "number") {
             setGlobalRoundNum(data.globalRoundNum);
+            globalRoundNumRef.current = data.globalRoundNum;
           }
         }
       }
@@ -248,23 +266,48 @@ export default function App() {
             });
           }
         }
-        setHistory(uniqueItems);
+        if (stateRef.current !== "FLYING") {
+          setHistory((prev) => {
+            if (prev.length === 0 || prev === INITIAL_HISTORY) {
+              return uniqueItems;
+            }
+            const seen = new Set<string>();
+            const merged: HistoryItem[] = [];
+            for (const item of [...prev, ...uniqueItems]) {
+              const key = `${item.id}_${item.val}`;
+              if (!seen.has(key) && !seen.has(item.id)) {
+                seen.add(key);
+                seen.add(item.id);
+                merged.push(item);
+              }
+            }
+            return merged.slice(0, 50);
+          });
+        }
       }
     });
 
     // 2. Real-time broadcast when rocket crashes on central server
     socket.on("NEW_HISTORY_ENTRY", (payload: any) => {
-      const record = payload?.data || payload;
+      const record = payload?.data || payload?.record || payload;
       if (record && (record.val || record.crashMultiplier)) {
         const roundId = String(record.id || record.roundId);
         const mult = Number(record.val || record.crashMultiplier);
+
+        // STRICT PROTECTION AGAINST PREMATURE HISTORY RECORDING:
+        // NEVER insert any history entry while the local rocket is actively FLYING.
+        // The history bar must remain strictly unchanged until the flight has ended (FLEW_AWAY).
+        if (stateRef.current === "FLYING") {
+          return;
+        }
+
         const newItem: HistoryItem = {
           id: roundId,
           val: mult
         };
         setHistory((prev) => {
-          // If already the latest entry or already present in list, avoid duplicate
-          if (prev.some(p => p.id === roundId)) {
+          // If already present in list by ID or round number, avoid duplicate
+          if (prev.some(p => p.id === roundId || p.id === `hist_${roundId}`)) {
             return prev;
           }
           return [newItem, ...prev.slice(0, 49)];
@@ -435,6 +478,11 @@ export default function App() {
   const intervalIdRef = useRef<any>(null);
 
   // Keep refs in sync
+  const globalRoundNumRef = useRef<number>(globalRoundNum);
+  useEffect(() => {
+    globalRoundNumRef.current = globalRoundNum;
+  }, [globalRoundNum]);
+
   useEffect(() => {
     stateRef.current = roundState;
   }, [roundState]);
@@ -506,6 +554,7 @@ export default function App() {
           };
           if (typeof data.globalRoundNum === "number") {
             setGlobalRoundNum(data.globalRoundNum);
+            globalRoundNumRef.current = data.globalRoundNum;
           }
           if (typeof data.nextSpecialRoundNum === "number") {
             setNextSpecialRoundNum(data.nextSpecialRoundNum);
@@ -528,7 +577,7 @@ export default function App() {
               localStorage.setItem("skyrush_recalibration_count", String(data.recalibrationCount));
             }
           }
-          if (Array.isArray(data.history) && data.history.length > 0) {
+          if (Array.isArray(data.history) && data.history.length > 0 && stateRef.current !== "FLYING") {
             setHistory(prev => {
               if (prev.length === 0 || prev === INITIAL_HISTORY) {
                 return data.history.map((h: any) => ({ id: String(h.id), val: Number(h.val) }));
@@ -1365,23 +1414,22 @@ export default function App() {
       setBetLeft((prev) => ({ ...prev, isPlaced: false, hasCashedOut: false }));
       setBetRight((prev) => ({ ...prev, isPlaced: false, hasCashedOut: false }));
 
-      // Commit completed round to central 24/7 server history
-      const finishedRoundId = String(globalRoundNum);
+      // Commit completed round to central 24/7 server history ONLY AFTER crash explosion has occurred
+      const nextGlobalRound = (globalRoundNumRef.current > 0 ? globalRoundNumRef.current : 1000) + 1;
+      globalRoundNumRef.current = nextGlobalRound;
+      setGlobalRoundNum(nextGlobalRound);
+      const finishedRoundId = `round_${nextGlobalRound}_${Date.now()}`;
       
-      // Update top history list ONLY after crash explosion with single authoritative round ID
-      setHistory((prev) => {
-        if (prev.some(p => p.id === finishedRoundId || p.id === `hist_${finishedRoundId}`)) {
-          return prev;
-        }
-        const newItem: HistoryItem = { id: finishedRoundId, val: crashPointVal };
-        return [newItem, ...prev.slice(0, 49)];
-      });
+      // Update top history list immediately upon crash - every single round is guaranteed to be recorded!
+      const newItem: HistoryItem = { id: finishedRoundId, val: crashPointVal };
+      setHistory((prev) => [newItem, ...prev.slice(0, 49)]);
 
       fetch("/api/security/round/finish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           roundId: finishedRoundId,
+          numericRoundId: nextGlobalRound,
           crashMultiplier: crashPointVal
         })
       }).catch(() => {});

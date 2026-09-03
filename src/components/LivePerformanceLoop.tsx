@@ -330,9 +330,6 @@ export const LivePerformanceLoop: React.FC<LivePerformanceLoopProps> = memo(({
               <span className="text-xs sm:text-sm font-black font-display tracking-widest bg-gradient-to-r from-emerald-300 via-teal-200 to-cyan-300 bg-clip-text text-transparent uppercase">
                 PERFORMANCE LOOP
               </span>
-              <span className="text-[9px] bg-emerald-950/90 text-emerald-400 font-mono font-extrabold px-1.5 py-0.5 rounded-full border border-emerald-500/40 shadow-sm shadow-emerald-950">
-                LIVE SPLINE
-              </span>
             </div>
           </div>
         </div>
