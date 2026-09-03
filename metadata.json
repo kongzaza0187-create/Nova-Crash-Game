@@ -1,6 +1,0 @@
-{
-  "name": "SKY RUSH",
-  "description": "An interactive crash game and global iGaming Seamless Wallet API sandbox featuring currency-agnostic wallet balance, HMAC-SHA256 signatures, ACID row-locking idempotency, 3% win house fee, 10% instant loss cashback, calibrated 75% RTP / 25% House Edge with positive operator EV, 1.02x-1.05x risk explosion cushions, OpenAPI 3.0 & Postman collections, and high-concurrency load testing.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
