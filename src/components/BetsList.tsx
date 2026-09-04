@@ -1,6 +1,7 @@
 import React, { useState, memo } from "react";
 import { PlayerBet, RoundState, UserStats } from "../types";
-import { Users, History, Trophy, RefreshCw, UserCheck } from "lucide-react";
+import { RefreshCw, UserCheck } from "lucide-react";
+import { GameTabIcon } from "./GameTabIcon";
 import { formatToStandardUser } from "../utils/userTransform";
 import { getMultiplierColorTier } from "../utils/multiplierColor";
 
@@ -72,8 +73,8 @@ const BetsListComponent: React.FC<BetsListProps> = ({
           }`}
           id="btn_all_bets_tab"
         >
-          <Users size={13} />
-          All Bets ({playerBets.length})
+          <GameTabIcon type="ALL" active={activeTab === "ALL"} size={19} />
+          <span>All Bets ({playerBets.length})</span>
         </button>
         <button
           onClick={() => setActiveTab("MY")}
@@ -84,8 +85,8 @@ const BetsListComponent: React.FC<BetsListProps> = ({
           }`}
           id="btn_my_bets_tab"
         >
-          <History size={13} />
-          My Bets
+          <GameTabIcon type="MY" active={activeTab === "MY"} size={19} />
+          <span>My Bets</span>
         </button>
         <button
           onClick={() => setActiveTab("TOP")}
@@ -96,8 +97,8 @@ const BetsListComponent: React.FC<BetsListProps> = ({
           }`}
           id="btn_top_tab"
         >
-          <Trophy size={13} />
-          Top
+          <GameTabIcon type="TOP" active={activeTab === "TOP"} size={19} />
+          <span>Top</span>
         </button>
       </div>
 

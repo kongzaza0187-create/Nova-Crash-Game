@@ -192,7 +192,7 @@ export default function App() {
   const [history, setHistory] = useState<HistoryItem[]>(INITIAL_HISTORY);
 
   // Fetch real 24/7 continuous global history from backend server on room entry
-  const fetchRealGlobalHistory = async () => {
+  const fetchRealGlobalHistory = async (retries = 3) => {
     try {
       const res = await fetch("/api/security/history");
       if (res.ok) {
@@ -233,9 +233,14 @@ export default function App() {
             globalRoundNumRef.current = data.globalRoundNum;
           }
         }
+      } else if (retries > 0) {
+        setTimeout(() => fetchRealGlobalHistory(retries - 1), 1200);
       }
-    } catch (err) {
-      console.error("Failed to fetch real 24/7 global history from server:", err);
+    } catch {
+      // Retry smoothly in case server dev process was starting up or network was connecting
+      if (retries > 0) {
+        setTimeout(() => fetchRealGlobalHistory(retries - 1), 1200);
+      }
     }
   };
 

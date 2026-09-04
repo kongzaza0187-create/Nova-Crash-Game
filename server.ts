@@ -1047,11 +1047,16 @@ async function runSecurityFullstackServer() {
     res.setHeader("Expires", "0");
     res.setHeader("Referrer-Policy", "no-referrer");
     res.setHeader("X-Content-Type-Options", "nosniff");
-    res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("X-XSS-Protection", "1; mode=block");
-    res.setHeader("Strict-Transport-Security", "max-age=31536000");
     res.setHeader("Permissions-Policy", "interest-cohort=(), geolocation=(), camera=(), microphone=()");
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-session-id, x-client-session, authorization");
     res.removeHeader("X-Powered-By");
+
+    if (req.method === "OPTIONS") {
+      return res.sendStatus(204);
+    }
     next();
   });
 
