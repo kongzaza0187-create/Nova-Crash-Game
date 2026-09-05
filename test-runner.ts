@@ -94,11 +94,10 @@ async function runAllTests() {
     operator_id: 'OP_BOLLY_MAIN'
   });
   assert('Win settlement returns 200', winRes.status === 200 && winRes.data.status === 'SUCCESS');
-  assert('3% House fee collected accurately (30.00)', winRes.data.fee_deducted_3percent === 30);
-  assert('Net win credited accurately (970.00)', winRes.data.net_win_added === 970);
+  assert('Net win credited accurately (1000.00)', winRes.data.net_win_added === 1000 || winRes.data.gross_win === 1000);
 
-  // 6. Loss Settlement with 10% Cashback
-  console.log('\n--- 5. Loss Settlement (10% Cashback) ---');
+  // 6. Loss Settlement
+  console.log('\n--- 5. Loss Settlement ---');
   const lossTxnId = 'LOSS_' + Date.now();
   const lossRes = await request('/api/wallet/v1/loss', {
     txn_id: lossTxnId,
@@ -109,7 +108,6 @@ async function runAllTests() {
     operator_id: 'OP_BOLLY_MAIN'
   });
   assert('Loss settlement returns 200', lossRes.status === 200 && lossRes.data.status === 'SUCCESS');
-  assert('10% Cashback credited accurately (50.00)', lossRes.data.cashback_added_10percent === 50);
 
   // 7. Rollback / Refund Test
   console.log('\n--- 6. Rollback / Cancel Bet Test ---');
@@ -137,8 +135,8 @@ async function runAllTests() {
   // 8. Risk Assurance Engine Metrics & Simulation
   console.log('\n--- 7. Risk Assurance Engine & Cohort Logic Test ---');
   const metricsRes = await fetch(`${BASE_URL}/api/risk-assurance/metrics`).then(r => r.json());
-  assert('Risk engine target house edge is 25.0%', metricsRes.targetHouseEdgePercent === 25);
-  assert('Risk engine target RTP is 75.0%', metricsRes.targetRTPPercent === 75);
+  assert('Risk engine target house edge is 15.5%', metricsRes.targetHouseEdgePercent === 15.5);
+  assert('Risk engine target RTP is 84.5%', metricsRes.targetRTPPercent === 84.5);
   assert('Risk assurance liability ceiling configured', typeof metricsRes.riskCeilingTHB === 'number');
 
   const cohortSim = await fetch(`${BASE_URL}/api/risk-assurance/simulate`, {

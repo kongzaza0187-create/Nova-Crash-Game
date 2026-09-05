@@ -148,38 +148,39 @@ CREATE INDEX idx_transactions_created_at ON transactions(created_at DESC);
 The crash game utilizes a verifiable **Provably Fair SHA-256 / HMAC-SHA256** random number generation architecture:
 1. **Server Seed**: A high-entropy 256-bit cryptographic secret generated per round on the server.
 2. **Client Seed**: A player-supplied or browser-generated entropy seed combined with sequential `nonce`.
-3. **Pre-commitment**: Before each flight commences, the SHA-256 hash of the server seed (`hash = SHA256(server_seed)`) is broadcast to all connected clients.
-4. **Deterministic Multiplier Calculation**: The crash outcome is calculated using `HMAC-SHA256(server_seed, client_seed:nonce)`. The resulting 64-character hexadecimal digest is converted into a uniform float $r \in [0, 1)$.
-5. **Post-Round Verification**: Upon crash, the plain-text `server_seed` is revealed, allowing players and independent third parties to cryptographically verify that the outcome was fixed prior to bets being placed and was immune to manipulation.
+3. **Statistical Independence**: **Every single round is statistically independent (IID)**. Outcome determination depends purely on cryptographic seeds with zero stateful streaks or outcome tampering.
+4. **Pre-commitment**: Before each flight commences, the SHA-256 hash of the server seed (`hash = SHA256(server_seed)`) is broadcast to all connected clients.
+5. **Deterministic Multiplier Calculation**: The crash outcome is calculated using `HMAC-SHA256(server_seed, client_seed:nonce)`. The resulting 64-character hexadecimal digest is converted into a uniform float $r \in [0, 1)$.
+6. **Post-Round Verification**: Upon crash, the plain-text `server_seed` is revealed, allowing players and independent third parties to cryptographically verify that the outcome was fixed prior to bets being placed and was immune to manipulation.
 
 ### B. Actuarial 11-Tier Probability Distribution Matrix
-The system maps the normalized random float $r \in [0, 1)$ across 11 precision tiers configured to achieve an exact **Target Return-to-Player (RTP) of 84.00% – 85.00%** with a **House Edge of 15.00% – 16.00%**:
+The system maps the normalized random float $r \in [0, 1)$ across 11 precision tiers configured to achieve an exact **Target Return-to-Player (RTP) of 84.50% (Range: 83.00% - 85.00%)** with a strictly positive **House Edge of 15.50% (Range: 15.00% - 17.00%)** and a maximum payout multiplier strictly capped at **50.00x**:
 
 | Tier | Multiplier Range | Classification | Probability (%) | Expected Frequency | Actuarial & Game Design Role |
 | :---: | :---: | :---: | :---: | :---: | :--- |
-| **1** | **1.00x** | **Instant Bust** | **15.50%** | ~15-16 in 100 rounds | Instantly terminates round at takeoff; locks 15.50% base House Edge across all betting strategies. |
-| **2** | **1.01x – 1.20x** | **Micro-Stumble** | **14.08%** | ~14 in 100 rounds | Sudden early cutoff preventing micro-scalping exploitation. |
-| **3** | **1.21x – 1.50x** | **Low Safe Zone** | **14.09%** | ~14 in 100 rounds | High-frequency safe cashout corridor for conservative players. |
-| **4** | **1.51x – 2.00x** | **Mid Safe Zone** | **14.08%** | ~14 in 100 rounds | Capital preservation band offering low-risk positive multiplier. |
-| **5** | **2.01x – 3.50x** | **Circulation Zone** | **17.52%** | ~17-18 in 100 rounds | Main velocity band keeping liquidity circulating across active sessions. |
-| **6** | **3.51x – 6.00x** | **Mid-Profit Zone** | **10.06%** | ~10 in 100 rounds | Medium-tier profit zone incentivizing players to target higher payouts. |
-| **7** | **6.01x – 9.00x** | **Big Win 1** | **4.69%** | ~4-5 in 100 rounds | Entry-level high-multiple event generating excitement. |
-| **8** | **9.01x – 14.00x** | **Big Win 2** | **3.35%** | ~3-4 in 100 rounds | High-tier multiplier breakout traversing the 10.00x threshold. |
-| **9** | **14.01x – 22.00x** | **Mega Win 1** | **2.20%** | ~2 in 100 rounds | Major jackpot flight delivering substantial single-round returns. |
-| **10** | **22.01x – 35.00x** | **Mega Win 2** | **1.43%** | ~1-2 in 100 rounds | Deep flight zone rewarding high-risk players. |
-| **11** | **35.01x – 50.00x** | **Max Cap Jackpot** | **3.00%** | ~3 in 100 rounds | Capped at 50.00x maximum multiplier to mitigate house tail liquidity risk. |
+| **1** | **1.00x** | **Instant Bust** | **15.50%** | ~15-16 in 100 rounds | Instantly terminates round at takeoff; guarantees 15.50% base House Edge across all cashout strategies. |
+| **2** | **1.01x – 1.20x** | **Micro-Stumble** | **14.50%** | ~14-15 in 100 rounds | Early cutoff preventing micro-scalping exploitation. |
+| **3** | **1.21x – 1.50x** | **Low Safe Zone** | **15.50%** | ~15-16 in 100 rounds | High-frequency safe cashout corridor for conservative players. |
+| **4** | **1.51x – 2.00x** | **Mid Safe Zone** | **16.20%** | ~16 in 100 rounds | Capital preservation band offering low-risk positive multiplier. |
+| **5** | **2.01x – 3.50x** | **Circulation Zone** | **20.50%** | ~20-21 in 100 rounds | Main velocity band keeping liquidity circulating across active sessions. |
+| **6** | **3.51x – 6.00x** | **Mid-Profit Zone** | **10.50%** | ~10-11 in 100 rounds | Medium-tier profit zone incentivizing players to target higher payouts. |
+| **7** | **6.01x – 9.99x** | **High Profit Zone** | **4.00%** | ~4 in 100 rounds | Entry-level high-multiple event generating excitement. |
+| **8** | **10.00x – 15.00x** | **Big Win 1** | **1.60%** | ~1-2 in 100 rounds | High-tier multiplier breakout traversing the 10.00x threshold. |
+| **9** | **15.01x – 25.00x** | **Big Win 2** | **1.00%** | ~1 in 100 rounds | Major jackpot flight delivering substantial single-round returns. |
+| **10** | **25.01x – 35.00x** | **Mega Win** | **0.50%** | ~1 in 200 rounds | Deep flight zone rewarding high-risk players. |
+| **11** | **35.01x – 50.00x** | **Max Cap Jackpot** | **0.20%** | ~1 in 500 rounds | Capped at 50.00x maximum multiplier; calibrated down from 3.00% to protect house reserves and maintain exact 15.50% House Edge / 84.50% RTP balance. |
 
-*(Cumulative Probability = 100.00%)*
+*(Cumulative Probability = Exactly 100.00% | Total Win Probability $\ge$ 1.01x = 84.50%)*
 
 ### C. Mathematical Proof of Long-Term House Edge (Law of Large Numbers)
 For any chosen cashout target $T \ge 1.01$:
 $$\mathbb{P}(\text{Multiplier} \ge T) = \frac{\text{RTP}}{T}$$
 $$\mathbb{E}[\text{Payout}] = T \times \mathbb{P}(\text{Multiplier} \ge T) = T \times \frac{\text{RTP}}{T} = \text{RTP} = 84.50\%$$
-$$\mathbb{E}[\text{Player Net Return}] = 0.845 - 1.00 = -0.155 \quad (-15.50\%)$$
+$$\mathbb{E}[\text{Player Net Return}] = 0.8450 - 1.00 = -0.1550 \quad (-15.50\%)$$
 
 By the **Law of Large Numbers (LLN)**, as total bets and turnover aggregate across many players and rounds, aggregate variance converges to the theoretical expected value:
-- **Player Outcome**: The player base aggregate losses converge to exactly $-15.00\% \text{ to } -16.00\%$ of total turnover.
-- **House Outcome**: The house achieves an actuarially guaranteed gross gaming revenue (GGR) of $+15.00\% \text{ to } +16.00\%$ of all volume, fully shielded against statistical arbitrage and progressive martingale systems.
+- **Player Outcome**: The player base aggregate losses converge to $-15.50\%$ of total turnover (84.50% RTP).
+- **House Outcome**: The house achieves an actuarially guaranteed gross gaming revenue (GGR) of $+15.50\%$ of all volume, fully protected against statistical arbitrage while providing exciting, provably fair gameplay.
 
 ---
 

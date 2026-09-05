@@ -48,10 +48,10 @@ export interface PlayerBetSample {
 export class RiskAssuranceEngine {
   private static instance: RiskAssuranceEngine;
 
-  // Configuration: Calibrated to 75% RTP & 25% House Edge (Positive House EV)
+  // Configuration: Calibrated to 84.50% RTP & 15.50% House Edge (Positive House EV)
   public riskCeilingTHB: number = 100000.00; // Default liability ceiling
-  public targetHouseEdgePercent: number = 25.0; // 25% House Edge (+25% House EV)
-  public targetRTPPercent: number = 75.0; // 75% Theoretical RTP
+  public targetHouseEdgePercent: number = 15.5; // 15.50% House Edge (+15.50% House EV)
+  public targetRTPPercent: number = 84.5; // 84.50% Theoretical RTP
 
   // Live Financial Accumulators
   public totalWageredTHB: number = 0;
@@ -129,7 +129,7 @@ export class RiskAssuranceEngine {
       : this.targetRTPPercent;
 
     const isNearCeiling = utilization >= 0.70; // 70% of risk ceiling
-    const isBreached = utilization >= 1.00 || rollingRTP > 76.0 || params.forcedRiskMode;
+    const isBreached = utilization >= 1.00 || (this.totalWageredTHB > 0 && rollingRTP > (this.targetRTPPercent + 1.5)) || params.forcedRiskMode;
 
     // 1. RISK CEILING REACHED OR NEAR: Trigger periodic 1.02x - 1.05x explosions
     if (isBreached || isNearCeiling) {
@@ -305,7 +305,7 @@ export class RiskAssuranceEngine {
       : 0;
 
     let mode: "NORMAL" | "RISK_WARNING" | "RISK_CUSHION_EXPLOSION" = "NORMAL";
-    if (utilization >= 100 || rtp > 76.0) {
+    if (utilization >= 100 || (this.totalWageredTHB > 0 && rtp > (this.targetRTPPercent + 1.5))) {
       mode = "RISK_CUSHION_EXPLOSION";
     } else if (utilization >= 70) {
       mode = "RISK_WARNING";

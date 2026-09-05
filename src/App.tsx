@@ -445,8 +445,8 @@ export default function App() {
   const [adminPasswordInput, setAdminPasswordInput] = useState<string>("");
   const [adminErrorMessage, setAdminErrorMessage] = useState<string>("");
 
-  // Pre-Game Responsible Gaming Warning Modal state
-  const [isResponsibleGamingOpen, setIsResponsibleGamingOpen] = useState<boolean>(false);
+  // Pre-Game Responsible Gaming Warning Modal state (Shown before entering the game)
+  const [isResponsibleGamingOpen, setIsResponsibleGamingOpen] = useState<boolean>(true);
 
   // Sync state values with reference handles to bypass dependency-array resets
   const balanceRef = useRef(balance);

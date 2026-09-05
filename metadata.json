@@ -1,0 +1,6 @@
+{
+  "name": "SkyRush Crash Game",
+  "description": "Real-time multiplayer crash game with provably fair verification and live room synchronization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

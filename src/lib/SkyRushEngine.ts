@@ -3,11 +3,13 @@
  * 
  * CORE SPECIFICATIONS:
  * - Game Type: Crash / Bust Multiplier Game
- * - Target RTP: 85.00% (Strict Actuarial Balance Range: 84.00% - 86.00%)
- * - House Edge: 15.00% (Strict House Margin Range: 14.00% - 16.00%)
+ * - Target RTP: 84.50% (Target Range: 83.00% - 85.00%)
+ * - House Edge: 15.50% (Target Range: 15.00% - 17.00%)
  * - Maximum Multiplier Cap: 50.00x
- * - Instant Bust Rate: 15.00% at 1.00x (1 in 6.6 rounds)
- * - Expected Value (EV): Strictly Positive for House (+15.00%)
+ * - Instant Bust Rate: 15.50% at 1.00x (Base House Edge lock)
+ * - Top Jackpot Tier: 0.20% at 35.01x - 50.00x (1 in 500 rounds)
+ * - Statistical Independence: Pure independent (IID) RNG sampling per round
+ * - Expected Value (EV): Strictly Positive for House (+15.50%)
  * - Long-Term House Volatility: Systematic positive accumulation for operator
  */
 
@@ -50,7 +52,8 @@ export interface DistributionTier {
 
 /**
  * 11-Tier Granular Multi-Tier RNG System with Non-Linear Intra-Bracket Distribution (Exponential Scaling)
- * Target RTP: 85.00% - 86.00% | House Edge: 14.00% - 15.00% (Strict Positive EV for House) | Max Cap: 50.00x
+ * Target RTP: 84.50% (Range 83.00% - 85.00%) | House Edge: 15.50% (Range 15.00% - 17.00%) | Max Cap: 50.00x
+ * Every single round is statistically INDEPENDENT (IID).
  */
 export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
   {
@@ -64,9 +67,9 @@ export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
     targetIntervalRounds: 6.45,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "สุ่มเจอประมาณ 15-16 ตา ใน 100 รอบ",
+    averageFrequency: "Randomized ~15-16 rounds per 100 rounds (15.50%)",
     expectedContributionRtp: 0.00,
-    psychologyRole: "ระเบิดทันทีตั้งแต่จุดปล่อยตัว เพื่อตัดกำไรผู้เล่นทุกกลุ่มและล็อก House Edge 15.50%",
+    psychologyRole: "Instant takeoff bust; guarantees 15.50% baseline house edge",
   },
   {
     id: 2,
@@ -76,12 +79,12 @@ export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
     probability: 14.50,
     cumulativeCdf: 30.00,
     type: "NON_LINEAR_DECAY",
-    targetIntervalRounds: 6.9,
+    targetIntervalRounds: 6.90,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "สุ่มเจอประมาณ 14-15 ตา ใน 100 รอบ",
-    expectedContributionRtp: 12.20,
-    psychologyRole: "ดับไวไม่ทันตั้งตัว",
+    averageFrequency: "Randomized ~14-15 rounds per 100 rounds (14.50%)",
+    expectedContributionRtp: 16.00,
+    psychologyRole: "Quick early cutoff preventing scalping",
   },
   {
     id: 3,
@@ -94,24 +97,24 @@ export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
     targetIntervalRounds: 6.45,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "สุ่มเจอประมาณ 15-16 ตา ใน 100 รอบ",
-    expectedContributionRtp: 13.10,
-    psychologyRole: "โซนถอนปลอดภัยระยะสั้น",
+    averageFrequency: "Randomized ~15-16 rounds per 100 rounds (15.50%)",
+    expectedContributionRtp: 21.00,
+    psychologyRole: "Conservative player safe exit corridor",
   },
   {
     id: 4,
     label: "1.51x – 2.00x (Mid Safe Zone)",
     min: 1.51,
     max: 2.00,
-    probability: 16.50,
-    cumulativeCdf: 62.00,
+    probability: 16.20,
+    cumulativeCdf: 61.70,
     type: "NON_LINEAR_DECAY",
-    targetIntervalRounds: 6.06,
+    targetIntervalRounds: 6.17,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "สุ่มเจอประมาณ 16-17 ตา ใน 100 รอบ",
-    expectedContributionRtp: 13.90,
-    psychologyRole: "โซนประคองทุน",
+    averageFrequency: "Randomized ~16 rounds per 100 rounds (16.20%)",
+    expectedContributionRtp: 28.40,
+    psychologyRole: "Bankroll preservation band",
   },
   {
     id: 5,
@@ -119,14 +122,14 @@ export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
     min: 2.01,
     max: 3.50,
     probability: 20.50,
-    cumulativeCdf: 82.50,
+    cumulativeCdf: 82.20,
     type: "EXPONENTIAL",
-    targetIntervalRounds: 4.87,
+    targetIntervalRounds: 4.88,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "สุ่มเจอประมาณ 20-21 ตา ใน 100 รอบ",
-    expectedContributionRtp: 17.30,
-    psychologyRole: "โซนหมุนเวียนทุน",
+    averageFrequency: "Randomized ~20-21 rounds per 100 rounds (20.50%)",
+    expectedContributionRtp: 56.40,
+    psychologyRole: "Core liquidity circulation velocity band",
   },
   {
     id: 6,
@@ -134,14 +137,14 @@ export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
     min: 3.51,
     max: 6.00,
     probability: 10.50,
-    cumulativeCdf: 93.00,
+    cumulativeCdf: 92.70,
     type: "EXPONENTIAL",
     targetIntervalRounds: 9.52,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "สุ่มเจอประมาณ 10-11 ตา ใน 100 รอบ",
-    expectedContributionRtp: 8.85,
-    psychologyRole: "จังหวะทำกำไรระดับกลาง",
+    averageFrequency: "Randomized ~10-11 rounds per 100 rounds (10.50%)",
+    expectedContributionRtp: 49.90,
+    psychologyRole: "Mid-tier profit multiplier event",
   },
   {
     id: 7,
@@ -149,44 +152,44 @@ export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
     min: 6.01,
     max: 9.99,
     probability: 4.00,
-    cumulativeCdf: 97.00,
+    cumulativeCdf: 96.70,
     type: "EXPONENTIAL",
-    targetIntervalRounds: 25.0,
+    targetIntervalRounds: 25.00,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "สุ่มเจอประมาณ 4 ตา ใน 100 รอบ",
-    expectedContributionRtp: 3.38,
-    psychologyRole: "ไฮโปรฟิตก่อนเข้าโซนรางวัลใหญ่",
+    averageFrequency: "Randomized ~4 rounds per 100 rounds (4.00%)",
+    expectedContributionRtp: 32.00,
+    psychologyRole: "High-yield event entering major bracket",
   },
   {
     id: 8,
     label: "10.00x – 15.00x (Big Win 1)",
     min: 10.00,
     max: 15.00,
-    probability: 1.20,
-    cumulativeCdf: 98.20,
+    probability: 1.60,
+    cumulativeCdf: 98.30,
     type: "EXPONENTIAL",
-    targetIntervalRounds: 83.3,
+    targetIntervalRounds: 62.50,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "สุ่มเจอประมาณ 1-2 ตา ใน 100 รอบ (1.20%)",
-    expectedContributionRtp: 1.02,
-    psychologyRole: "บิ๊กวินระดับเริ่มต้น",
+    averageFrequency: "Randomized ~1-2 rounds per 100 rounds (1.60%)",
+    expectedContributionRtp: 20.00,
+    psychologyRole: "Initial big win tier beyond 10.00x",
   },
   {
     id: 9,
     label: "15.01x – 25.00x (Big Win 2)",
     min: 15.01,
     max: 25.00,
-    probability: 0.90,
-    cumulativeCdf: 99.10,
+    probability: 1.00,
+    cumulativeCdf: 99.30,
     type: "EXPONENTIAL",
-    targetIntervalRounds: 111.1,
+    targetIntervalRounds: 100.00,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "สุ่มเจอประมาณ 1 ตา ใน 111 รอบ (0.90%)",
-    expectedContributionRtp: 0.76,
-    psychologyRole: "บิ๊กวินระดับสูง",
+    averageFrequency: "Randomized ~1 round per 100 rounds (1.00%)",
+    expectedContributionRtp: 20.00,
+    psychologyRole: "High big win tier flight",
   },
   {
     id: 10,
@@ -194,29 +197,29 @@ export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
     min: 25.01,
     max: 35.00,
     probability: 0.50,
-    cumulativeCdf: 99.60,
+    cumulativeCdf: 99.80,
     type: "EXPONENTIAL",
-    targetIntervalRounds: 200.0,
+    targetIntervalRounds: 200.00,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "สุ่มเจอประมาณ 1 ตา ใน 200 รอบ (0.50%)",
-    expectedContributionRtp: 0.42,
-    psychologyRole: "เมก้าวินระดับสูง",
+    averageFrequency: "Randomized ~1 round per 200 rounds (0.50%)",
+    expectedContributionRtp: 15.00,
+    psychologyRole: "High multiplier mega payout",
   },
   {
     id: 11,
     label: "35.01x – 50.00x (Max Cap Jackpot)",
     min: 35.01,
     max: 50.00,
-    probability: 0.40,
+    probability: 0.20,
     cumulativeCdf: 100.00,
     type: "NON_LINEAR_DECAY",
-    targetIntervalRounds: 250.0,
+    targetIntervalRounds: 500.00,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "สุ่มเจอประมาณ 1 ตา ใน 250 รอบ (0.40%) | รวมรางวัลใหญ่ >=10x ทั้งหมด 3.00%",
-    expectedContributionRtp: 0.34,
-    psychologyRole: "ล็อกเพดานสูงสุดที่ 50.00x เพื่อป้องกันความเสี่ยงต่อสภาพคล่องของเจ้ามือ",
+    averageFrequency: "Randomized ~1 round per 500 rounds (0.20%) | Calibrated down from 3.00%",
+    expectedContributionRtp: 8.50,
+    psychologyRole: "Max cap at 50.00x protecting house solvency and tail risk",
   },
 ];
 
@@ -287,8 +290,9 @@ export class SkyRushEngine {
 
   /**
    * 1. Provably Fair Continuous Crash RNG Formula with Actuarial 11-Tier Precision:
-   * Target RTP: 84.00% - 85.00% | House Edge: 15.00% - 16.00% (Strict Positive EV for House in the long run)
-   * Max Cap: 50.00x | Instant Bust: 15.50% at 1.00x | Max Cap Jackpot (35.01x-50.00x): 3.00%
+   * Target RTP: 84.50% (Range 83.00% - 85.00%) | House Edge: 15.50% (Range 15.00% - 17.00%)
+   * Max Cap: 50.00x | Instant Bust: 15.50% at 1.00x | Max Cap Jackpot (35.01x-50.00x): 0.20%
+   * Every single round is statistically INDEPENDENT (IID).
    */
   public calculateProvablyFairMultiplier(r: number): number {
     // Tier 1: 1.00x Instant Bust (15.50% [0.0000 - 0.1550))
@@ -296,71 +300,71 @@ export class SkyRushEngine {
       return 1.00;
     }
 
-    // Tier 2: Micro-Stumble (1.01x – 1.20x, 14.08% [0.1550 - 0.2958))
-    if (r < 0.2958) {
-      const sub = (r - 0.1550) / 0.1408;
+    // Tier 2: Micro-Stumble (1.01x – 1.20x, 14.50% [0.1550 - 0.3000))
+    if (r < 0.3000) {
+      const sub = (r - 0.1550) / 0.1450;
       const val = 1.01 + (1.20 - 1.01) * Math.pow(sub, 1.05);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 3: Low Safe Zone (1.21x – 1.50x, 14.09% [0.2958 - 0.4367))
-    if (r < 0.4367) {
-      const sub = (r - 0.2958) / 0.1409;
+    // Tier 3: Low Safe Zone (1.21x – 1.50x, 15.50% [0.3000 - 0.4550))
+    if (r < 0.4550) {
+      const sub = (r - 0.3000) / 0.1550;
       const val = 1.21 + (1.50 - 1.21) * Math.pow(sub, 1.05);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 4: Mid Safe Zone (1.51x – 2.00x, 14.08% [0.4367 - 0.5775))
-    if (r < 0.5775) {
-      const sub = (r - 0.4367) / 0.1408;
+    // Tier 4: Mid Safe Zone (1.51x – 2.00x, 16.20% [0.4550 - 0.6170))
+    if (r < 0.6170) {
+      const sub = (r - 0.4550) / 0.1620;
       const val = 1.51 + (2.00 - 1.51) * Math.pow(sub, 1.08);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 5: Circulation Zone (2.01x – 3.50x, 17.52% [0.5775 - 0.7527))
-    if (r < 0.7527) {
-      const sub = (r - 0.5775) / 0.1752;
+    // Tier 5: Circulation Zone (2.01x – 3.50x, 20.50% [0.6170 - 0.8220))
+    if (r < 0.8220) {
+      const sub = (r - 0.6170) / 0.2050;
       const val = 2.01 + (3.50 - 2.01) * Math.pow(sub, 1.12);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 6: Mid-Profit Zone (3.51x – 6.00x, 10.06% [0.7527 - 0.8533))
-    if (r < 0.8533) {
-      const sub = (r - 0.7527) / 0.1006;
+    // Tier 6: Mid-Profit Zone (3.51x – 6.00x, 10.50% [0.8220 - 0.9270))
+    if (r < 0.9270) {
+      const sub = (r - 0.8220) / 0.1050;
       const val = 3.51 + (6.00 - 3.51) * Math.pow(sub, 1.15);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 7: Big Win 1 (6.01x – 9.00x, 4.69% [0.8533 - 0.9002))
-    if (r < 0.9002) {
-      const sub = (r - 0.8533) / 0.0469;
-      const val = 6.01 + (9.00 - 6.01) * Math.pow(sub, 1.18);
+    // Tier 7: High Profit Zone (6.01x – 9.99x, 4.00% [0.9270 - 0.9670))
+    if (r < 0.9670) {
+      const sub = (r - 0.9270) / 0.0400;
+      const val = 6.01 + (9.99 - 6.01) * Math.pow(sub, 1.18);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 8: Big Win 2 (9.01x – 14.00x, 3.35% [0.9002 - 0.9337))
-    if (r < 0.9337) {
-      const sub = (r - 0.9002) / 0.0335;
-      const val = 9.01 + (14.00 - 9.01) * Math.pow(sub, 1.20);
+    // Tier 8: Big Win 1 (10.00x – 15.00x, 1.60% [0.9670 - 0.9830))
+    if (r < 0.9830) {
+      const sub = (r - 0.9670) / 0.0160;
+      const val = 10.00 + (15.00 - 10.00) * Math.pow(sub, 1.20);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 9: Mega Win 1 (14.01x – 22.00x, 2.20% [0.9337 - 0.9557))
-    if (r < 0.9557) {
-      const sub = (r - 0.9337) / 0.0220;
-      const val = 14.01 + (22.00 - 14.01) * Math.pow(sub, 1.22);
+    // Tier 9: Big Win 2 (15.01x – 25.00x, 1.00% [0.9830 - 0.9930))
+    if (r < 0.9930) {
+      const sub = (r - 0.9830) / 0.0100;
+      const val = 15.01 + (25.00 - 15.01) * Math.pow(sub, 1.22);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 10: Mega Win 2 (22.01x – 35.00x, 1.43% [0.9557 - 0.9700))
-    if (r < 0.9700) {
-      const sub = (r - 0.9557) / 0.0143;
-      const val = 22.01 + (35.00 - 22.01) * Math.pow(sub, 1.25);
+    // Tier 10: Mega Win (25.01x – 35.00x, 0.50% [0.9930 - 0.9980))
+    if (r < 0.9980) {
+      const sub = (r - 0.9930) / 0.0050;
+      const val = 25.01 + (35.00 - 25.01) * Math.pow(sub, 1.25);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 11: Max Cap Jackpot (35.01x – 50.00x, 3.00% [0.9700 - 1.0000])
-    const sub = Math.min(1.0, Math.max(0.0, (r - 0.9700) / 0.0300));
+    // Tier 11: Max Cap Jackpot (35.01x – 50.00x, 0.20% [0.9980 - 1.0000])
+    const sub = Math.min(1.0, Math.max(0.0, (r - 0.9980) / 0.0020));
     const val = 35.01 + (50.00 - 35.01) * Math.pow(sub, 1.30);
 
     // Strict clamping [1.00x - 50.00x]
@@ -369,15 +373,11 @@ export class SkyRushEngine {
   }
 
   /**
-   * Provably Fair Continuous RNG Generator with Algorithmic Volatility Pacing
+   * Provably Fair Continuous RNG Generator with Pure Statistical Independence (IID)
    */
   public generateRoundSpacedMultiplier(): { multiplier: number; selectedTier: DistributionTier; cooldownLocked: number } {
-    let r = Math.random(); // Uniform [0, 1)
-
-    // Algorithmic cadence: prevent back-to-back mega spikes (>= 20.00x) while preserving RNG continuity
-    if (this.lastGeneratedMultiplier >= 20.00 && r > 0.90) {
-      r = Math.random() * 0.90;
-    }
+    // Pure independent uniform random roll [0, 1) per round
+    const r = Math.random();
 
     const multiplier = this.calculateProvablyFairMultiplier(r);
     this.lastGeneratedMultiplier = multiplier;

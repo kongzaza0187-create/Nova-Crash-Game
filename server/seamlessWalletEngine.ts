@@ -176,10 +176,10 @@ class SeamlessWalletStore {
         return { status: "ALREADY_PROCESSED", currency: "THB", balance: existingTx.balance_after, alreadyProcessed: true };
       }
 
-      // 2. Lock Row & Check User
-      const user = this.users.get(userId);
+      // 2. Lock Row & Check User (Auto-provision if first deposit)
+      let user = this.users.get(userId);
       if (!user) {
-        return { status: "FAILED", error: "USER_NOT_FOUND" };
+        user = this.createUser(userId, `Player_${userId}`, 0.00);
       }
 
       const depositAmount = parseFloat(Number(amountThb).toFixed(2));
