@@ -348,16 +348,16 @@ LOG_LEVEL=info
 # ==============================================================================
 # CRYPTOGRAPHIC SECURITY & JWT SALTS
 # ==============================================================================
-JWT_SECRET=c2e8a1f879685a73d9e4a3b89012fcd6e541b2c3d4e5f60718293a4b5c6d7e8f
-ADMIN_JWT_SECRET=f9a8b7c6d5e4f3a2b1c0d9e8f7a6b5c4d3e2f102938475610293847561a2b3c4
-SERVER_SEED_MASTER_SECRET=91a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2
+JWT_SECRET=YOUR_64_CHAR_HEX_JWT_SECRET_HERE
+ADMIN_JWT_SECRET=YOUR_64_CHAR_HEX_ADMIN_SECRET_HERE
+SERVER_SEED_MASTER_SECRET=YOUR_SERVER_SEED_MASTER_SECRET_HERE
 
 # ==============================================================================
 # OPERATOR B2B GATEWAY CONFIGURATION
 # ==============================================================================
-OPERATOR_ID=OP_BOLLY_MAIN
-OPERATOR_BASE_URL=https://api-wallet.operator-core.com
-OPERATOR_SECRET_KEY=e83a79d012fbc456e789a0123456789abcdef0123456789abcdef0123456789a
+OPERATOR_ID=OP_PARTNER_IDENTIFIER
+OPERATOR_BASE_URL=https://api-wallet.operator-domain.com
+OPERATOR_SECRET_KEY=YOUR_OPERATOR_HMAC_SECRET_KEY_HERE
 OPERATOR_REQUEST_TIMEOUT_MS=3000
 OPERATOR_MAX_RETRY_COUNT=3
 OPERATOR_RETRY_BACKOFF_MS=250
@@ -367,7 +367,7 @@ OPERATOR_RETRY_BACKOFF_MS=250
 # ==============================================================================
 REDIS_HOST=10.0.4.15
 REDIS_PORT=6379
-REDIS_PASSWORD=SecureClusterAuthPassword_2026_!
+REDIS_PASSWORD=YOUR_REDIS_CLUSTER_PASSWORD_HERE
 REDIS_DB=0
 REDIS_CLUSTER_ENABLED=true
 REDIS_LOCK_TTL_MS=2000
@@ -375,7 +375,7 @@ REDIS_LOCK_TTL_MS=2000
 # ==============================================================================
 # PRIMARY AUDIT POSTGRESQL DATABASE
 # ==============================================================================
-DATABASE_URL=postgresql://igaming_admin:ProdSecurePass2026!@10.0.4.50:5432/igaming_audit_db?sslmode=require&pool_timeout=10&max_connections=50
+DATABASE_URL=postgresql://DB_USER:DB_PASSWORD@DB_HOST:5432/igaming_audit_db?sslmode=require&pool_timeout=10&max_connections=50
 
 # ==============================================================================
 # RISK ASSURANCE & MATHEMATICAL ENGINE BOUNDARIES
