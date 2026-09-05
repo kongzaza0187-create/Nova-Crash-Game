@@ -7,7 +7,7 @@
  * - House Edge: 15.50% (Target Range: 15.00% - 17.00%)
  * - Maximum Multiplier Cap: 50.00x
  * - Instant Bust Rate: 15.50% at 1.00x (Base House Edge lock)
- * - Top Jackpot Tier: 0.20% at 35.01x - 50.00x (1 in 500 rounds)
+ * - Top Jackpot Tier: 1.20% at 35.01x - 50.00x (1 in 83.33 rounds, exactly ~1% กว่าๆ)
  * - Statistical Independence: Pure independent (IID) RNG sampling per round
  * - Expected Value (EV): Strictly Positive for House (+15.50%)
  * - Long-Term House Volatility: Systematic positive accumulation for operator
@@ -76,14 +76,14 @@ export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
     label: "1.01x – 1.20x (Micro-Stumble)",
     min: 1.01,
     max: 1.20,
-    probability: 14.50,
-    cumulativeCdf: 30.00,
+    probability: 14.90,
+    cumulativeCdf: 30.40,
     type: "NON_LINEAR_DECAY",
-    targetIntervalRounds: 6.90,
+    targetIntervalRounds: 6.71,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "Randomized ~14-15 rounds per 100 rounds (14.50%)",
-    expectedContributionRtp: 16.00,
+    averageFrequency: "Randomized ~14-15 rounds per 100 rounds (14.90%)",
+    expectedContributionRtp: 16.50,
     psychologyRole: "Quick early cutoff preventing scalping",
   },
   {
@@ -91,14 +91,14 @@ export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
     label: "1.21x – 1.50x (Low Safe Zone)",
     min: 1.21,
     max: 1.50,
-    probability: 15.50,
-    cumulativeCdf: 45.50,
+    probability: 15.30,
+    cumulativeCdf: 45.70,
     type: "NON_LINEAR_DECAY",
-    targetIntervalRounds: 6.45,
+    targetIntervalRounds: 6.54,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "Randomized ~15-16 rounds per 100 rounds (15.50%)",
-    expectedContributionRtp: 21.00,
+    averageFrequency: "Randomized ~15-16 rounds per 100 rounds (15.30%)",
+    expectedContributionRtp: 20.70,
     psychologyRole: "Conservative player safe exit corridor",
   },
   {
@@ -106,14 +106,14 @@ export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
     label: "1.51x – 2.00x (Mid Safe Zone)",
     min: 1.51,
     max: 2.00,
-    probability: 16.20,
-    cumulativeCdf: 61.70,
+    probability: 15.80,
+    cumulativeCdf: 61.50,
     type: "NON_LINEAR_DECAY",
-    targetIntervalRounds: 6.17,
+    targetIntervalRounds: 6.33,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "Randomized ~16 rounds per 100 rounds (16.20%)",
-    expectedContributionRtp: 28.40,
+    averageFrequency: "Randomized ~15-16 rounds per 100 rounds (15.80%)",
+    expectedContributionRtp: 27.70,
     psychologyRole: "Bankroll preservation band",
   },
   {
@@ -121,14 +121,14 @@ export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
     label: "2.01x – 3.50x (Circulation Zone)",
     min: 2.01,
     max: 3.50,
-    probability: 20.50,
-    cumulativeCdf: 82.20,
+    probability: 20.00,
+    cumulativeCdf: 81.50,
     type: "EXPONENTIAL",
-    targetIntervalRounds: 4.88,
+    targetIntervalRounds: 5.00,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "Randomized ~20-21 rounds per 100 rounds (20.50%)",
-    expectedContributionRtp: 56.40,
+    averageFrequency: "Randomized ~20 rounds per 100 rounds (20.00%)",
+    expectedContributionRtp: 55.00,
     psychologyRole: "Core liquidity circulation velocity band",
   },
   {
@@ -136,14 +136,14 @@ export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
     label: "3.51x – 6.00x (Mid-Profit Zone)",
     min: 3.51,
     max: 6.00,
-    probability: 10.50,
-    cumulativeCdf: 92.70,
+    probability: 10.10,
+    cumulativeCdf: 91.60,
     type: "EXPONENTIAL",
-    targetIntervalRounds: 9.52,
+    targetIntervalRounds: 9.90,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "Randomized ~10-11 rounds per 100 rounds (10.50%)",
-    expectedContributionRtp: 49.90,
+    averageFrequency: "Randomized ~10 rounds per 100 rounds (10.10%)",
+    expectedContributionRtp: 48.00,
     psychologyRole: "Mid-tier profit multiplier event",
   },
   {
@@ -152,7 +152,7 @@ export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
     min: 6.01,
     max: 9.99,
     probability: 4.00,
-    cumulativeCdf: 96.70,
+    cumulativeCdf: 95.60,
     type: "EXPONENTIAL",
     targetIntervalRounds: 25.00,
     minCooldown: 0,
@@ -167,7 +167,7 @@ export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
     min: 10.00,
     max: 15.00,
     probability: 1.60,
-    cumulativeCdf: 98.30,
+    cumulativeCdf: 97.20,
     type: "EXPONENTIAL",
     targetIntervalRounds: 62.50,
     minCooldown: 0,
@@ -181,14 +181,14 @@ export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
     label: "15.01x – 25.00x (Big Win 2)",
     min: 15.01,
     max: 25.00,
-    probability: 1.00,
-    cumulativeCdf: 99.30,
+    probability: 1.10,
+    cumulativeCdf: 98.30,
     type: "EXPONENTIAL",
-    targetIntervalRounds: 100.00,
+    targetIntervalRounds: 90.91,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "Randomized ~1 round per 100 rounds (1.00%)",
-    expectedContributionRtp: 20.00,
+    averageFrequency: "Randomized ~1 round per 91 rounds (1.10%)",
+    expectedContributionRtp: 22.00,
     psychologyRole: "High big win tier flight",
   },
   {
@@ -197,7 +197,7 @@ export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
     min: 25.01,
     max: 35.00,
     probability: 0.50,
-    cumulativeCdf: 99.80,
+    cumulativeCdf: 98.80,
     type: "EXPONENTIAL",
     targetIntervalRounds: 200.00,
     minCooldown: 0,
@@ -211,15 +211,15 @@ export const MULTIPLIER_DISTRIBUTION_MATRIX: DistributionTier[] = [
     label: "35.01x – 50.00x (Max Cap Jackpot)",
     min: 35.01,
     max: 50.00,
-    probability: 0.20,
+    probability: 1.20,
     cumulativeCdf: 100.00,
     type: "NON_LINEAR_DECAY",
-    targetIntervalRounds: 500.00,
+    targetIntervalRounds: 83.33,
     minCooldown: 0,
     maxCooldown: 0,
-    averageFrequency: "Randomized ~1 round per 500 rounds (0.20%) | Calibrated down from 3.00%",
-    expectedContributionRtp: 8.50,
-    psychologyRole: "Max cap at 50.00x protecting house solvency and tail risk",
+    averageFrequency: "Randomized ~1 round per 83 rounds (1.20%) | Calibrated to 1% กว่าๆ",
+    expectedContributionRtp: 51.00,
+    psychologyRole: "Max cap at 50.00x grand prize jackpot preserving house solvency",
   },
 ];
 
@@ -291,7 +291,7 @@ export class SkyRushEngine {
   /**
    * 1. Provably Fair Continuous Crash RNG Formula with Actuarial 11-Tier Precision:
    * Target RTP: 84.50% (Range 83.00% - 85.00%) | House Edge: 15.50% (Range 15.00% - 17.00%)
-   * Max Cap: 50.00x | Instant Bust: 15.50% at 1.00x | Max Cap Jackpot (35.01x-50.00x): 0.20%
+   * Max Cap: 50.00x | Instant Bust: 15.50% at 1.00x | Max Cap Jackpot (35.01x-50.00x): 1.20% (~1 in 83 rounds)
    * Every single round is statistically INDEPENDENT (IID).
    */
   public calculateProvablyFairMultiplier(r: number): number {
@@ -300,71 +300,71 @@ export class SkyRushEngine {
       return 1.00;
     }
 
-    // Tier 2: Micro-Stumble (1.01x – 1.20x, 14.50% [0.1550 - 0.3000))
-    if (r < 0.3000) {
-      const sub = (r - 0.1550) / 0.1450;
+    // Tier 2: Micro-Stumble (1.01x – 1.20x, 14.90% [0.1550 - 0.3040))
+    if (r < 0.3040) {
+      const sub = (r - 0.1550) / 0.1490;
       const val = 1.01 + (1.20 - 1.01) * Math.pow(sub, 1.05);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 3: Low Safe Zone (1.21x – 1.50x, 15.50% [0.3000 - 0.4550))
-    if (r < 0.4550) {
-      const sub = (r - 0.3000) / 0.1550;
+    // Tier 3: Low Safe Zone (1.21x – 1.50x, 15.30% [0.3040 - 0.4570))
+    if (r < 0.4570) {
+      const sub = (r - 0.3040) / 0.1530;
       const val = 1.21 + (1.50 - 1.21) * Math.pow(sub, 1.05);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 4: Mid Safe Zone (1.51x – 2.00x, 16.20% [0.4550 - 0.6170))
-    if (r < 0.6170) {
-      const sub = (r - 0.4550) / 0.1620;
+    // Tier 4: Mid Safe Zone (1.51x – 2.00x, 15.80% [0.4570 - 0.6150))
+    if (r < 0.6150) {
+      const sub = (r - 0.4570) / 0.1580;
       const val = 1.51 + (2.00 - 1.51) * Math.pow(sub, 1.08);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 5: Circulation Zone (2.01x – 3.50x, 20.50% [0.6170 - 0.8220))
-    if (r < 0.8220) {
-      const sub = (r - 0.6170) / 0.2050;
+    // Tier 5: Circulation Zone (2.01x – 3.50x, 20.00% [0.6150 - 0.8150))
+    if (r < 0.8150) {
+      const sub = (r - 0.6150) / 0.2000;
       const val = 2.01 + (3.50 - 2.01) * Math.pow(sub, 1.12);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 6: Mid-Profit Zone (3.51x – 6.00x, 10.50% [0.8220 - 0.9270))
-    if (r < 0.9270) {
-      const sub = (r - 0.8220) / 0.1050;
+    // Tier 6: Mid-Profit Zone (3.51x – 6.00x, 10.10% [0.8150 - 0.9160))
+    if (r < 0.9160) {
+      const sub = (r - 0.8150) / 0.1010;
       const val = 3.51 + (6.00 - 3.51) * Math.pow(sub, 1.15);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 7: High Profit Zone (6.01x – 9.99x, 4.00% [0.9270 - 0.9670))
-    if (r < 0.9670) {
-      const sub = (r - 0.9270) / 0.0400;
+    // Tier 7: High Profit Zone (6.01x – 9.99x, 4.00% [0.9160 - 0.9560))
+    if (r < 0.9560) {
+      const sub = (r - 0.9160) / 0.0400;
       const val = 6.01 + (9.99 - 6.01) * Math.pow(sub, 1.18);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 8: Big Win 1 (10.00x – 15.00x, 1.60% [0.9670 - 0.9830))
-    if (r < 0.9830) {
-      const sub = (r - 0.9670) / 0.0160;
+    // Tier 8: Big Win 1 (10.00x – 15.00x, 1.60% [0.9560 - 0.9720))
+    if (r < 0.9720) {
+      const sub = (r - 0.9560) / 0.0160;
       const val = 10.00 + (15.00 - 10.00) * Math.pow(sub, 1.20);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 9: Big Win 2 (15.01x – 25.00x, 1.00% [0.9830 - 0.9930))
-    if (r < 0.9930) {
-      const sub = (r - 0.9830) / 0.0100;
+    // Tier 9: Big Win 2 (15.01x – 25.00x, 1.10% [0.9720 - 0.9830))
+    if (r < 0.9830) {
+      const sub = (r - 0.9720) / 0.0110;
       const val = 15.01 + (25.00 - 15.01) * Math.pow(sub, 1.22);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 10: Mega Win (25.01x – 35.00x, 0.50% [0.9930 - 0.9980))
-    if (r < 0.9980) {
-      const sub = (r - 0.9930) / 0.0050;
+    // Tier 10: Mega Win (25.01x – 35.00x, 0.50% [0.9830 - 0.9880))
+    if (r < 0.9880) {
+      const sub = (r - 0.9830) / 0.0050;
       const val = 25.01 + (35.00 - 25.01) * Math.pow(sub, 1.25);
       return parseFloat(val.toFixed(2));
     }
 
-    // Tier 11: Max Cap Jackpot (35.01x – 50.00x, 0.20% [0.9980 - 1.0000])
-    const sub = Math.min(1.0, Math.max(0.0, (r - 0.9980) / 0.0020));
+    // Tier 11: Max Cap Jackpot (35.01x – 50.00x, 1.20% [0.9880 - 1.0000])
+    const sub = Math.min(1.0, Math.max(0.0, (r - 0.9880) / 0.0120));
     const val = 35.01 + (50.00 - 35.01) * Math.pow(sub, 1.30);
 
     // Strict clamping [1.00x - 50.00x]

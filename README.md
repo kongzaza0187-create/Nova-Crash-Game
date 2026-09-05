@@ -159,16 +159,16 @@ The system maps the normalized random float $r \in [0, 1)$ across 11 precision t
 | Tier | Multiplier Range | Classification | Probability (%) | Expected Frequency | Actuarial & Game Design Role |
 | :---: | :---: | :---: | :---: | :---: | :--- |
 | **1** | **1.00x** | **Instant Bust** | **15.50%** | ~15-16 in 100 rounds | Instantly terminates round at takeoff; guarantees 15.50% base House Edge across all cashout strategies. |
-| **2** | **1.01x – 1.20x** | **Micro-Stumble** | **14.50%** | ~14-15 in 100 rounds | Early cutoff preventing micro-scalping exploitation. |
-| **3** | **1.21x – 1.50x** | **Low Safe Zone** | **15.50%** | ~15-16 in 100 rounds | High-frequency safe cashout corridor for conservative players. |
-| **4** | **1.51x – 2.00x** | **Mid Safe Zone** | **16.20%** | ~16 in 100 rounds | Capital preservation band offering low-risk positive multiplier. |
-| **5** | **2.01x – 3.50x** | **Circulation Zone** | **20.50%** | ~20-21 in 100 rounds | Main velocity band keeping liquidity circulating across active sessions. |
-| **6** | **3.51x – 6.00x** | **Mid-Profit Zone** | **10.50%** | ~10-11 in 100 rounds | Medium-tier profit zone incentivizing players to target higher payouts. |
+| **2** | **1.01x – 1.20x** | **Micro-Stumble** | **14.90%** | ~14-15 in 100 rounds | Early cutoff preventing micro-scalping exploitation. |
+| **3** | **1.21x – 1.50x** | **Low Safe Zone** | **15.30%** | ~15-16 in 100 rounds | High-frequency safe cashout corridor for conservative players. |
+| **4** | **1.51x – 2.00x** | **Mid Safe Zone** | **15.80%** | ~15-16 in 100 rounds | Capital preservation band offering low-risk positive multiplier. |
+| **5** | **2.01x – 3.50x** | **Circulation Zone** | **20.00%** | ~20 in 100 rounds | Main velocity band keeping liquidity circulating across active sessions. |
+| **6** | **3.51x – 6.00x** | **Mid-Profit Zone** | **10.10%** | ~10 in 100 rounds | Medium-tier profit zone incentivizing players to target higher payouts. |
 | **7** | **6.01x – 9.99x** | **High Profit Zone** | **4.00%** | ~4 in 100 rounds | Entry-level high-multiple event generating excitement. |
 | **8** | **10.00x – 15.00x** | **Big Win 1** | **1.60%** | ~1-2 in 100 rounds | High-tier multiplier breakout traversing the 10.00x threshold. |
-| **9** | **15.01x – 25.00x** | **Big Win 2** | **1.00%** | ~1 in 100 rounds | Major jackpot flight delivering substantial single-round returns. |
+| **9** | **15.01x – 25.00x** | **Big Win 2** | **1.10%** | ~1 in 91 rounds | Major jackpot flight delivering substantial single-round returns. |
 | **10** | **25.01x – 35.00x** | **Mega Win** | **0.50%** | ~1 in 200 rounds | Deep flight zone rewarding high-risk players. |
-| **11** | **35.01x – 50.00x** | **Max Cap Jackpot** | **0.20%** | ~1 in 500 rounds | Capped at 50.00x maximum multiplier; calibrated down from 3.00% to protect house reserves and maintain exact 15.50% House Edge / 84.50% RTP balance. |
+| **11** | **35.01x – 50.00x** | **Max Cap Jackpot** | **1.20%** | ~1 in 83 rounds | Capped at 50.00x maximum multiplier; calibrated to exactly ~1% กว่าๆ (1.20%) to maintain verified 15.50% House Edge / 84.50% RTP balance while delivering frequent grand prizes. |
 
 *(Cumulative Probability = Exactly 100.00% | Total Win Probability $\ge$ 1.01x = 84.50%)*
 

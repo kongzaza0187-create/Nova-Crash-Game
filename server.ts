@@ -640,16 +640,16 @@ export interface GlobalTierConfig {
 
 export const GLOBAL_11_TIERS: GlobalTierConfig[] = [
   { id: 1, label: "1.00x (Instant Bust)", min: 1.00, max: 1.00, probability: 15.50, targetIntervalRounds: 6.45, minCooldown: 0, maxCooldown: 0 },
-  { id: 2, label: "1.01x – 1.20x (Micro-Stumble)", min: 1.01, max: 1.20, probability: 14.50, targetIntervalRounds: 6.90, minCooldown: 0, maxCooldown: 0 },
-  { id: 3, label: "1.21x – 1.50x (Low Safe Zone)", min: 1.21, max: 1.50, probability: 15.50, targetIntervalRounds: 6.45, minCooldown: 0, maxCooldown: 0 },
-  { id: 4, label: "1.51x – 2.00x (Mid Safe Zone)", min: 1.51, max: 2.00, probability: 16.20, targetIntervalRounds: 6.17, minCooldown: 0, maxCooldown: 0 },
-  { id: 5, label: "2.01x – 3.50x (Circulation Zone)", min: 2.01, max: 3.50, probability: 20.50, targetIntervalRounds: 4.88, minCooldown: 0, maxCooldown: 0 },
-  { id: 6, label: "3.51x – 6.00x (Mid-Profit Zone)", min: 3.51, max: 6.00, probability: 10.50, targetIntervalRounds: 9.52, minCooldown: 0, maxCooldown: 0 },
+  { id: 2, label: "1.01x – 1.20x (Micro-Stumble)", min: 1.01, max: 1.20, probability: 14.90, targetIntervalRounds: 6.71, minCooldown: 0, maxCooldown: 0 },
+  { id: 3, label: "1.21x – 1.50x (Low Safe Zone)", min: 1.21, max: 1.50, probability: 15.30, targetIntervalRounds: 6.54, minCooldown: 0, maxCooldown: 0 },
+  { id: 4, label: "1.51x – 2.00x (Mid Safe Zone)", min: 1.51, max: 2.00, probability: 15.80, targetIntervalRounds: 6.33, minCooldown: 0, maxCooldown: 0 },
+  { id: 5, label: "2.01x – 3.50x (Circulation Zone)", min: 2.01, max: 3.50, probability: 20.00, targetIntervalRounds: 5.00, minCooldown: 0, maxCooldown: 0 },
+  { id: 6, label: "3.51x – 6.00x (Mid-Profit Zone)", min: 3.51, max: 6.00, probability: 10.10, targetIntervalRounds: 9.90, minCooldown: 0, maxCooldown: 0 },
   { id: 7, label: "6.01x – 9.99x (High Profit Zone)", min: 6.01, max: 9.99, probability: 4.00, targetIntervalRounds: 25.00, minCooldown: 0, maxCooldown: 0 },
   { id: 8, label: "10.00x – 15.00x (Big Win 1)", min: 10.00, max: 15.00, probability: 1.60, targetIntervalRounds: 62.50, minCooldown: 0, maxCooldown: 0 },
-  { id: 9, label: "15.01x – 25.00x (Big Win 2)", min: 15.01, max: 25.00, probability: 1.00, targetIntervalRounds: 100.00, minCooldown: 0, maxCooldown: 0 },
+  { id: 9, label: "15.01x – 25.00x (Big Win 2)", min: 15.01, max: 25.00, probability: 1.10, targetIntervalRounds: 90.91, minCooldown: 0, maxCooldown: 0 },
   { id: 10, label: "25.01x – 35.00x (Mega Win)", min: 25.01, max: 35.00, probability: 0.50, targetIntervalRounds: 200.00, minCooldown: 0, maxCooldown: 0 },
-  { id: 11, label: "35.01x – 50.00x (Max Cap Jackpot)", min: 35.01, max: 50.00, probability: 0.20, targetIntervalRounds: 500.00, minCooldown: 0, maxCooldown: 0 },
+  { id: 11, label: "35.01x – 50.00x (Max Cap Jackpot)", min: 35.01, max: 50.00, probability: 1.20, targetIntervalRounds: 83.33, minCooldown: 0, maxCooldown: 0 },
 ];
 
 export const GLOBAL_12_TIERS = GLOBAL_11_TIERS; // Alias for backward compatibility
@@ -1460,7 +1460,7 @@ async function runSecurityFullstackServer() {
 
     // Helper to generate crash points using Provably Fair Continuous Crash RNG with Actuarial 11-Tier Precision
     // Target RTP: 84.50% (Range 83.00% - 85.00%) | House Edge: 15.50% (Range 15.00% - 17.00%)
-    // Instant Bust: 15.50% at 1.00x | Top Jackpot (35.01x - 50.00x): 0.20%
+    // Instant Bust: 15.50% at 1.00x | Top Jackpot (35.01x - 50.00x): 1.20% (~1 in 83 rounds)
     // Absolute Max Cap: 50.00x | Pure Independent IID Sampling per Round | Positive House EV
     const getExact8TierDistributionCrashPoint = (): number => {
       // Pure statistically independent random float [0, 1) per round

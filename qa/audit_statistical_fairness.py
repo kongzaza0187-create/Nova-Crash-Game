@@ -26,16 +26,16 @@ from typing import Dict, List, Tuple
 # -----------------------------------------------------------------------------
 TIERS = [
     {"id": 1,  "label": "1.00x (Instant Bust)",       "min": 1.00,  "max": 1.00,  "prob": 0.1550, "cum": 0.1550},
-    {"id": 2,  "label": "1.01x – 1.20x (Micro-Stumble)", "min": 1.01,  "max": 1.20,  "prob": 0.1450, "cum": 0.3000},
-    {"id": 3,  "label": "1.21x – 1.50x (Low Safe Zone)",  "min": 1.21,  "max": 1.50,  "prob": 0.1550, "cum": 0.4550},
-    {"id": 4,  "label": "1.51x – 2.00x (Mid Safe Zone)",  "min": 1.51,  "max": 2.00,  "prob": 0.1620, "cum": 0.6170},
-    {"id": 5,  "label": "2.01x – 3.50x (Circulation Zone)","min": 2.01, "max": 3.50,  "prob": 0.2050, "cum": 0.8220},
-    {"id": 6,  "label": "3.51x – 6.00x (Mid-Profit Zone)","min": 3.51, "max": 6.00,  "prob": 0.1050, "cum": 0.9270},
-    {"id": 7,  "label": "6.01x – 9.99x (High Profit)",   "min": 6.01,  "max": 9.99,  "prob": 0.0400, "cum": 0.9670},
-    {"id": 8,  "label": "10.00x – 15.00x (Big Win 1)",    "min": 10.00, "max": 15.00, "prob": 0.0160, "cum": 0.9830},
-    {"id": 9,  "label": "15.01x – 25.00x (Big Win 2)",    "min": 15.01, "max": 25.00, "prob": 0.0100, "cum": 0.9930},
-    {"id": 10, "label": "25.01x – 35.00x (Mega Win)",     "min": 25.01, "max": 35.00, "prob": 0.0050, "cum": 0.9980},
-    {"id": 11, "label": "35.01x – 50.00x (Max Cap Jackpot)","min": 35.01,"max": 50.00, "prob": 0.0020, "cum": 1.0000},
+    {"id": 2,  "label": "1.01x – 1.20x (Micro-Stumble)", "min": 1.01,  "max": 1.20,  "prob": 0.1490, "cum": 0.3040},
+    {"id": 3,  "label": "1.21x – 1.50x (Low Safe Zone)",  "min": 1.21,  "max": 1.50,  "prob": 0.1530, "cum": 0.4570},
+    {"id": 4,  "label": "1.51x – 2.00x (Mid Safe Zone)",  "min": 1.51,  "max": 2.00,  "prob": 0.1580, "cum": 0.6150},
+    {"id": 5,  "label": "2.01x – 3.50x (Circulation Zone)","min": 2.01, "max": 3.50,  "prob": 0.2000, "cum": 0.8150},
+    {"id": 6,  "label": "3.51x – 6.00x (Mid-Profit Zone)","min": 3.51, "max": 6.00,  "prob": 0.1010, "cum": 0.9160},
+    {"id": 7,  "label": "6.01x – 9.99x (High Profit)",   "min": 6.01,  "max": 9.99,  "prob": 0.0400, "cum": 0.9560},
+    {"id": 8,  "label": "10.00x – 15.00x (Big Win 1)",    "min": 10.00, "max": 15.00, "prob": 0.0160, "cum": 0.9720},
+    {"id": 9,  "label": "15.01x – 25.00x (Big Win 2)",    "min": 15.01, "max": 25.00, "prob": 0.0110, "cum": 0.9830},
+    {"id": 10, "label": "25.01x – 35.00x (Mega Win)",     "min": 25.01, "max": 35.00, "prob": 0.0050, "cum": 0.9880},
+    {"id": 11, "label": "35.01x – 50.00x (Max Cap Jackpot)","min": 35.01,"max": 50.00, "prob": 0.0120, "cum": 1.0000},
 ]
 
 def calculate_provably_fair_multiplier(r: float) -> float:
@@ -45,35 +45,35 @@ def calculate_provably_fair_multiplier(r: float) -> float:
     """
     if r < 0.1550:
         return 1.00
-    elif r < 0.3000:
-        sub = (r - 0.1550) / 0.1450
+    elif r < 0.3040:
+        sub = (r - 0.1550) / 0.1490
         return round(1.01 + (1.20 - 1.01) * (sub ** 1.05), 2)
-    elif r < 0.4550:
-        sub = (r - 0.3000) / 0.1550
+    elif r < 0.4570:
+        sub = (r - 0.3040) / 0.1530
         return round(1.21 + (1.50 - 1.21) * (sub ** 1.05), 2)
-    elif r < 0.6170:
-        sub = (r - 0.4550) / 0.1620
+    elif r < 0.6150:
+        sub = (r - 0.4570) / 0.1580
         return round(1.51 + (2.00 - 1.51) * (sub ** 1.08), 2)
-    elif r < 0.8220:
-        sub = (r - 0.6170) / 0.2050
+    elif r < 0.8150:
+        sub = (r - 0.6150) / 0.2000
         return round(2.01 + (3.50 - 2.01) * (sub ** 1.12), 2)
-    elif r < 0.9270:
-        sub = (r - 0.8220) / 0.1050
+    elif r < 0.9160:
+        sub = (r - 0.8150) / 0.1010
         return round(3.51 + (6.00 - 3.51) * (sub ** 1.15), 2)
-    elif r < 0.9670:
-        sub = (r - 0.9270) / 0.0400
+    elif r < 0.9560:
+        sub = (r - 0.9160) / 0.0400
         return round(6.01 + (9.99 - 6.01) * (sub ** 1.18), 2)
-    elif r < 0.9830:
-        sub = (r - 0.9670) / 0.0160
+    elif r < 0.9720:
+        sub = (r - 0.9560) / 0.0160
         return round(10.00 + (15.00 - 10.00) * (sub ** 1.20), 2)
-    elif r < 0.9930:
-        sub = (r - 0.9830) / 0.0100
+    elif r < 0.9830:
+        sub = (r - 0.9720) / 0.0110
         return round(15.01 + (25.00 - 15.01) * (sub ** 1.22), 2)
-    elif r < 0.9980:
-        sub = (r - 0.9930) / 0.0050
+    elif r < 0.9880:
+        sub = (r - 0.9830) / 0.0050
         return round(25.01 + (35.00 - 25.01) * (sub ** 1.25), 2)
     else:
-        sub = min(1.0, max(0.0, (r - 0.9980) / 0.0020))
+        sub = min(1.0, max(0.0, (r - 0.9880) / 0.0120))
         val = 35.01 + (50.00 - 35.01) * (sub ** 1.30)
         return min(50.00, round(val, 2))
 
