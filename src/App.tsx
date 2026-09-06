@@ -10,7 +10,7 @@ import { SeamlessWalletModal } from "./components/SeamlessWalletModal";
 import { ResponsibleGamingModal } from "./components/ResponsibleGamingModal";
 import { audioManager } from "./audio";
 import { Bet, PlayerBet, RoundState, HistoryItem, UserStats, WalletMode } from "./types";
-import { SkyRushEngine, BetSlip, GameRoomState, MULTIPLIER_DISTRIBUTION_MATRIX } from "./lib/SkyRushEngine";
+import { SuperNovaEngine, BetSlip, GameRoomState, MULTIPLIER_DISTRIBUTION_MATRIX } from "./lib/SkyRushEngine";
 import { seamlessWalletClient } from "./lib/seamlessWalletClient";
 import { generateRandomBotPool, formatToStandardUser } from "./utils/userTransform";
 import { getMultiplierColorTier } from "./utils/multiplierColor";
@@ -119,11 +119,13 @@ const AVATAR_SEEDS = ["A", "B", "K", "Y", "P", "S", "M", "T", "G", "R", "W", "X"
 export default function App() {
   const sessionIdRef = useRef<string>(
     (() => {
-      let stored = typeof window !== "undefined" ? localStorage.getItem("skyrush_session_id") : null;
+      let stored = typeof window !== "undefined" 
+        ? (localStorage.getItem("supernova_session_id") || localStorage.getItem("skyrush_session_id"))
+        : null;
       if (!stored) {
         stored = "session_" + Math.random().toString(36).substring(2, 15);
         if (typeof window !== "undefined") {
-          localStorage.setItem("skyrush_session_id", stored);
+          localStorage.setItem("supernova_session_id", stored);
         }
       }
       return stored;
@@ -133,6 +135,8 @@ export default function App() {
   const [multiplier, setMultiplier] = useState<number>(1.00);
   const [countdown, setCountdown] = useState<number>(5.0);
   const maxCountdown = 5.0;
+  const flightStartTimeRef = useRef<number>(0);
+  const waitStartTimeRef = useRef<number>(performance.now());
 
   // Dual-Wallet Architecture: Demo Wallet & Master Franchise Real Seamless Wallet (THB)
   const [walletMode, setWalletMode] = useState<WalletMode>("DEMO");
@@ -389,7 +393,7 @@ export default function App() {
   const [isAnalyzingSignal, setIsAnalyzingSignal] = useState<boolean>(false);
   const [sessionRoundCounter, setSessionRoundCounter] = useState<number>(() => {
     if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("skyrush_session_round_counter");
+      const stored = localStorage.getItem("supernova_session_round_counter") || localStorage.getItem("skyrush_session_round_counter");
       if (stored) {
         const parsed = parseInt(stored, 10);
         if (!isNaN(parsed) && parsed > 0) return parsed;
@@ -399,7 +403,7 @@ export default function App() {
   });
   const [fakeTargetRound, setFakeTargetRound] = useState<number>(() => {
     if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("skyrush_fake_target_round");
+      const stored = localStorage.getItem("supernova_fake_target_round") || localStorage.getItem("skyrush_fake_target_round");
       if (stored) {
         const parsed = parseInt(stored, 10);
         if (!isNaN(parsed) && parsed > 0) return parsed;
@@ -409,7 +413,7 @@ export default function App() {
   });
   const [recalibrationCount, setRecalibrationCount] = useState<number>(() => {
     if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("skyrush_recalibration_count");
+      const stored = localStorage.getItem("supernova_recalibration_count") || localStorage.getItem("skyrush_recalibration_count");
       if (stored) {
         const parsed = parseInt(stored, 10);
         if (!isNaN(parsed)) return parsed;
@@ -503,7 +507,7 @@ export default function App() {
       setSessionRoundCounter((prev) => {
         const nextVal = prev > 0 ? prev + 1 : 1;
         if (typeof window !== "undefined") {
-          localStorage.setItem("skyrush_session_round_counter", String(nextVal));
+          localStorage.setItem("supernova_session_round_counter", String(nextVal));
         }
         return nextVal;
       });
@@ -567,19 +571,19 @@ export default function App() {
           if (typeof data.sessionRoundCounter === "number") {
             setSessionRoundCounter(data.sessionRoundCounter);
             if (typeof window !== "undefined") {
-              localStorage.setItem("skyrush_session_round_counter", String(data.sessionRoundCounter));
+              localStorage.setItem("supernova_session_round_counter", String(data.sessionRoundCounter));
             }
           }
           if (typeof data.fakeTargetRound === "number") {
             setFakeTargetRound(data.fakeTargetRound);
             if (typeof window !== "undefined") {
-              localStorage.setItem("skyrush_fake_target_round", String(data.fakeTargetRound));
+              localStorage.setItem("supernova_fake_target_round", String(data.fakeTargetRound));
             }
           }
           if (typeof data.recalibrationCount === "number") {
             setRecalibrationCount(data.recalibrationCount);
             if (typeof window !== "undefined") {
-              localStorage.setItem("skyrush_recalibration_count", String(data.recalibrationCount));
+              localStorage.setItem("supernova_recalibration_count", String(data.recalibrationCount));
             }
           }
           if (Array.isArray(data.history) && data.history.length > 0 && stateRef.current !== "FLYING") {
@@ -676,7 +680,7 @@ export default function App() {
 
       // If the player placed a real bet, ensure they never inherit a fake spectator jackpot (>= 25.00x)
       if (isPlayerActive && backendVal >= 25.00) {
-        const engine = SkyRushEngine.getInstance();
+        const engine = SuperNovaEngine.getInstance();
         const safeOutcome = engine.generateRoundSpacedMultiplier();
         setEngineMode("SERVER_ACTUARIAL_ENGINE");
         return safeOutcome.multiplier;
@@ -713,7 +717,7 @@ export default function App() {
       realPlayerTarget,
     };
 
-    const engine = SkyRushEngine.getInstance();
+    const engine = SuperNovaEngine.getInstance();
     const activeEntitiesCount = playerBets.length + (betLeft.isPlaced ? 1 : 0) + (betRight.isPlaced ? 1 : 0);
     const result = engine.generateSecureGlobalOutcome(
       roomState,
@@ -785,7 +789,7 @@ export default function App() {
     setShowRefillNotify(true);
     setSessionRoundCounter(0);
     if (typeof window !== "undefined") {
-      localStorage.setItem("skyrush_session_round_counter", "0");
+      localStorage.setItem("supernova_session_round_counter", "0");
     }
     setTimeout(() => setShowRefillNotify(false), 3000);
   };
@@ -803,11 +807,11 @@ export default function App() {
     setMyHistory([]);
     setSessionRoundCounter(0);
     if (typeof window !== "undefined") {
-      localStorage.setItem("skyrush_session_round_counter", "0");
+      localStorage.setItem("supernova_session_round_counter", "0");
     }
   }, []);
 
-  // Placing individual bets with 3% turnover platform commission
+  // Placing individual bets in real-time round
   const placeBetLeft = useCallback(async (rawAmount: number) => {
     if (roundState !== "WAITING") {
       audioManager.playClick();
@@ -830,7 +834,7 @@ export default function App() {
       if (res.status === "SUCCESS" && typeof res.balance === "number") {
         audioManager.playBetPlaced();
         setRealBalance(res.balance);
-        setAccumulatedFuelTax(SkyRushEngine.getInstance().accumulatedFuelTaxTHB);
+        setAccumulatedFuelTax(SuperNovaEngine.getInstance().accumulatedFuelTaxTHB);
         setBetLeft((prev) => ({ ...prev, amount, isPlaced: true, hasCashedOut: false, betTxnId: txnId }));
       } else {
         audioManager.playClick();
@@ -839,7 +843,7 @@ export default function App() {
     } else {
       audioManager.playBetPlaced();
       setDemoBalance((prev) => parseFloat((prev - totalCost).toFixed(2)));
-      setAccumulatedFuelTax(SkyRushEngine.getInstance().accumulatedFuelTaxTHB);
+      setAccumulatedFuelTax(SuperNovaEngine.getInstance().accumulatedFuelTaxTHB);
       setBetLeft((prev) => ({ ...prev, amount, isPlaced: true, hasCashedOut: false, betTxnId: undefined }));
     }
   }, [roundState, realUserId]);
@@ -866,7 +870,7 @@ export default function App() {
       if (res.status === "SUCCESS" && typeof res.balance === "number") {
         audioManager.playBetPlaced();
         setRealBalance(res.balance);
-        setAccumulatedFuelTax(SkyRushEngine.getInstance().accumulatedFuelTaxTHB);
+        setAccumulatedFuelTax(SuperNovaEngine.getInstance().accumulatedFuelTaxTHB);
         setBetRight((prev) => ({ ...prev, amount, isPlaced: true, hasCashedOut: false, betTxnId: txnId }));
       } else {
         audioManager.playClick();
@@ -875,7 +879,7 @@ export default function App() {
     } else {
       audioManager.playBetPlaced();
       setDemoBalance((prev) => parseFloat((prev - totalCost).toFixed(2)));
-      setAccumulatedFuelTax(SkyRushEngine.getInstance().accumulatedFuelTaxTHB);
+      setAccumulatedFuelTax(SuperNovaEngine.getInstance().accumulatedFuelTaxTHB);
       setBetRight((prev) => ({ ...prev, amount, isPlaced: true, hasCashedOut: false, betTxnId: undefined }));
     }
   }, [roundState, realUserId]);
@@ -982,7 +986,7 @@ export default function App() {
           ...prev,
         ]);
       } else {
-        const engine = SkyRushEngine.getInstance();
+        const engine = SuperNovaEngine.getInstance();
         const { payout, swept } = engine.truncatePayoutAndSweep(rawWinnings);
         setAccumulatedFractionSweep(engine.accumulatedFractionSweepTHB);
         
@@ -1079,7 +1083,7 @@ export default function App() {
           ...prev,
         ]);
       } else {
-        const engine = SkyRushEngine.getInstance();
+        const engine = SuperNovaEngine.getInstance();
         const { payout, swept } = engine.truncatePayoutAndSweep(rawWinnings);
         setAccumulatedFractionSweep(engine.accumulatedFractionSweepTHB);
         
@@ -1166,12 +1170,18 @@ export default function App() {
       }
 
       const waitStartTime = performance.now();
+      waitStartTimeRef.current = waitStartTime;
       const durationMs = maxCountdown * 1000;
+      let lastCountdownFlush = 0;
 
       const waitTick = (now: number) => {
         const elapsedMs = now - waitStartTime;
         const remainingSec = Math.max(0, (durationMs - elapsedMs) / 1000);
-        setCountdown(parseFloat(remainingSec.toFixed(1)));
+        
+        if (now - lastCountdownFlush >= 100 || remainingSec <= 0.05) {
+          lastCountdownFlush = now;
+          setCountdown(parseFloat(remainingSec.toFixed(1)));
+        }
 
         if (remainingSec <= 0.05) {
           // Transition into Flying state!
@@ -1199,6 +1209,7 @@ export default function App() {
 
           const crashTgt = generateNewCrashPoint(isAbuse);
           crashMultiplierRef.current = crashTgt;
+          flightStartTimeRef.current = performance.now();
           setRoundState("FLYING");
           audioManager.startEngine();
           audioManager.playJetTakeoff();
@@ -1214,8 +1225,10 @@ export default function App() {
     // FLYING state loop (Hardware-synced Delta-Time rAF Loop)
     if (roundState === "FLYING") {
       const flightStartTime = performance.now();
+      flightStartTimeRef.current = flightStartTime;
       let lastBotUpdate = performance.now();
       let lastStateFlush = performance.now();
+      let lastAudioUpdate = performance.now();
 
       const flightTick = (now: number) => {
         const elapsed = (now - flightStartTime) / 1000;
@@ -1263,7 +1276,10 @@ export default function App() {
           return;
         }
 
-        audioManager.updateEngine(curMultiplier);
+        if (now - lastAudioUpdate >= 50) {
+          lastAudioUpdate = now;
+          audioManager.updateEngine(curMultiplier);
+        }
 
         // Throttle React state setMultiplier to smooth 30 FPS updates to keep UI and event thread ultra-responsive
         if (now - lastStateFlush >= 33) {
@@ -1441,6 +1457,7 @@ export default function App() {
 
       // Wait 3.0 seconds, then reset state
       timeoutId = setTimeout(() => {
+        waitStartTimeRef.current = performance.now();
         setRoundState("WAITING");
       }, 3000);
     }
@@ -1593,6 +1610,9 @@ export default function App() {
                 state={roundState}
                 countdown={countdown}
                 maxCountdown={maxCountdown}
+                flightStartTime={flightStartTimeRef.current}
+                crashMultiplier={crashMultiplierRef.current}
+                waitStartTime={waitStartTimeRef.current}
               />
             </div>
 
@@ -1798,8 +1818,8 @@ export default function App() {
                       <span className="text-[9px] text-rose-400 uppercase tracking-widest font-black">Infinite Re-Arming Dampener Loop</span>
                       <div className="flex items-center justify-between mt-0.5">
                         <span className="text-xs font-mono font-black text-slate-200">
-                          {SkyRushEngine.getInstance().postHighCrashCounter > 0 
-                            ? `🔥 STATE B: dampening (${SkyRushEngine.getInstance().postHighCrashCounter} cycles left)` 
+                          {SuperNovaEngine.getInstance().postHighCrashCounter > 0 
+                            ? `🔥 STATE B: dampening (${SuperNovaEngine.getInstance().postHighCrashCounter} cycles left)` 
                             : "🟢 STATE A: monitor active (ready to damp)"}
                         </span>
                         <span className="text-[8px] text-slate-500 font-mono font-bold uppercase tracking-wider bg-slate-950 px-1.5 py-0.5 rounded border border-slate-850">

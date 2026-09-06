@@ -2096,7 +2096,7 @@ async function runSecurityFullstackServer() {
 
   // ============================================================================
   // iGAMING MASTER FRANCHISE SEAMLESS WALLET CORE API (THB)
-  // Endpoints: Webhook, Balance, Debit, Credit (3% Fee), Loss (10% Cashback), Rollback
+  // Endpoints: Webhook, Balance, Debit, Credit, Loss, Rollback
   // ============================================================================
 
   // ============================================================================
@@ -2182,7 +2182,7 @@ async function runSecurityFullstackServer() {
         txn_id, 
         user_id, 
         Number(betAmt), 
-        game_id || "SKY_RUSH",
+        game_id || "SUPERNOVA",
         operator_id || "OP_BOLLY_MAIN"
       );
       if (result.error === "INSUFFICIENT_FUNDS") {
@@ -2216,7 +2216,7 @@ async function runSecurityFullstackServer() {
         txn_id, 
         user_id, 
         Number(winAmt), 
-        game_id || "SKY_RUSH",
+        game_id || "SUPERNOVA",
         operator_id || "OP_BOLLY_MAIN"
       );
       if (result.error === "USER_NOT_FOUND") {
@@ -2248,7 +2248,7 @@ async function runSecurityFullstackServer() {
         bet_txn_id || `BET_${txn_id}`, 
         user_id, 
         Number(lossAmt), 
-        game_id || "SKY_RUSH",
+        game_id || "SUPERNOVA",
         operator_id || "OP_BOLLY_MAIN"
       );
       if (result.error === "USER_NOT_FOUND") {
@@ -2621,7 +2621,7 @@ async function runSecurityFullstackServer() {
                       txn_id: { type: "string", example: "TXN_BET_9901" },
                       user_id: { type: "string", example: "USER_TH_001" },
                       amount: { type: "number", example: 100.00 },
-                      game_id: { type: "string", example: "SKY_RUSH" },
+                      game_id: { type: "string", example: "SUPERNOVA" },
                       operator_id: { type: "string", example: "OP_BOLLY_MAIN" }
                     }
                   }
@@ -2646,7 +2646,7 @@ async function runSecurityFullstackServer() {
                       txn_id: { type: "string", example: "TXN_WIN_9901" },
                       user_id: { type: "string", example: "USER_TH_001" },
                       win_amount: { type: "number", example: 250.00 },
-                      game_id: { type: "string", example: "SKY_RUSH" }
+                      game_id: { type: "string", example: "SUPERNOVA" }
                     }
                   }
                 }
@@ -2753,7 +2753,7 @@ async function runSecurityFullstackServer() {
                 txn_id: "TXN_DEBIT_{{$timestamp}}",
                 user_id: "USER_TH_001",
                 amount: 100.00,
-                game_id: "SKY_RUSH",
+                game_id: "SUPERNOVA",
                 operator_id: "OP_BOLLY_MAIN"
               }, null, 2)
             },
@@ -2771,7 +2771,7 @@ async function runSecurityFullstackServer() {
                 txn_id: "TXN_CREDIT_{{$timestamp}}",
                 user_id: "USER_TH_001",
                 win_amount: 250.00,
-                game_id: "SKY_RUSH",
+                game_id: "SUPERNOVA",
                 operator_id: "OP_BOLLY_MAIN"
               }, null, 2)
             },
@@ -2790,7 +2790,7 @@ async function runSecurityFullstackServer() {
                 bet_txn_id: "TXN_DEBIT_ORIGINAL",
                 user_id: "USER_TH_001",
                 loss_amount: 100.00,
-                game_id: "SKY_RUSH",
+                game_id: "SUPERNOVA",
                 operator_id: "OP_BOLLY_MAIN"
               }, null, 2)
             },

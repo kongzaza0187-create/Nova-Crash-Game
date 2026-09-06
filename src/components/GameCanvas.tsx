@@ -5,8 +5,11 @@ import { getMultiplierColorTier } from "../utils/multiplierColor";
 interface GameCanvasProps {
   multiplier: number;
   state: RoundState;
-  countdown: number;
+  countdown?: number;
   maxCountdown: number;
+  flightStartTime?: number;
+  crashMultiplier?: number;
+  waitStartTime?: number;
 }
 
 interface Particle {
@@ -24,11 +27,246 @@ interface Particle {
 const MAX_PARTICLES = 50;
 const MAX_SPEED_LINES = 12;
 
-export const GameCanvas: React.FC<GameCanvasProps> = memo(({
+function drawRocketShip(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  pitchAngle: number,
+  flameLen: number,
+  isIdleMode: boolean,
+  timestamp: number
+) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(pitchAngle);
+
+  // Dynamic Rocket Thruster Plumes
+  if (isIdleMode) {
+    const flameGradCenter = ctx.createLinearGradient(-26, 0, -26 - flameLen, 0);
+    flameGradCenter.addColorStop(0, "#ffffff");
+    flameGradCenter.addColorStop(0.3, "#38bdf8");
+    flameGradCenter.addColorStop(0.7, "#6366f1");
+    flameGradCenter.addColorStop(1, "rgba(99, 102, 241, 0)");
+
+    ctx.fillStyle = flameGradCenter;
+    ctx.beginPath();
+    ctx.moveTo(-26, -4);
+    ctx.lineTo(-26 - flameLen, 0);
+    ctx.lineTo(-26, 4);
+    ctx.closePath();
+    ctx.fill();
+
+    const boosterFlame = flameLen * 0.7;
+    const flameGradTop = ctx.createLinearGradient(-22, -9, -22 - boosterFlame, -9);
+    flameGradTop.addColorStop(0, "#ffffff");
+    flameGradTop.addColorStop(0.4, "#38bdf8");
+    flameGradTop.addColorStop(1, "rgba(56, 189, 248, 0)");
+    ctx.fillStyle = flameGradTop;
+    ctx.beginPath();
+    ctx.moveTo(-22, -11);
+    ctx.lineTo(-22 - boosterFlame, -9);
+    ctx.lineTo(-22, -7);
+    ctx.closePath();
+    ctx.fill();
+
+    const flameGradBtm = ctx.createLinearGradient(-22, 9, -22 - boosterFlame, 9);
+    flameGradBtm.addColorStop(0, "#ffffff");
+    flameGradBtm.addColorStop(0.4, "#38bdf8");
+    flameGradBtm.addColorStop(1, "rgba(56, 189, 248, 0)");
+    ctx.fillStyle = flameGradBtm;
+    ctx.beginPath();
+    ctx.moveTo(-22, 7);
+    ctx.lineTo(-22 - boosterFlame, 9);
+    ctx.lineTo(-22, 11);
+    ctx.closePath();
+    ctx.fill();
+  } else {
+    const flameGradCenter = ctx.createLinearGradient(-26, 0, -26 - flameLen, 0);
+    flameGradCenter.addColorStop(0, "#ffffff");
+    flameGradCenter.addColorStop(0.2, "#fef08a");
+    flameGradCenter.addColorStop(0.5, "#f97316");
+    flameGradCenter.addColorStop(0.85, "#ef4444");
+    flameGradCenter.addColorStop(1, "rgba(239, 68, 68, 0)");
+
+    ctx.fillStyle = flameGradCenter;
+    ctx.beginPath();
+    ctx.moveTo(-26, -5);
+    ctx.lineTo(-26 - flameLen, 0);
+    ctx.lineTo(-26, 5);
+    ctx.closePath();
+    ctx.fill();
+
+    const topBoosterFlame = flameLen * 0.75;
+    const flameGradTop = ctx.createLinearGradient(-22, -9, -22 - topBoosterFlame, -9);
+    flameGradTop.addColorStop(0, "#ffffff");
+    flameGradTop.addColorStop(0.3, "#38bdf8");
+    flameGradTop.addColorStop(0.8, "#6366f1");
+    flameGradTop.addColorStop(1, "rgba(99, 102, 241, 0)");
+    ctx.fillStyle = flameGradTop;
+    ctx.beginPath();
+    ctx.moveTo(-22, -12);
+    ctx.lineTo(-22 - topBoosterFlame, -9);
+    ctx.lineTo(-22, -6);
+    ctx.closePath();
+    ctx.fill();
+
+    const btmBoosterFlame = flameLen * 0.75;
+    const flameGradBtm = ctx.createLinearGradient(-22, 9, -22 - btmBoosterFlame, 9);
+    flameGradBtm.addColorStop(0, "#ffffff");
+    flameGradBtm.addColorStop(0.3, "#38bdf8");
+    flameGradBtm.addColorStop(0.8, "#6366f1");
+    flameGradBtm.addColorStop(1, "rgba(99, 102, 241, 0)");
+    ctx.fillStyle = flameGradBtm;
+    ctx.beginPath();
+    ctx.moveTo(-22, 6);
+    ctx.lineTo(-22 - btmBoosterFlame, 9);
+    ctx.lineTo(-22, 12);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // Rocket Body & Wings
+  ctx.fillStyle = "#1e293b";
+  ctx.beginPath();
+  if (typeof (ctx as any).roundRect === "function") {
+    (ctx as any).roundRect(-27, -6, 5, 12, [2, 0, 0, 2]);
+  } else {
+    ctx.rect(-27, -6, 5, 12);
+  }
+  ctx.fill();
+
+  ctx.fillStyle = "#334155";
+  ctx.beginPath();
+  if (typeof (ctx as any).roundRect === "function") {
+    (ctx as any).roundRect(-23, -13, 4, 7, [2, 0, 0, 2]);
+    (ctx as any).roundRect(-23, 6, 4, 7, [2, 0, 0, 2]);
+  } else {
+    ctx.rect(-23, -13, 4, 7);
+    ctx.rect(-23, 6, 4, 7);
+  }
+  ctx.fill();
+
+  // Top Wing
+  ctx.fillStyle = "#e11d48";
+  ctx.beginPath();
+  ctx.moveTo(-10, -7);
+  ctx.lineTo(-26, -23);
+  ctx.lineTo(-18, -23);
+  ctx.lineTo(2, -7);
+  ctx.closePath();
+  ctx.fill();
+
+  // Top Wing Edge Highlight
+  ctx.fillStyle = "#fda4af";
+  ctx.beginPath();
+  ctx.moveTo(-10, -7);
+  ctx.lineTo(-26, -23);
+  ctx.lineTo(-24, -23);
+  ctx.lineTo(-8, -7);
+  ctx.closePath();
+  ctx.fill();
+
+  // Bottom Wing
+  ctx.fillStyle = "#881337";
+  ctx.beginPath();
+  ctx.moveTo(-10, 7);
+  ctx.lineTo(-24, 21);
+  ctx.lineTo(-17, 21);
+  ctx.lineTo(2, 7);
+  ctx.closePath();
+  ctx.fill();
+
+  // Lower Fuselage
+  const lowerBodyGrad = ctx.createLinearGradient(0, 0, 0, 10);
+  lowerBodyGrad.addColorStop(0, "#cbd5e1");
+  lowerBodyGrad.addColorStop(1, "#475569");
+  ctx.fillStyle = lowerBodyGrad;
+  ctx.beginPath();
+  ctx.moveTo(-25, 0);
+  ctx.lineTo(16, 0);
+  ctx.quadraticCurveTo(28, 2, 34, 0);
+  ctx.quadraticCurveTo(24, 6, 12, 8);
+  ctx.lineTo(-25, 6);
+  ctx.closePath();
+  ctx.fill();
+
+  // Upper Fuselage
+  const upperBodyGrad = ctx.createLinearGradient(0, -9, 0, 0);
+  upperBodyGrad.addColorStop(0, "#f8fafc");
+  upperBodyGrad.addColorStop(0.7, "#e2e8f0");
+  upperBodyGrad.addColorStop(1, "#cbd5e1");
+  ctx.fillStyle = upperBodyGrad;
+  ctx.beginPath();
+  ctx.moveTo(-25, 0);
+  ctx.lineTo(16, 0);
+  ctx.quadraticCurveTo(28, -2, 34, 0);
+  ctx.quadraticCurveTo(24, -6, 12, -8);
+  ctx.lineTo(-25, -6);
+  ctx.closePath();
+  ctx.fill();
+
+  // Nose Cone
+  const noseGrad = ctx.createLinearGradient(16, 0, 34, 0);
+  noseGrad.addColorStop(0, "#e11d48");
+  noseGrad.addColorStop(1, "#fb7185");
+  ctx.fillStyle = noseGrad;
+  ctx.beginPath();
+  ctx.moveTo(18, -6.5);
+  ctx.quadraticCurveTo(27, 0, 34, 0);
+  ctx.quadraticCurveTo(27, 0, 18, 6.5);
+  ctx.closePath();
+  ctx.fill();
+
+  // Cockpit Visor
+  ctx.fillStyle = "#0f172a";
+  ctx.beginPath();
+  ctx.ellipse(3, -1, 7, 4.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const visorGrad = ctx.createLinearGradient(0, -5, 6, 3);
+  visorGrad.addColorStop(0, "#38bdf8");
+  visorGrad.addColorStop(1, "#0284c7");
+  ctx.fillStyle = visorGrad;
+  ctx.beginPath();
+  ctx.ellipse(3, -1, 5.5, 3.5, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+  ctx.beginPath();
+  ctx.ellipse(1.5, -2.5, 2.5, 1, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Fore Keel
+  ctx.fillStyle = "#ef4444";
+  ctx.beginPath();
+  ctx.moveTo(-16, -0.8);
+  ctx.lineTo(15, -0.8);
+  ctx.lineTo(15, 0.8);
+  ctx.lineTo(-16, 0.8);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function areGameCanvasPropsEqual(prev: GameCanvasProps, next: GameCanvasProps) {
+  return (
+    prev.state === next.state &&
+    prev.maxCountdown === next.maxCountdown &&
+    prev.flightStartTime === next.flightStartTime &&
+    prev.crashMultiplier === next.crashMultiplier &&
+    prev.waitStartTime === next.waitStartTime
+  );
+}
+
+const GameCanvasComponent: React.FC<GameCanvasProps> = ({
   multiplier,
   state,
-  countdown,
+  countdown = 5.0,
   maxCountdown,
+  flightStartTime = 0,
+  crashMultiplier = 1.0,
+  waitStartTime = 0,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -41,6 +279,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
   const stateRef = useRef(state);
   const countdownRef = useRef(countdown);
   const maxCountdownRef = useRef(maxCountdown);
+  const flightStartTimeRef = useRef(flightStartTime);
+  const crashMultiplierRef = useRef(crashMultiplier);
+  const waitStartTimeRef = useRef(waitStartTime);
   const dimensionsRef = useRef(dimensions);
 
   // Sync refs instantly
@@ -48,6 +289,9 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
   stateRef.current = state;
   countdownRef.current = countdown;
   maxCountdownRef.current = maxCountdown;
+  flightStartTimeRef.current = flightStartTime;
+  crashMultiplierRef.current = crashMultiplier;
+  waitStartTimeRef.current = waitStartTime;
   dimensionsRef.current = dimensions;
 
   // Animation Engine State Container
@@ -57,6 +301,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
     propellerAngle: 0,
     planeHoverPhase: 0,
     flewAwayTime: 0,
+    flightStartTime: 0,
+    waitStartTime: 0,
+    bgGrad: null as CanvasGradient | null,
+    bgGradHeight: 0,
     particles: [] as Particle[],
     burstShockwave: { active: false, x: 0, y: 0, radius: 0, alpha: 0 },
     stars: [] as Array<{ xRatio: number; yRatio: number; size: number; brightness: number; speed: number; layer: "small" | "medium" | "large" }>,
@@ -132,12 +380,65 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
       const dtScale = dt * 60; // 1.0 at standard 60 FPS
 
       const curState = stateRef.current;
-      const curMultiplier = Math.max(multiplierRef.current, 1.0);
-      const curCountdown = countdownRef.current;
       const curMaxCountdown = maxCountdownRef.current;
       const width = dimensionsRef.current.width;
       const height = dimensionsRef.current.height;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
+
+      // Track transition start times for hardware-synced smooth interpolation
+      if (curState === "FLYING" && engine.prevRoundState !== "FLYING") {
+        engine.flightStartTime = timestamp;
+      } else if (curState === "WAITING" && engine.prevRoundState !== "WAITING") {
+        engine.waitStartTime = timestamp;
+      }
+
+      if (!engine.waitStartTime && curState === "WAITING") {
+        engine.waitStartTime = timestamp;
+      }
+      if (!engine.flightStartTime && curState === "FLYING") {
+        engine.flightStartTime = timestamp;
+      }
+
+      // Smooth continuous real-time multiplier and countdown calculation
+      let curMultiplier = 1.0;
+      let curCountdown = curMaxCountdown;
+
+      if (curState === "FLYING") {
+        const fStart = engine.flightStartTime || timestamp;
+        const elapsedFlight = Math.max(0, (timestamp - fStart) / 1000);
+        const computedMult = 1.00 + 0.08 * elapsedFlight + 0.032 * Math.pow(elapsedFlight, 2.0);
+        const crashLimit = (crashMultiplierRef.current && crashMultiplierRef.current > 1.0) ? crashMultiplierRef.current : 999999;
+        curMultiplier = Math.min(Math.max(1.01, computedMult), crashLimit);
+      } else if (curState === "FLEW_AWAY") {
+        curMultiplier = (crashMultiplierRef.current && crashMultiplierRef.current > 1.0) 
+          ? crashMultiplierRef.current 
+          : Math.max(multiplierRef.current, 1.0);
+      } else if (curState === "WAITING") {
+        const wStart = engine.waitStartTime || timestamp;
+        const elapsedWait = Math.max(0, (timestamp - wStart) / 1000);
+        curCountdown = Math.max(0, curMaxCountdown - elapsedWait);
+        curMultiplier = 1.00;
+      }
+
+      // Spawn takeoff blast particles immediately when state transitions to FLYING
+      if (curState === "FLYING" && engine.prevRoundState === "WAITING") {
+        const startX = 40;
+        const startY = height - 40;
+        for (let i = 0; i < 20; i++) {
+          const p = engine.particles[i % MAX_PARTICLES];
+          p.active = true;
+          p.x = startX + (Math.random() - 0.5) * 8;
+          p.y = startY + (Math.random() - 0.5) * 6;
+          const ang = Math.PI * 0.75 + (Math.random() - 0.5) * 1.0;
+          const spd = 2.0 + Math.random() * 4.5;
+          p.vx = Math.cos(ang) * spd;
+          p.vy = Math.sin(ang) * spd;
+          p.life = 18 + Math.random() * 12;
+          p.maxLife = p.life;
+          p.size = 2.0 + Math.random() * 2.5;
+          p.color = Math.random() < 0.6 ? "#fbbf24" : "#f43f5e";
+        }
+      }
 
       // Trigger burst shockwave immediately when state transitions to FLEW_AWAY
       if (curState === "FLEW_AWAY" && engine.prevRoundState === "FLYING") {
@@ -189,42 +490,45 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
       ctx.save();
       ctx.scale(dpr, dpr);
 
-      // Clear & Draw Space Dark Background
-      const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
-      bgGrad.addColorStop(0, "#020818");
-      bgGrad.addColorStop(1, "#0d0527");
-      ctx.fillStyle = bgGrad;
+      // Clear & Draw Space Dark Background (Cached gradient for 0 GC thrashing)
+      if (!engine.bgGrad || engine.bgGradHeight !== height) {
+        engine.bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+        engine.bgGrad.addColorStop(0, "#020818");
+        engine.bgGrad.addColorStop(1, "#0d0527");
+        engine.bgGradHeight = height;
+      }
+      ctx.fillStyle = engine.bgGrad;
       ctx.fillRect(0, 0, width, height);
 
       // --- 1. INITIALIZE BACKGROUND ASSETS ONCE ---
       if (engine.stars.length === 0) {
-        for (let i = 0; i < 180; i++) {
+        for (let i = 0; i < 90; i++) {
           engine.stars.push({
             xRatio: Math.random(),
             yRatio: Math.random(),
-            size: 0.3 + Math.random() * 0.5,
+            size: 0.5 + Math.random() * 0.7,
             brightness: Math.random(),
             speed: 0.001 + Math.random() * 0.003,
             layer: "small",
           });
         }
-        for (let i = 0; i < 60; i++) {
+        for (let i = 0; i < 35; i++) {
           engine.stars.push({
             xRatio: Math.random(),
             yRatio: Math.random(),
-            size: 0.8 + Math.random() * 0.7,
+            size: 1.0 + Math.random() * 0.8,
             brightness: Math.random(),
-            speed: 0.004 + Math.random() * 0.007,
+            speed: 0.003 + Math.random() * 0.006,
             layer: "medium",
           });
         }
-        for (let i = 0; i < 16; i++) {
+        for (let i = 0; i < 10; i++) {
           engine.stars.push({
             xRatio: Math.random(),
             yRatio: Math.random(),
-            size: 1.8 + Math.random() * 1.0,
+            size: 1.8 + Math.random() * 0.8,
             brightness: Math.random(),
-            speed: 0.002 + Math.random() * 0.005,
+            speed: 0.002 + Math.random() * 0.004,
             layer: "large",
           });
         }
@@ -291,10 +595,14 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
         const sY = star.yRatio * height;
         const currentAlpha = Math.max(0.15, Math.min(1, star.brightness));
 
-        ctx.fillStyle = `rgba(255, 255, 255, ${currentAlpha})`;
-        ctx.beginPath();
-        ctx.arc(sX, sY, star.size, 0, 2 * Math.PI);
-        ctx.fill();
+        ctx.fillStyle = `rgba(255, 255, 255, ${currentAlpha.toFixed(2)})`;
+        if (star.layer === "small") {
+          ctx.fillRect(sX, sY, star.size, star.size);
+        } else {
+          ctx.beginPath();
+          ctx.arc(sX, sY, star.size, 0, 2 * Math.PI);
+          ctx.fill();
+        }
       }
 
       // --- 3. DRAW NEBULAE (Fast lightweight radial rendering) ---
@@ -414,23 +722,19 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
       }
       engine.gridOffset = (engine.gridOffset + scrollSpeed * dtScale) % 40;
 
-      ctx.strokeStyle = "rgba(99, 102, 241, 0.012)";
+      ctx.strokeStyle = "rgba(99, 102, 241, 0.015)";
       ctx.lineWidth = 1;
-
+      ctx.beginPath();
       for (let x = -40 + engine.gridOffset; x < width + 40; x += 40) {
-        ctx.beginPath();
         ctx.moveTo(x, 0);
         ctx.lineTo(x, height);
-        ctx.stroke();
       }
-
       const hOffset = (engine.gridOffset * 0.5) % 40;
       for (let y = -40 + hOffset; y < height + 40; y += 40) {
-        ctx.beginPath();
         ctx.moveTo(0, y);
         ctx.lineTo(width, y);
-        ctx.stroke();
       }
+      ctx.stroke();
 
       // Axes
       ctx.strokeStyle = "rgba(255, 255, 255, 0.08)";
@@ -441,16 +745,25 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
       ctx.lineTo(width, height - 40);
       ctx.stroke();
 
-      // Tick marks
+      // Tick marks (Batched paths)
+      ctx.beginPath();
+      for (let i = 1; i <= 5; i++) {
+        const tickX = 40 + (width - 80) * (i / 5);
+        ctx.moveTo(tickX, height - 40);
+        ctx.lineTo(tickX, height - 35);
+      }
+      for (let i = 1; i <= 4; i++) {
+        const tickY = height - 40 - (height - 80) * (i / 4);
+        ctx.moveTo(35, tickY);
+        ctx.lineTo(40, tickY);
+      }
+      ctx.stroke();
+
       ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
       ctx.font = "10px 'Chakra Petch', monospace";
       ctx.textAlign = "center";
       for (let i = 1; i <= 5; i++) {
         const tickX = 40 + (width - 80) * (i / 5);
-        ctx.beginPath();
-        ctx.moveTo(tickX, height - 40);
-        ctx.lineTo(tickX, height - 35);
-        ctx.stroke();
         ctx.fillText(`${i * 2}s`, tickX, height - 20);
       }
 
@@ -458,138 +771,54 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
       ctx.textBaseline = "middle";
       for (let i = 1; i <= 4; i++) {
         const tickY = height - 40 - (height - 80) * (i / 4);
-        ctx.beginPath();
-        ctx.moveTo(35, tickY);
-        ctx.lineTo(40, tickY);
-        ctx.stroke();
         ctx.fillText(`x${(1 + i * 0.5).toFixed(1)}`, 28, tickY);
       }
 
       // --- 8. STATE SPECIFIC DRAWING ---
       if (curState === "WAITING") {
-        const percent = Math.max(0, Math.min(1, curCountdown / curMaxCountdown));
-        const centerX = width / 2;
-        const centerY = height / 2 - 20;
+        const startX = 40;
+        const startY = height - 40;
+        const idleHover = Math.sin(timestamp / 120) * 1.5;
+        const idleFlame = 12 + Math.sin(timestamp / 60) * 4;
 
-        // Glowing outer circle
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, 55, 0, 2 * Math.PI);
-        ctx.strokeStyle = "rgba(255, 255, 255, 0.05)";
-        ctx.lineWidth = 8;
-        ctx.stroke();
-
-        ctx.beginPath();
-        ctx.arc(centerX, centerY, 55, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * percent, false);
-        ctx.strokeStyle = "#e91e63";
-        ctx.lineWidth = 6;
-        ctx.stroke();
-
-        // 3D Sci-Fi Rocket - Vertical Waiting Position
+        // Launchpad Docking Rail
         ctx.save();
-        ctx.translate(centerX, centerY);
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.45)";
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(startX - 26, startY + 12);
+        ctx.lineTo(startX + 22, startY + 12);
+        ctx.stroke();
 
-        const idleFlame = 6 + Math.sin(timestamp / 80) * 3;
-        const idleFlameGrad = ctx.createLinearGradient(0, 16, 0, 16 + idleFlame);
-        idleFlameGrad.addColorStop(0, "#ffffff");
-        idleFlameGrad.addColorStop(0.3, "#38bdf8");
-        idleFlameGrad.addColorStop(0.8, "#6366f1");
-        idleFlameGrad.addColorStop(1, "rgba(99, 102, 241, 0)");
-        ctx.fillStyle = idleFlameGrad;
+        // Beacon lights on launch rail
+        const beaconPulse = 0.5 + 0.5 * Math.sin(timestamp / 120);
+        ctx.fillStyle = `rgba(56, 189, 248, ${0.4 + beaconPulse * 0.5})`;
         ctx.beginPath();
-        ctx.moveTo(-4, 16);
-        ctx.lineTo(0, 16 + idleFlame);
-        ctx.lineTo(4, 16);
-        ctx.closePath();
+        ctx.arc(startX - 24, startY + 12, 2.5, 0, Math.PI * 2);
+        ctx.arc(startX + 20, startY + 12, 2.5, 0, Math.PI * 2);
         ctx.fill();
-
-        // Left Fin
-        ctx.fillStyle = "#1e1b4b";
-        ctx.beginPath();
-        ctx.moveTo(-6, 8);
-        ctx.lineTo(-17, 18);
-        ctx.lineTo(-13, 20);
-        ctx.lineTo(-5, 15);
-        ctx.closePath();
-        ctx.fill();
-
-        // Right Fin
-        ctx.fillStyle = "#312e81";
-        ctx.beginPath();
-        ctx.moveTo(6, 8);
-        ctx.lineTo(17, 18);
-        ctx.lineTo(13, 20);
-        ctx.lineTo(5, 15);
-        ctx.closePath();
-        ctx.fill();
-
-        // Rocket Body Left
-        const bodyGradL = ctx.createLinearGradient(-10, 0, 0, 0);
-        bodyGradL.addColorStop(0, "#cbd5e1");
-        bodyGradL.addColorStop(1, "#f8fafc");
-        ctx.fillStyle = bodyGradL;
-        ctx.beginPath();
-        ctx.moveTo(0, -24);
-        ctx.quadraticCurveTo(-8, -10, -7, 16);
-        ctx.lineTo(0, 16);
-        ctx.closePath();
-        ctx.fill();
-
-        // Rocket Body Right
-        const bodyGradR = ctx.createLinearGradient(0, 0, 10, 0);
-        bodyGradR.addColorStop(0, "#ffffff");
-        bodyGradR.addColorStop(1, "#94a3b8");
-        ctx.fillStyle = bodyGradR;
-        ctx.beginPath();
-        ctx.moveTo(0, -24);
-        ctx.quadraticCurveTo(8, -10, 7, 16);
-        ctx.lineTo(0, 16);
-        ctx.closePath();
-        ctx.fill();
-
-        // Nose Cone Trim
-        ctx.fillStyle = "#ef4444";
-        ctx.beginPath();
-        ctx.moveTo(0, -24);
-        ctx.lineTo(-3.5, -14);
-        ctx.lineTo(3.5, -14);
-        ctx.closePath();
-        ctx.fill();
-
-        // Rocket Porthole Window
-        ctx.fillStyle = "#0284c7";
-        ctx.beginPath();
-        ctx.arc(0, -4, 4.5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#38bdf8";
-        ctx.beginPath();
-        ctx.arc(0, -4, 3.2, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = "#ffffff";
-        ctx.beginPath();
-        ctx.arc(-1, -5, 1.2, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Keel
-        ctx.fillStyle = "#f43f5e";
-        ctx.beginPath();
-        ctx.moveTo(0, 2);
-        ctx.lineTo(-1.2, 16);
-        ctx.lineTo(1.2, 16);
-        ctx.closePath();
-        ctx.fill();
-
         ctx.restore();
 
-        // Display Status Text
-        ctx.fillStyle = "#ffffff";
-        ctx.font = "bold 17px 'Rajdhani', 'Orbitron', 'Montserrat', sans-serif";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("WAITING FOR NEXT ROUND", centerX, centerY + 90);
+        // In the final 0.4s of countdown: pre-ignition sparks
+        if (curCountdown <= 0.4 && curCountdown > 0) {
+          for (let i = 0; i < 2; i++) {
+            const p = engine.particles[i];
+            if (!p.active) {
+              p.active = true;
+              p.x = startX - 26;
+              p.y = startY + (Math.random() - 0.5) * 4;
+              p.vx = -1.5 - Math.random() * 2.5;
+              p.vy = (Math.random() - 0.3) * 1.5;
+              p.life = 12 + Math.random() * 8;
+              p.maxLife = p.life;
+              p.size = 1.5 + Math.random() * 2;
+              p.color = Math.random() < 0.6 ? "#fbbf24" : "#f43f5e";
+            }
+          }
+        }
 
-        ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-        ctx.font = "600 14px 'Chakra Petch', monospace";
-        ctx.fillText(`PLACING BETS (${curCountdown.toFixed(1)}s)`, centerX, centerY + 115);
+        // Draw 3D rocket idling on launchpad (ready for takeoff at -0.20 pitch angle)
+        drawRocketShip(ctx, startX, startY + idleHover, -0.20, idleFlame, true, timestamp);
 
       } else if (curState === "FLYING" || curState === "FLEW_AWAY") {
         // --- FLIGHT CURVE & ROCKET RENDERING ---
@@ -727,7 +956,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
         engine.planeHoverPhase += 0.04 * dtScale;
         const planeHoverY = Math.sin(engine.planeHoverPhase) * 3;
 
-        ctx.save();
         let finalPlaneX = planeX;
         let finalPlaneY = planeY + planeHoverY;
 
@@ -737,220 +965,204 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
           finalPlaneY -= elapsed * 300;
         }
 
-        ctx.translate(finalPlaneX, finalPlaneY);
-        // Dynamic pitch angle synced with launch speed & climb vector
         const pitchAngle = curState === "FLEW_AWAY" ? -0.32 : -0.06 - (1 - progress) * 0.20;
-        ctx.rotate(pitchAngle);
-
-        // Dynamic Rocket Thruster Plumes
         const flameLen = 22 + Math.min(curMultiplier * 4.2, 58) + Math.sin(timestamp / 35) * 9;
-        const flameGradCenter = ctx.createLinearGradient(-26, 0, -26 - flameLen, 0);
-        flameGradCenter.addColorStop(0, "#ffffff");
-        flameGradCenter.addColorStop(0.2, "#fef08a");
-        flameGradCenter.addColorStop(0.5, "#f97316");
-        flameGradCenter.addColorStop(0.85, "#ef4444");
-        flameGradCenter.addColorStop(1, "rgba(239, 68, 68, 0)");
+        drawRocketShip(ctx, finalPlaneX, finalPlaneY, pitchAngle, flameLen, false, timestamp);
+      }
 
-        ctx.fillStyle = flameGradCenter;
+      // --- 9. CENTRAL HUD & TELEMETRY ---
+      const isWaitingState = curState === "WAITING";
+      const flightElapsedSec = curState === "FLYING" ? Math.max(0, (timestamp - (engine.flightStartTime || timestamp)) / 1000) : 999;
+      const waitingHudFade = isWaitingState ? 1.0 : Math.max(0, 1 - flightElapsedSec / 0.25);
+
+      // A. Mission Control Waiting HUD Box (Centered, with smooth fadeout on takeoff)
+      if (waitingHudFade > 0.01) {
+        ctx.save();
+        ctx.globalAlpha = waitingHudFade;
+
+        const centerX = width / 2;
+        const centerY = height / 2 - 10;
+        const hudBoxWidth = Math.min(width - 48, 350);
+        const hudBoxHeight = 72;
+        const hudBoxX = centerX - hudBoxWidth / 2;
+        const hudBoxY = centerY - hudBoxHeight / 2;
+        const cornerCut = 8;
+
+        // Chamfered cybernetic backdrop
         ctx.beginPath();
-        ctx.moveTo(-26, -5);
-        ctx.lineTo(-26 - flameLen, 0);
-        ctx.lineTo(-26, 5);
+        ctx.moveTo(hudBoxX + cornerCut, hudBoxY);
+        ctx.lineTo(hudBoxX + hudBoxWidth - cornerCut, hudBoxY);
+        ctx.lineTo(hudBoxX + hudBoxWidth, hudBoxY + cornerCut);
+        ctx.lineTo(hudBoxX + hudBoxWidth, hudBoxY + hudBoxHeight - cornerCut);
+        ctx.lineTo(hudBoxX + hudBoxWidth - cornerCut, hudBoxY + hudBoxHeight);
+        ctx.lineTo(hudBoxX + cornerCut, hudBoxY + hudBoxHeight);
+        ctx.lineTo(hudBoxX, hudBoxY + hudBoxHeight - cornerCut);
+        ctx.lineTo(hudBoxX, hudBoxY + cornerCut);
         ctx.closePath();
+
+        const hudGrad = ctx.createLinearGradient(hudBoxX, hudBoxY, hudBoxX, hudBoxY + hudBoxHeight);
+        hudGrad.addColorStop(0, "rgba(15, 23, 42, 0.90)");
+        hudGrad.addColorStop(0.5, "rgba(8, 14, 26, 0.96)");
+        hudGrad.addColorStop(1, "rgba(15, 23, 42, 0.90)");
+        ctx.fillStyle = hudGrad;
         ctx.fill();
 
-        // Top Booster Flame
-        const topBoosterFlame = flameLen * 0.75;
-        const flameGradTop = ctx.createLinearGradient(-22, -9, -22 - topBoosterFlame, -9);
-        flameGradTop.addColorStop(0, "#ffffff");
-        flameGradTop.addColorStop(0.3, "#38bdf8");
-        flameGradTop.addColorStop(0.8, "#6366f1");
-        flameGradTop.addColorStop(1, "rgba(99, 102, 241, 0)");
-        ctx.fillStyle = flameGradTop;
+        // Glowing cybernetic border
+        const borderPulse = 0.5 + 0.5 * Math.sin(timestamp / 240);
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = `rgba(56, 189, 248, ${0.35 + borderPulse * 0.35})`;
+        ctx.stroke();
+
+        // Corner brackets
+        const bracketLen = 10;
+        ctx.lineWidth = 2;
+        ctx.strokeStyle = `rgba(56, 189, 248, ${0.75 + borderPulse * 0.25})`;
+
         ctx.beginPath();
-        ctx.moveTo(-22, -12);
-        ctx.lineTo(-22 - topBoosterFlame, -9);
-        ctx.lineTo(-22, -6);
-        ctx.closePath();
-        ctx.fill();
+        ctx.moveTo(hudBoxX, hudBoxY + bracketLen);
+        ctx.lineTo(hudBoxX, hudBoxY + cornerCut);
+        ctx.lineTo(hudBoxX + cornerCut, hudBoxY);
+        ctx.lineTo(hudBoxX + bracketLen, hudBoxY);
+        ctx.stroke();
 
-        // Bottom Booster Flame
-        const btmBoosterFlame = flameLen * 0.75;
-        const flameGradBtm = ctx.createLinearGradient(-22, 9, -22 - btmBoosterFlame, 9);
-        flameGradBtm.addColorStop(0, "#ffffff");
-        flameGradBtm.addColorStop(0.3, "#38bdf8");
-        flameGradBtm.addColorStop(0.8, "#6366f1");
-        flameGradBtm.addColorStop(1, "rgba(99, 102, 241, 0)");
-        ctx.fillStyle = flameGradBtm;
         ctx.beginPath();
-        ctx.moveTo(-22, 6);
-        ctx.lineTo(-22 - btmBoosterFlame, 9);
-        ctx.lineTo(-22, 12);
-        ctx.closePath();
-        ctx.fill();
+        ctx.moveTo(hudBoxX + hudBoxWidth - bracketLen, hudBoxY);
+        ctx.lineTo(hudBoxX + hudBoxWidth - cornerCut, hudBoxY);
+        ctx.lineTo(hudBoxX + hudBoxWidth, hudBoxY + cornerCut);
+        ctx.lineTo(hudBoxX + hudBoxWidth, hudBoxY + bracketLen);
+        ctx.stroke();
 
-        // Rocket Body & Wings
-        ctx.fillStyle = "#1e293b";
         ctx.beginPath();
-        ctx.roundRect(-27, -6, 5, 12, [2, 0, 0, 2]);
-        ctx.fill();
+        ctx.moveTo(hudBoxX, hudBoxY + hudBoxHeight - bracketLen);
+        ctx.lineTo(hudBoxX, hudBoxY + hudBoxHeight - cornerCut);
+        ctx.lineTo(hudBoxX + cornerCut, hudBoxY + hudBoxHeight);
+        ctx.lineTo(hudBoxX + bracketLen, hudBoxY + hudBoxHeight);
+        ctx.stroke();
 
-        ctx.fillStyle = "#334155";
         ctx.beginPath();
-        ctx.roundRect(-23, -13, 4, 7, [2, 0, 0, 2]);
-        ctx.roundRect(-23, 6, 4, 7, [2, 0, 0, 2]);
-        ctx.fill();
+        ctx.moveTo(hudBoxX + hudBoxWidth - bracketLen, hudBoxY + hudBoxHeight);
+        ctx.lineTo(hudBoxX + hudBoxWidth - cornerCut, hudBoxY + hudBoxHeight);
+        ctx.lineTo(hudBoxX + hudBoxWidth, hudBoxY + hudBoxHeight - cornerCut);
+        ctx.lineTo(hudBoxX + hudBoxWidth, hudBoxY + hudBoxHeight - bracketLen);
+        ctx.stroke();
 
-        // Top Wing
-        ctx.fillStyle = "#e11d48";
-        ctx.beginPath();
-        ctx.moveTo(-10, -7);
-        ctx.lineTo(-26, -23);
-        ctx.lineTo(-18, -23);
-        ctx.lineTo(2, -7);
-        ctx.closePath();
-        ctx.fill();
-
-        // Top Wing Edge Highlight
-        ctx.fillStyle = "#fda4af";
-        ctx.beginPath();
-        ctx.moveTo(-10, -7);
-        ctx.lineTo(-26, -23);
-        ctx.lineTo(-24, -23);
-        ctx.lineTo(-8, -7);
-        ctx.closePath();
-        ctx.fill();
-
-        // Bottom Wing
-        ctx.fillStyle = "#881337";
-        ctx.beginPath();
-        ctx.moveTo(-10, 7);
-        ctx.lineTo(-24, 21);
-        ctx.lineTo(-17, 21);
-        ctx.lineTo(2, 7);
-        ctx.closePath();
-        ctx.fill();
-
-        // Lower Fuselage
-        const lowerBodyGrad = ctx.createLinearGradient(0, 0, 0, 10);
-        lowerBodyGrad.addColorStop(0, "#cbd5e1");
-        lowerBodyGrad.addColorStop(1, "#475569");
-        ctx.fillStyle = lowerBodyGrad;
-        ctx.beginPath();
-        ctx.moveTo(-25, 0);
-        ctx.lineTo(16, 0);
-        ctx.quadraticCurveTo(28, 2, 34, 0);
-        ctx.quadraticCurveTo(24, 6, 12, 8);
-        ctx.lineTo(-25, 6);
-        ctx.closePath();
-        ctx.fill();
-
-        // Upper Fuselage
-        const upperBodyGrad = ctx.createLinearGradient(0, -9, 0, 0);
-        upperBodyGrad.addColorStop(0, "#f8fafc");
-        upperBodyGrad.addColorStop(0.7, "#e2e8f0");
-        upperBodyGrad.addColorStop(1, "#cbd5e1");
-        ctx.fillStyle = upperBodyGrad;
-        ctx.beginPath();
-        ctx.moveTo(-25, 0);
-        ctx.lineTo(16, 0);
-        ctx.quadraticCurveTo(28, -2, 34, 0);
-        ctx.quadraticCurveTo(24, -6, 12, -8);
-        ctx.lineTo(-25, -6);
-        ctx.closePath();
-        ctx.fill();
-
-        // Nose Cone
-        const noseGrad = ctx.createLinearGradient(16, 0, 34, 0);
-        noseGrad.addColorStop(0, "#e11d48");
-        noseGrad.addColorStop(1, "#fb7185");
-        ctx.fillStyle = noseGrad;
-        ctx.beginPath();
-        ctx.moveTo(18, -6.5);
-        ctx.quadraticCurveTo(27, 0, 34, 0);
-        ctx.quadraticCurveTo(27, 0, 18, 6.5);
-        ctx.closePath();
-        ctx.fill();
-
-        // Cockpit Visor
-        ctx.fillStyle = "#0f172a";
-        ctx.beginPath();
-        ctx.ellipse(3, -1, 7, 4.5, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        const visorGrad = ctx.createLinearGradient(0, -5, 6, 3);
-        visorGrad.addColorStop(0, "#38bdf8");
-        visorGrad.addColorStop(1, "#0284c7");
-        ctx.fillStyle = visorGrad;
-        ctx.beginPath();
-        ctx.ellipse(3, -1, 5.5, 3.5, 0, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
-        ctx.beginPath();
-        ctx.ellipse(1.5, -2.5, 2.5, 1, -0.3, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Fore Keel
-        ctx.fillStyle = "#ef4444";
-        ctx.beginPath();
-        ctx.moveTo(-16, -0.8);
-        ctx.lineTo(15, -0.8);
-        ctx.lineTo(15, 0.8);
-        ctx.lineTo(-16, 0.8);
-        ctx.closePath();
-        ctx.fill();
-
-        ctx.restore();
-
-        // --- 9. CENTRAL HUD MULTIPLIER (Zero-Lag Optical Light Radiance & Rays) ---
-        const hudX = width / 2;
-        const hudY = height / 2 - 20;
-
+        // Title: WAITING FOR NEXT ROUND
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
+        ctx.font = "800 15px 'Orbitron', 'Rajdhani', sans-serif";
 
-        if (curState === "FLYING") {
-          const tier = getMultiplierColorTier(curMultiplier);
-          const hudFontSize = Math.min(74, Math.max(38, Math.floor(width * 0.095)));
+        ctx.strokeStyle = "rgba(15, 23, 42, 0.95)";
+        ctx.lineWidth = 4;
+        ctx.lineJoin = "round";
+        ctx.strokeText("WAITING FOR NEXT ROUND", centerX, hudBoxY + 22);
 
-          // Dynamic scale pulse that scales with high multipliers
-          let scale = 1.0;
-          if (curMultiplier >= 20.0) {
-            const pulse = (Math.sin((timestamp / 280) * Math.PI * 2) + 1) / 2;
-            scale = 1.0 + pulse * 0.10;
-          } else if (curMultiplier >= 10.0) {
-            const pulse = (Math.sin((timestamp / 380) * Math.PI * 2) + 1) / 2;
-            scale = 1.0 + pulse * 0.06;
-          } else if (curMultiplier >= 2.0) {
-            const pulse = (Math.sin((timestamp / 500) * Math.PI * 2) + 1) / 2;
-            scale = 1.0 + pulse * 0.03;
+        const titleGrad = ctx.createLinearGradient(0, hudBoxY + 12, 0, hudBoxY + 32);
+        titleGrad.addColorStop(0, "#ffffff");
+        titleGrad.addColorStop(0.5, "#e0f2fe");
+        titleGrad.addColorStop(1, "#38bdf8");
+        ctx.fillStyle = titleGrad;
+        ctx.fillText("WAITING FOR NEXT ROUND", centerX, hudBoxY + 22);
+
+        // Status: PLACING BETS (X.Xs)
+        const countdownPercent = Math.max(0, Math.min(1, curCountdown / curMaxCountdown));
+        const badgeY = hudBoxY + 46;
+
+        const beaconPulse = 0.5 + 0.5 * Math.sin(timestamp / 120);
+        const beaconX = centerX - 78;
+
+        ctx.beginPath();
+        ctx.arc(beaconX, badgeY, 3 + beaconPulse * 3, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(245, 158, 11, ${0.4 * (1 - beaconPulse)})`;
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(beaconX, badgeY, 2.5, 0, Math.PI * 2);
+        ctx.fillStyle = "#fbbf24";
+        ctx.fill();
+
+        ctx.font = "700 13px 'Chakra Petch', 'Orbitron', monospace";
+        ctx.fillStyle = "#fef08a";
+        ctx.fillText(`PLACING BETS (${Math.max(0, curCountdown).toFixed(1)}s)`, centerX + 8, badgeY);
+
+        // Integrated Countdown Progress Bar
+        const barWidth = hudBoxWidth - 32;
+        const barHeight = 3;
+        const barX = centerX - barWidth / 2;
+        const barY = hudBoxY + hudBoxHeight - 6;
+
+        ctx.fillStyle = "rgba(255, 255, 255, 0.08)";
+        ctx.beginPath();
+        if (typeof (ctx as any).roundRect === "function") {
+          (ctx as any).roundRect(barX, barY, barWidth, barHeight, 2);
+        } else {
+          ctx.rect(barX, barY, barWidth, barHeight);
+        }
+        ctx.fill();
+
+        const activeBarW = Math.max(0, Math.min(barWidth, barWidth * countdownPercent));
+        if (activeBarW > 1) {
+          const barGrad = ctx.createLinearGradient(barX, barY, barX + activeBarW, barY);
+          barGrad.addColorStop(0, "#f43f5e");
+          barGrad.addColorStop(0.5, "#fbbf24");
+          barGrad.addColorStop(1, "#38bdf8");
+          ctx.fillStyle = barGrad;
+          ctx.beginPath();
+          if (typeof (ctx as any).roundRect === "function") {
+            (ctx as any).roundRect(barX, barY, activeBarW, barHeight, 2);
+          } else {
+            ctx.rect(barX, barY, activeBarW, barHeight);
           }
+          ctx.fill();
+        }
 
-          ctx.save();
-          ctx.translate(hudX, hudY);
-          ctx.scale(scale, scale);
+        ctx.restore();
+      }
 
+      // B. Multiplier HUD
+      const hudX = width / 2;
+      const hudY = height / 2 - 20;
 
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
 
+      if (curState === "FLYING") {
+        const multAlpha = Math.min(1, flightElapsedSec / 0.18);
+        const multScaleIn = Math.min(1, 0.88 + flightElapsedSec * 0.65);
+        const tier = getMultiplierColorTier(curMultiplier);
+        const hudFontSize = Math.min(74, Math.max(38, Math.floor(width * 0.095)));
 
+        // Dynamic scale pulse that scales with high multipliers
+        let scale = 1.0;
+        if (curMultiplier >= 20.0) {
+          const pulse = (Math.sin((timestamp / 280) * Math.PI * 2) + 1) / 2;
+          scale = 1.0 + pulse * 0.10;
+        } else if (curMultiplier >= 10.0) {
+          const pulse = (Math.sin((timestamp / 380) * Math.PI * 2) + 1) / 2;
+          scale = 1.0 + pulse * 0.06;
+        } else if (curMultiplier >= 2.0) {
+          const pulse = (Math.sin((timestamp / 500) * Math.PI * 2) + 1) / 2;
+          scale = 1.0 + pulse * 0.03;
+        }
 
+        ctx.save();
+        ctx.translate(hudX, hudY);
+        ctx.scale(scale * multScaleIn, scale * multScaleIn);
+        ctx.globalAlpha = multAlpha;
 
+        // CRISP 2-LAYER MULTIPLIER TEXT
+        ctx.font = `800 ${hudFontSize}px 'Rajdhani', 'Orbitron', 'Montserrat', sans-serif`;
 
-          // CRISP 2-LAYER MULTIPLIER TEXT
-          ctx.font = `800 ${hudFontSize}px 'Rajdhani', 'Orbitron', 'Montserrat', sans-serif`;
+        // Layer 1: High contrast outer stroke / border
+        ctx.strokeStyle = tier.borderColor || "rgba(0, 0, 0, 0.85)";
+        ctx.lineWidth = 6;
+        ctx.lineJoin = "round";
+        ctx.strokeText(`${curMultiplier.toFixed(2)}x`, 0, 0);
 
-          // Layer 1: High contrast outer stroke / border
-          ctx.strokeStyle = tier.borderColor || "rgba(0, 0, 0, 0.85)";
-          ctx.lineWidth = 6;
-          ctx.lineJoin = "round";
-          ctx.strokeText(`${curMultiplier.toFixed(2)}x`, 0, 0);
+        // Layer 2: Vibrant primary tier fill
+        ctx.fillStyle = tier.color;
+        ctx.fillText(`${curMultiplier.toFixed(2)}x`, 0, 0);
 
-          // Layer 2: Vibrant primary tier fill
-          ctx.fillStyle = tier.color;
-          ctx.fillText(`${curMultiplier.toFixed(2)}x`, 0, 0);
-
-          ctx.restore();
+        ctx.restore();
         } else if (curState === "FLEW_AWAY") {
           ctx.save();
           const flewAwayFontSize = Math.min(52, Math.max(28, Math.floor(width * 0.075)));
@@ -963,14 +1175,15 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
 
           const titleY = hudY - 22;
 
-          // Outer ambient neon glow
-          ctx.shadowColor = "rgba(244, 63, 94, 0.85)";
-          ctx.shadowBlur = 24;
+          // Outer glowing outline
+          ctx.strokeStyle = "rgba(244, 63, 94, 0.4)";
+          ctx.lineWidth = 14;
+          ctx.lineJoin = "round";
+          ctx.strokeText("FLEW AWAY", hudX, titleY);
 
           // High-contrast deep slate outer border for razor-sharp legibility
           ctx.strokeStyle = "rgba(10, 15, 29, 0.95)";
           ctx.lineWidth = 7;
-          ctx.lineJoin = "round";
           ctx.strokeText("FLEW AWAY", hudX, titleY);
 
           // Vivid metallic ruby-crimson gradient
@@ -984,7 +1197,6 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
           ctx.fillText("FLEW AWAY", hudX, titleY);
 
           // Inner subtle glossy highlight stroke
-          ctx.shadowBlur = 0;
           ctx.strokeStyle = "rgba(255, 255, 255, 0.45)";
           ctx.lineWidth = 1;
           ctx.strokeText("FLEW AWAY", hudX, titleY);
@@ -1008,9 +1220,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
           } else {
             ctx.rect(badgeX, badgeY, badgeWidth, badgeHeight);
           }
-          ctx.fillStyle = "rgba(10, 15, 29, 0.88)";
-          ctx.shadowColor = "rgba(0, 0, 0, 0.65)";
-          ctx.shadowBlur = 14;
+          ctx.fillStyle = "rgba(10, 15, 29, 0.92)";
           ctx.fill();
 
           // Cyber badge border (illuminated ruby or gold depending on multiplier tier)
@@ -1031,6 +1241,11 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
           const multCenterY = badgeY + badgeHeight / 2;
+
+          // Multiplier outer glow outline
+          ctx.strokeStyle = isHighMult ? "rgba(245, 158, 11, 0.35)" : "rgba(244, 63, 94, 0.35)";
+          ctx.lineWidth = 8;
+          ctx.strokeText(multText, hudX, multCenterY);
 
           // Multiplier outer dark stroke
           ctx.strokeStyle = "rgba(0, 0, 0, 0.92)";
@@ -1055,13 +1270,10 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
           }
 
           ctx.fillStyle = multGrad;
-          ctx.shadowColor = isHighMult ? "rgba(245, 158, 11, 0.7)" : "rgba(244, 63, 94, 0.7)";
-          ctx.shadowBlur = 12;
           ctx.fillText(multText, hudX, multCenterY);
 
           ctx.restore();
         }
-      }
 
       ctx.restore();
       animFrameId = requestAnimationFrame(renderLoop);
@@ -1092,5 +1304,7 @@ export const GameCanvas: React.FC<GameCanvasProps> = memo(({
       />
     </div>
   );
-});
+};
+
+export const GameCanvas = memo(GameCanvasComponent, areGameCanvasPropsEqual);
 

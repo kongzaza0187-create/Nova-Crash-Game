@@ -1,0 +1,6 @@
+{
+  "name": "SuperNova Crash Game",
+  "description": "Real-time multiplayer SuperNova crash game with provably fair verification and live room synchronization.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

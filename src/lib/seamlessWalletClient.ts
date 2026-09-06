@@ -92,7 +92,7 @@ export class SeamlessWalletClient {
     txnId: string,
     amount: number,
     userId: string = this.defaultUserId,
-    gameId: string = "SKY_RUSH"
+    gameId: string = "SUPERNOVA"
   ): Promise<WalletDebitResponse> {
     try {
       const res = await fetch("/api/v1/wallet/debit", {
@@ -113,13 +113,13 @@ export class SeamlessWalletClient {
   }
 
   /**
-   * 3. Credit Real Wallet on Win (Automatically calculates & deducts 3% House Fee on backend)
+   * 3. Credit Real Wallet on Win (Credits verified gross win payout to player balance)
    */
   public async creditWin(
     txnId: string,
     grossWinAmount: number,
     userId: string = this.defaultUserId,
-    gameId: string = "SKY_RUSH"
+    gameId: string = "SUPERNOVA"
   ): Promise<WalletCreditResponse> {
     try {
       const res = await fetch("/api/v1/wallet/credit", {
@@ -140,14 +140,14 @@ export class SeamlessWalletClient {
   }
 
   /**
-   * 4. Settle Round Loss (Automatically calculates & credits 10% Instant Cashback on backend)
+   * 4. Settle Round Loss in Real-time Ledger
    */
   public async processLoss(
     txnId: string,
     betTxnId: string,
     lossAmount: number,
     userId: string = this.defaultUserId,
-    gameId: string = "SKY_RUSH"
+    gameId: string = "SUPERNOVA"
   ): Promise<WalletLossResponse> {
     try {
       const res = await fetch("/api/v1/wallet/loss", {

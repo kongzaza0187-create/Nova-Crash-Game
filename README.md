@@ -1,4 +1,4 @@
-# SKY RUSH — Crash Game Engine & Master Franchise Seamless Wallet Hub
+# SUPERNOVA — Crash Game Engine & Master Franchise Seamless Wallet Hub
 
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/typescript-5.8.2-blue.svg)](https://www.typescriptlang.org/)
@@ -16,7 +16,7 @@ Production-grade, high-concurrency crash multiplier game engine paired with an e
    - [Database Row-Level Locking (`SELECT ... FOR UPDATE`)](#a-row-level-locking--race-condition-prevention)
    - [Idempotency Control & Deduplication](#b-idempotency-control--deduplication)
    - [HMAC-SHA256 Security Signature](#c-hmac-sha256-request-signature)
-   - [Financial Settlement & House Rules (10% Loss Cashback & 3% Win Fee)](#d-financial-settlement--house-rules)
+   - [Financial Settlement & Mathematical House Edge](#d-financial-settlement--house-rules)
 3. [Database Schema (PostgreSQL)](#3-database-schema-postgresql)
 4. [Provably Fair RNG & Actuarial 11-Tier Probability Distribution](#4-provably-fair-rng--actuarial-11-tier-probability-distribution)
 5. [API Reference & Endpoint Specifications](#5-api-reference--endpoint-specifications)
@@ -24,7 +24,7 @@ Production-grade, high-concurrency crash multiplier game engine paired with an e
    - [Wallet Balance Inquiry](#2-wallet-balance-inquiry)
    - [Wallet Debit (Place Bet)](#3-wallet-debit-place-bet)
    - [Wallet Credit (Win Multiplier Settlement)](#4-wallet-credit-win-multiplier-settlement)
-   - [Wallet Loss Settlement (Instant 10% Cashback)](#5-wallet-loss-settlement-instant-10-cashback)
+   - [Wallet Loss Settlement](#5-wallet-loss-settlement)
    - [Wallet Rollback (Void / Refund Bet)](#6-wallet-rollback-void--refund-bet)
    - [Transaction Ledger Audit Trail](#7-transaction-ledger-audit-trail)
    - [Game Security & Provably Fair Endpoints](#8-game-security--provably-fair-endpoints)
@@ -52,7 +52,7 @@ Production-grade, high-concurrency crash multiplier game engine paired with an e
                      │ Mobile Banking Webhook         │ Game Client API
                      ▼                                ▼
  ┌────────────────────────────────────────────────────────────────────────┐
- │            SKY RUSH Express Gateway & Seamless Wallet Engine           │
+ │            SUPERNOVA Express Gateway & Seamless Wallet Engine          │
  │  ┌────────────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
  │  │ HMAC-SHA256 Signature  │  │   Idempotency   │  │ User Mutex Lock │  │
  │  │  Validator Middleware  │  │ Deduplication   │  │  Queue Manager  │  │
@@ -89,16 +89,13 @@ All wallet communication is validated through cryptographic signatures.
 - **Signature Calculation**: `crypto.createHmac('sha256', SECRET_KEY).update(JSON.stringify(payload)).digest('hex')`
 - Invalid signatures return `401 Unauthorized` with error code `INVALID_SIGNATURE`.
 
-### D. Financial Settlement & House Rules
-1. **Win Settlement (3% House Fee Deduction)**:
-   - When a player wins, the gross payout is subjected to a 3% platform commission.
-   - $\text{Fee} = \text{Gross Win} \times 0.03$
-   - $\text{Net Win} = \text{Gross Win} - \text{Fee}$
-   - User wallet is credited with $\text{Net Win}$.
-2. **Loss Settlement (10% Instant Cashback)**:
-   - When a player loses a round, the system immediately refunds 10% of the lost wager.
-   - $\text{Cashback} = \text{Loss Amount} \times 0.10$
-   - Generates a dedicated transaction entry of type `CASHBACK_10%` referencing the original bet ID (`ref_txn_id`).
+### D. Financial Settlement & Mathematical House Edge
+1. **Gross Win Settlement**:
+   - When a player cashes out, the full verified gross payout ($\text{Payout} = \text{Bet Amount} \times \text{Multiplier}$) is credited in full to the user's wallet without fee deductions.
+   - The mathematical House Edge (15.50%) is mathematically guaranteed by the Actuarial 11-Tier Provably Fair crash distribution.
+2. **Loss Settlement**:
+   - When the rocket crashes before cashout, the wager is confirmed and settled as a completed loss in the financial audit ledger.
+   - Idempotent transaction records are permanently logged with reference to the original wager transaction ID (`ref_txn_id`).
 
 ---
 
@@ -266,7 +263,7 @@ Deducts wager amount from user balance. Fails if balance is insufficient.
 ---
 
 ### 4. Wallet Credit (Win Multiplier Settlement)
-Calculates net payout after automatically deducting 3% house commission.
+Credits verified gross payout directly to the player's wallet.
 
 * **Endpoint**: `POST /api/v1/wallet/credit`
 * **Request Payload**:
@@ -276,7 +273,7 @@ Calculates net payout after automatically deducting 3% house commission.
     "ref_txn_id": "BET_982341_L",
     "user_id": "USR_VIP_01",
     "gross_win_amount": 2500.00,
-    "game_id": "SKY_RUSH",
+    "game_id": "SUPERNOVA",
     "currency": "THB"
   }
   ```
@@ -286,18 +283,16 @@ Calculates net payout after automatically deducting 3% house commission.
     "status": "SUCCESS",
     "txn_id": "WIN_982341_L",
     "user_id": "USR_VIP_01",
-    "gross_amount": 2500.00,
-    "fee": 75.00,
-    "net_amount": 2425.00,
-    "balance": 151425.00,
+    "credited_amount": 2500.00,
+    "balance": 151500.00,
     "currency": "THB"
   }
   ```
 
 ---
 
-### 5. Wallet Loss Settlement (Instant 10% Cashback)
-Records round loss and credits 10% cashback directly back into player's wallet.
+### 5. Wallet Loss Settlement
+Confirms and records round loss in the financial transaction audit ledger.
 
 * **Endpoint**: `POST /api/v1/wallet/loss`
 * **Request Payload**:
@@ -307,7 +302,7 @@ Records round loss and credits 10% cashback directly back into player's wallet.
     "ref_txn_id": "BET_982341_R",
     "user_id": "USR_VIP_01",
     "loss_amount": 1000.00,
-    "game_id": "SKY_RUSH",
+    "game_id": "SUPERNOVA",
     "currency": "THB"
   }
   ```
@@ -316,12 +311,9 @@ Records round loss and credits 10% cashback directly back into player's wallet.
   {
     "status": "SUCCESS",
     "txn_id": "LOSS_982341_R",
-    "cashback_txn_id": "CB_LOSS_982341_R",
     "user_id": "USR_VIP_01",
     "loss_amount": 1000.00,
-    "cashback_amount": 100.00,
-    "cashback_rate": "10%",
-    "balance": 149100.00,
+    "balance": 149000.00,
     "currency": "THB"
   }
   ```
@@ -506,14 +498,14 @@ npm run start
 
 ### Integrating Additional Game Providers
 The Seamless Wallet Hub is game-agnostic. To integrate a new game (e.g., Slots, Mines, Roulette):
-1. Send `game_id` (e.g., `"MINES"`, `"ROULETTE"`) in the request payload.
-2. The ledger automatically attributes win commission (3%) and loss cashback (10%) to the designated provider.
+1. Send `game_id` (e.g., `"SUPERNOVA"`, `"MINES"`, `"ROULETTE"`) in the request payload.
+2. The ledger automatically attributes debit and credit settlements to the designated provider.
 
 ---
 
 ## 9. Production Live Integration Guide for Infrastructure & Backend Teams
 
-This section outlines the exact integration touchpoints, networking requirements, database architecture, and API callbacks necessary to deploy, host, and launch the **SKY RUSH** game live across any casino, betting, or aggregator platform.
+This section outlines the exact integration touchpoints, networking requirements, database architecture, and API callbacks necessary to deploy, host, and launch the **SUPERNOVA** game live across any casino, betting, or aggregator platform.
 
 ```
   ┌─────────────────────────────────────────────────────────────────────────────────┐
@@ -523,7 +515,7 @@ This section outlines the exact integration touchpoints, networking requirements
                                            │ 1. Launch Game with Session Token
                                            ▼
   ┌─────────────────────────────────────────────────────────────────────────────────┐
-  │                        SKY RUSH GAME CLOUD CONTAINER                            │
+  │                       SUPERNOVA GAME CLOUD CONTAINER                            │
   │                         (Port 3000 / Nginx Ingress)                             │
   └───────┬────────────────────────────────┬────────────────────────────────┬───────┘
           │                                │                                │
@@ -621,8 +613,8 @@ The operator backend must expose or accept the following 5 Seamless Wallet RPC e
 | :--- | :---: | :--- | :--- |
 | `/api/wallet/v1/balance` | `POST` | Game load / Periodic sync | Return current balance of `user_id`. |
 | `/api/wallet/v1/debit` | `POST` | Player places bet | Deduct bet amount from user balance. Apply idempotency check on `transaction_id`. |
-| `/api/wallet/v1/credit` | `POST` | Player cashes out (Win) | Credit gross payout minus 3% win fee to user balance. |
-| `/api/wallet/v1/loss` | `POST` | Rocket crashes (Loss) | Confirm loss and credit instant 10% loss cashback to player wallet. |
+| `/api/wallet/v1/credit` | `POST` | Player cashes out (Win) | Credit gross payout to user balance. |
+| `/api/wallet/v1/loss` | `POST` | Rocket crashes (Loss) | Confirm and record loss settlement in player ledger. |
 | `/api/wallet/v1/rollback` | `POST` | Round voided / Timeout | Refund original debit amount back to user. |
 
 #### 3. Security Signature Validation (HMAC-SHA256)
@@ -638,13 +630,13 @@ $$\text{Signature} = \text{HMAC-SHA256}(\text{WALLET\_SECRET\_KEY}, \text{JSON.s
 
 ### C. Game Launch Flow & iFrame Embedding Specification
 
-To embed SKY RUSH seamlessly inside any operator portal:
+To embed SUPERNOVA seamlessly inside any operator portal:
 
 ```html
 <!-- Responsive 16:9 or Full-Screen Casino Game Container -->
 <div style="position: relative; width: 100%; height: 100vh; overflow: hidden; background: #0b0e14;">
     <iframe
-        id="sky-rush-frame"
+        id="supernova-frame"
         src="https://game.yourdomain.com/?token=USER_AUTH_TOKEN_XYZ&operator_id=CASINO_01&currency=THB&lang=th"
         style="width: 100%; height: 100%; border: none;"
         allow="autoplay; fullscreen; screen-wake-lock"
@@ -701,16 +693,16 @@ app.post("/api/wallet/v1/debit", verifyGameServerSignature, async (req, res) => 
   });
 });
 
-// 2. Credit Handler (Cashout Win - 3% Commission automatically recorded)
+// 2. Credit Handler (Cashout Win Settlement)
 app.post("/api/wallet/v1/credit", verifyGameServerSignature, async (req, res) => {
-  const { transaction_id, user_id, gross_win, net_payout, win_commission_fee } = req.body;
-  // Credit net_payout (after 3% fee) to user balance
+  const { transaction_id, user_id, win_amount, gross_win } = req.body;
+  const payout = win_amount !== undefined ? win_amount : gross_win;
+  // Credit full verified payout to user balance
   res.json({
     status: "SUCCESS",
     transaction_id,
     user_id,
-    credited_amount: net_payout,
-    commission_deducted: win_commission_fee,
+    credited_amount: payout,
     new_balance: 1850.00,
     timestamp: new Date().toISOString()
   });

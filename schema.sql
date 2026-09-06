@@ -1,7 +1,7 @@
 -- ============================================================================
 -- iGaming Master Franchise Seamless Wallet Database Schema (PostgreSQL)
 -- Currency: THB (Thai Baht)
--- Features: Row-level Locking (FOR UPDATE), Idempotency, 10% Cashback, 3% House Fee
+-- Features: Row-level Locking (FOR UPDATE), Idempotency, Instant Settlement
 -- ============================================================================
 
 -- 1. Users / Players Table
@@ -23,11 +23,11 @@ CREATE TABLE IF NOT EXISTS transactions (
     user_id VARCHAR(50) NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
     amount NUMERIC(15, 2) NOT NULL,                -- ยอดเงินที่ทำรายการจริง (THB)
     gross_amount NUMERIC(15, 2) DEFAULT 0.00,      -- ยอดก่อนหักค่าธรรมเนียม (Gross Win / Loss)
-    fee NUMERIC(15, 2) DEFAULT 0.00,               -- ค่าธรรมเนียม 3% ค่าน้ำ (House Fee / Commission)
-    cashback NUMERIC(15, 2) DEFAULT 0.00,          -- ยอดเงินคืน 10% (Cashback)
+    fee NUMERIC(15, 2) DEFAULT 0.00,               -- ค่าธรรมเนียม / Margin (House Fee)
+    cashback NUMERIC(15, 2) DEFAULT 0.00,          -- ยอดเงินคืน / Rebate
     balance_after NUMERIC(15, 2) NOT NULL,         -- ยอดเงินคงเหลือหลังทำรายการ (THB)
-    type VARCHAR(30) NOT NULL,                     -- 'DEPOSIT_BANKING', 'BET', 'WIN', 'CASHBACK_10%', 'ROLLBACK'
-    game_id VARCHAR(50),                           -- ID ของเกม เช่น 'SKY_RUSH_01', 'MINES_SLOT'
+    type VARCHAR(30) NOT NULL,                     -- 'DEPOSIT_BANKING', 'BET', 'WIN', 'ROLLBACK'
+    game_id VARCHAR(50),                           -- ID ของเกม เช่น 'SUPERNOVA_01', 'MINES_SLOT'
     status VARCHAR(20) DEFAULT 'SUCCESS',          -- 'SUCCESS', 'FAILED', 'REJECTED'
     metadata JSONB DEFAULT '{}'::jsonb,            -- ข้อมูลเพิ่มเติม เช่น Bank Info, IP, Round No
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP

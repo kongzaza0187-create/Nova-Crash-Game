@@ -1,8 +1,8 @@
 /**
- * Senior iGaming Math & Anti-Exploit Engine for SkyRush Crash Game
+ * Senior iGaming Math & Anti-Exploit Engine for SuperNova Crash Game
  * 
  * CORE SPECIFICATIONS:
- * - Game Type: Crash / Bust Multiplier Game
+ * - Game Type: Crash / Bust Multiplier Game (SuperNova)
  * - Target RTP: 84.50% (Target Range: 83.00% - 85.00%)
  * - House Edge: 15.50% (Target Range: 15.00% - 17.00%)
  * - Maximum Multiplier Cap: 50.00x
@@ -589,3 +589,9 @@ export class SkyRushEngine {
     };
   }
 }
+
+// SuperNova Engine Aliases for 100% Backward & Forward Compatibility
+export const SuperNovaEngine = SkyRushEngine;
+export type SuperNovaEngine = SkyRushEngine;
+export const SUPERNOVA_DISTRIBUTION_MATRIX = MULTIPLIER_DISTRIBUTION_MATRIX;
+

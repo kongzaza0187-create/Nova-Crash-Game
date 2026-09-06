@@ -112,7 +112,7 @@ export const SeamlessWalletModal: React.FC<Props> = ({ isOpen, onClose, onBalanc
   const [txnId, setTxnId] = useState<string>(() => "TXN_" + Date.now().toString().slice(-8));
   const [refTxnId, setRefTxnId] = useState<string>("");
   const [amount, setAmount] = useState<string>("500");
-  const [gameId, setGameId] = useState<string>("SKY_RUSH");
+  const [gameId, setGameId] = useState<string>("SUPERNOVA");
   const [secretKey, setSecretKey] = useState<string>("YOUR_SUPER_SECRET_HMAC_KEY");
   const [useHmacHeader, setUseHmacHeader] = useState<boolean>(true);
 
@@ -441,7 +441,7 @@ export const SeamlessWalletModal: React.FC<Props> = ({ isOpen, onClose, onBalanc
         txn_id: uniqueTxn,
         user_id: selectedUserId,
         amount: 10,
-        game_id: "SKY_RUSH",
+        game_id: "SUPERNOVA",
         operator_id: selectedOperatorId
       };
 
@@ -809,7 +809,7 @@ export const SeamlessWalletModal: React.FC<Props> = ({ isOpen, onClose, onBalanc
           <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800">
             <div className="text-slate-400 flex items-center gap-1 mb-1">
               <Percent className="w-3.5 h-3.5 text-amber-400" />
-              <span>House Margin (3% Fee)</span>
+              <span>House Margin</span>
             </div>
             <div className="text-sm sm:text-base font-bold text-amber-400">
               {totalHouseFee.toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -819,7 +819,7 @@ export const SeamlessWalletModal: React.FC<Props> = ({ isOpen, onClose, onBalanc
           <div className="p-2.5 rounded-xl bg-slate-900/80 border border-slate-800">
             <div className="text-slate-400 flex items-center gap-1 mb-1">
               <RotateCcw className="w-3.5 h-3.5 text-purple-400" />
-              <span>Cashback Paid (10%)</span>
+              <span>Cashback / Rebate</span>
             </div>
             <div className="text-sm sm:text-base font-bold text-purple-400">
               {totalCashback.toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -1304,11 +1304,11 @@ curl -X POST https://your-igaming-domain.com/api/wallet/v1/bet \\
     "txn_id": "TXN_BET_9901",
     "user_id": "USER_TH_001",
     "amount": 100.00,
-    "game_id": "SKY_RUSH",
+    "game_id": "SUPERNOVA",
     "operator_id": "OP_BOLLY_MAIN"
   }'
 
-# 2. Settle Win (Credit) with 3% House Margin
+# 2. Settle Win (Credit) Payout
 curl -X POST https://your-igaming-domain.com/api/wallet/v1/win \\
   -H "Content-Type: application/json" \\
   -H "x-signature: <HMAC_SHA256_HEX>" \\
@@ -1316,7 +1316,7 @@ curl -X POST https://your-igaming-domain.com/api/wallet/v1/win \\
     "txn_id": "TXN_WIN_9901",
     "user_id": "USER_TH_001",
     "win_amount": 250.00,
-    "game_id": "SKY_RUSH",
+    "game_id": "SUPERNOVA",
     "operator_id": "OP_BOLLY_MAIN"
   }'`}
                   </pre>
@@ -1339,7 +1339,7 @@ async function placeBet(userId: string, amount: number, txnId: string) {
     txn_id: txnId,
     user_id: userId,
     amount: amount,
-    game_id: "SKY_RUSH",
+    game_id: "SUPERNOVA",
     operator_id: "OP_BOLLY_MAIN"
   };
 
@@ -1372,7 +1372,7 @@ def place_bet(user_id, amount, txn_id):
         "txn_id": txn_id,
         "user_id": user_id,
         "amount": amount,
-        "game_id": "SKY_RUSH",
+        "game_id": "SUPERNOVA",
         "operator_id": "OP_BOLLY_MAIN"
     }
     raw_body = json.dumps(payload, separators=(',', ':'))
@@ -1395,7 +1395,7 @@ $payload = [
     "txn_id" => "TXN_BET_" . uniqid(),
     "user_id" => "USER_TH_001",
     "amount" => 100.00,
-    "game_id" => "SKY_RUSH",
+    "game_id" => "SUPERNOVA",
     "operator_id" => "OP_BOLLY_MAIN"
 ];
 
@@ -1489,8 +1489,8 @@ curl_close($ch);
                         <th className="p-3">Name & Domain</th>
                         <th className="p-3">Wager Volume (Debit)</th>
                         <th className="p-3">Win Volume (Credit)</th>
-                        <th className="p-3">House Fee Paid (3%)</th>
-                        <th className="p-3">Cashback Paid (10%)</th>
+                        <th className="p-3">House Fee Paid</th>
+                        <th className="p-3">Cashback Paid</th>
                         <th className="p-3">Status</th>
                       </tr>
                     </thead>

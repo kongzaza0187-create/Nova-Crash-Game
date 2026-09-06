@@ -26,9 +26,9 @@ export interface GameHistoryConfig {
 }
 
 export const DEFAULT_HISTORY_CONFIG: GameHistoryConfig = {
-  redisKey: "skyrush:history:global",
+  redisKey: "supernova:history:global",
   maxHistoryLength: 100,
-  gameRoomName: "skyrush_live_room"
+  gameRoomName: "supernova_live_room"
 };
 
 /**

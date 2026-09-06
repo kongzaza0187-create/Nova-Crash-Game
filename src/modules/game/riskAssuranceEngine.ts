@@ -250,7 +250,7 @@ export class RiskAssuranceEngine {
         
         if (mult >= cashoutTarget) {
           roundWinners++;
-          const winAmount = baseWager * cashoutTarget * 0.97; // 3% commission deduction
+          const winAmount = baseWager * cashoutTarget; // Clean verified gross payout according to 11-Tier Provably Fair engine
           roundPayout += winAmount;
         } else {
           roundLosers++;

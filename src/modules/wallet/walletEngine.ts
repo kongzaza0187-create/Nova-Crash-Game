@@ -113,7 +113,7 @@ export class ModularWalletEngine {
     game_id?: string;
     trace_id?: string;
   }): Promise<{ status: "SUCCESS" | "FAILED"; currency: string; txn_id: string; amount_debited: number; balance: number; already_processed?: boolean; error?: string }> {
-    const { txn_id, user_id, amount, game_id = "SKY_RUSH", trace_id = logger.generateTraceId() } = params;
+    const { txn_id, user_id, amount, game_id = "SUPERNOVA", trace_id = logger.generateTraceId() } = params;
 
     return await this.userLocks.acquire(user_id, async () => {
       // Idempotency Check
@@ -216,7 +216,7 @@ export class ModularWalletEngine {
     game_id?: string;
     trace_id?: string;
   }): Promise<{ status: "SUCCESS" | "FAILED"; currency: string; txn_id: string; gross_win: number; fee_deducted_3percent: number; net_win_added: number; balance: number; already_processed?: boolean; error?: string }> {
-    const { txn_id, user_id, amount, game_id = "SKY_RUSH", trace_id = logger.generateTraceId() } = params;
+    const { txn_id, user_id, amount, game_id = "SUPERNOVA", trace_id = logger.generateTraceId() } = params;
 
     return await this.userLocks.acquire(user_id, async () => {
       const existing = this.transactions.get(txn_id);
@@ -386,7 +386,7 @@ export class ModularWalletEngine {
     game_id?: string;
     trace_id?: string;
   }): Promise<{ status: "SUCCESS" | "FAILED"; currency: string; txn_id: string; loss_amount: number; cashback_added_10percent: number; balance: number; error?: string }> {
-    const { txn_id, bet_txn_id, user_id, loss_amount, game_id = "SKY_RUSH", trace_id = logger.generateTraceId() } = params;
+    const { txn_id, bet_txn_id, user_id, loss_amount, game_id = "SUPERNOVA", trace_id = logger.generateTraceId() } = params;
 
     return await this.userLocks.acquire(user_id, async () => {
       let user = this.users.get(user_id);

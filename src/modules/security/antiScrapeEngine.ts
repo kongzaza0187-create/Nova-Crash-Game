@@ -204,7 +204,7 @@ export class AntiScrapeEngine {
   public getScrapingProtectionMiddleware() {
     return (req: Request, res: Response, next: NextFunction) => {
       // Derive anonymous session identifier without capturing or logging IP/fingerprint
-      const cookieSession = (req as any).cookies?.session_id || (req as any).cookies?.skyrush_session;
+      const cookieSession = (req as any).cookies?.session_id || (req as any).cookies?.supernova_session || (req as any).cookies?.skyrush_session;
       const rawSession = (req.headers["x-session-id"] as string) || 
                          (req.headers["x-client-session"] as string) ||
                          (req.query.sessionId as string) ||
