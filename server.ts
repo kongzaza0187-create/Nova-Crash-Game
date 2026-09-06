@@ -10,6 +10,11 @@ import {
   generateHmacSignature, 
   API_SECRET_KEY 
 } from "./server/seamlessWalletEngine";
+import { 
+  generatePostmanCollection, 
+  generatePostmanEnvironment, 
+  getApiEndpointsDirectory 
+} from "./server/routes/docsRoutes";
 import { riskAssuranceEngine } from "./src/modules/game/riskAssuranceEngine";
 import { b2bRedis, b2bPostgresLogs } from "./server/b2bArchitectureEngine";
 import { masterK6Simulator } from "./server/k6MasterEngine";
@@ -1026,7 +1031,7 @@ async function runSecurityFullstackServer() {
     res.setHeader("Permissions-Policy", "interest-cohort=(), geolocation=(), camera=(), microphone=()");
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-session-id, x-client-session, authorization");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, x-session-id, x-client-session, authorization, x-signature, x-dev-test-mode, x-operator-id");
     res.removeHeader("X-Powered-By");
 
     if (req.method === "OPTIONS") {
@@ -2150,14 +2155,14 @@ async function runSecurityFullstackServer() {
     }
   });
 
-  // 2. [A] GET WALLET BALANCE
+  // 2. [A] GET & POST WALLET BALANCE
   const handleBalance = async (req: Request, res: Response) => {
     try {
-      const { user_id } = req.body;
-      if (!user_id) {
-        return res.status(400).json({ error: "MISSING_USER_ID" });
+      const userId = (req.body?.user_id || req.params?.userId || req.query?.user_id) as string;
+      if (!userId) {
+        return res.status(400).json({ error: "MISSING_USER_ID", message: "user_id is required in body, query, or path." });
       }
-      const result = seamlessWalletStore.getBalance(user_id);
+      const result = seamlessWalletStore.getBalance(userId);
       if (result.error === "USER_NOT_FOUND") {
         return res.status(404).json(result);
       }
@@ -2168,6 +2173,8 @@ async function runSecurityFullstackServer() {
   };
   app.post("/api/v1/wallet/balance", verifySignatureMiddleware, handleBalance);
   app.post("/api/wallet/v1/balance", verifySignatureMiddleware, handleBalance);
+  app.get(["/api/v1/wallet/balance", "/api/wallet/v1/balance"], verifySignatureMiddleware, handleBalance);
+  app.get(["/api/v1/wallet/balance/:userId", "/api/wallet/v1/balance/:userId"], verifySignatureMiddleware, handleBalance);
 
   // 3. [B] DEBIT / PLACE BET (หักเงินเดิมพัน / Idempotent Debit)
   const handleDebit = async (req: Request, res: Response) => {
@@ -2709,126 +2716,65 @@ async function runSecurityFullstackServer() {
     res.json(openApiSpec);
   });
 
-  // 10. POSTMAN COLLECTION v2.1.0 EXPORT
+  // 10. POSTMAN COLLECTION v2.1.0 EXPORT & ENDPOINTS DIRECTORY
   app.get("/api/docs/postman.json", (req: Request, res: Response) => {
-    const postmanCollection = {
-      info: {
-        name: "iGaming Seamless Wallet & Risk Engine API Collection",
-        description: "Official integration collection for global iGaming operators, aggregator networks, and casino game studios.",
-        schema: "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
-      },
-      item: [
-        {
-          name: "1. Authenticate Player",
-          request: {
-            method: "POST",
-            header: [{ key: "Content-Type", value: "application/json" }],
-            body: {
-              mode: "raw",
-              raw: JSON.stringify({ operator_id: "OP_BOLLY_MAIN", user_id: "USER_TH_001" }, null, 2)
-            },
-            url: { raw: "{{baseUrl}}/api/wallet/v1/authenticate", host: ["{{baseUrl}}"], path: ["api", "wallet", "v1", "authenticate"] }
-          }
-        },
-        {
-          name: "2. Get Balance",
-          request: {
-            method: "POST",
-            header: [{ key: "Content-Type", value: "application/json" }],
-            body: {
-              mode: "raw",
-              raw: JSON.stringify({ user_id: "USER_TH_001" }, null, 2)
-            },
-            url: { raw: "{{baseUrl}}/api/wallet/v1/balance", host: ["{{baseUrl}}"], path: ["api", "wallet", "v1", "balance"] }
-          }
-        },
-        {
-          name: "3. Debit / Place Bet",
-          request: {
-            method: "POST",
-            header: [{ key: "Content-Type", value: "application/json" }],
-            body: {
-              mode: "raw",
-              raw: JSON.stringify({
-                txn_id: "TXN_DEBIT_{{$timestamp}}",
-                user_id: "USER_TH_001",
-                amount: 100.00,
-                game_id: "SUPERNOVA",
-                operator_id: "OP_BOLLY_MAIN"
-              }, null, 2)
-            },
-            url: { raw: "{{baseUrl}}/api/wallet/v1/bet", host: ["{{baseUrl}}"], path: ["api", "wallet", "v1", "bet"] }
-          }
-        },
-        {
-          name: "4. Credit / Win",
-          request: {
-            method: "POST",
-            header: [{ key: "Content-Type", value: "application/json" }],
-            body: {
-              mode: "raw",
-              raw: JSON.stringify({
-                txn_id: "TXN_CREDIT_{{$timestamp}}",
-                user_id: "USER_TH_001",
-                win_amount: 250.00,
-                game_id: "SUPERNOVA",
-                operator_id: "OP_BOLLY_MAIN"
-              }, null, 2)
-            },
-            url: { raw: "{{baseUrl}}/api/wallet/v1/win", host: ["{{baseUrl}}"], path: ["api", "wallet", "v1", "win"] }
-          }
-        },
-        {
-          name: "5. Loss Settlement",
-          request: {
-            method: "POST",
-            header: [{ key: "Content-Type", value: "application/json" }],
-            body: {
-              mode: "raw",
-              raw: JSON.stringify({
-                txn_id: "TXN_LOSS_{{$timestamp}}",
-                bet_txn_id: "TXN_DEBIT_ORIGINAL",
-                user_id: "USER_TH_001",
-                loss_amount: 100.00,
-                game_id: "SUPERNOVA",
-                operator_id: "OP_BOLLY_MAIN"
-              }, null, 2)
-            },
-            url: { raw: "{{baseUrl}}/api/wallet/v1/loss", host: ["{{baseUrl}}"], path: ["api", "wallet", "v1", "loss"] }
-          }
-        },
-        {
-          name: "6. Rollback / Cancel Bet",
-          request: {
-            method: "POST",
-            header: [{ key: "Content-Type", value: "application/json" }],
-            body: {
-              mode: "raw",
-              raw: JSON.stringify({
-                txn_id: "TXN_ROLLBACK_{{$timestamp}}",
-                ref_txn_id: "TXN_DEBIT_ORIGINAL",
-                user_id: "USER_TH_001",
-                operator_id: "OP_BOLLY_MAIN"
-              }, null, 2)
-            },
-            url: { raw: "{{baseUrl}}/api/wallet/v1/rollback", host: ["{{baseUrl}}"], path: ["api", "wallet", "v1", "rollback"] }
-          }
-        }
-      ]
-    };
+    const host = req.get("host") || "localhost:3000";
+    const protocol = req.protocol || "http";
+    const baseUrl = `${protocol}://${host}`;
+    const postmanCollection = generatePostmanCollection(baseUrl);
+    res.setHeader("Content-Disposition", 'attachment; filename="supernova_postman_collection.json"');
     res.json(postmanCollection);
+  });
+
+  app.get("/api/docs/postman-environment.json", (req: Request, res: Response) => {
+    const host = req.get("host") || "localhost:3000";
+    const protocol = req.protocol || "http";
+    const baseUrl = `${protocol}://${host}`;
+    const env = generatePostmanEnvironment(baseUrl);
+    res.setHeader("Content-Disposition", 'attachment; filename="supernova_postman_environment.json"');
+    res.json(env);
+  });
+
+  app.get("/api/docs/endpoints", (req: Request, res: Response) => {
+    res.json(getApiEndpointsDirectory());
   });
 
   // DEVELOPER & MASTER FRANCHISE CONSOLE INSPECTION ENDPOINTS
   app.get("/api/v1/wallet/transactions", (req: Request, res: Response) => {
     const limit = req.query.limit ? parseInt(req.query.limit as string, 10) : 50;
-    const transactions = seamlessWalletStore.getTransactions(limit);
+    const userId = req.query.user_id as string | undefined;
+    const type = req.query.type as string | undefined;
+
+    let transactions = seamlessWalletStore.getTransactions(limit);
+    if (userId) {
+      transactions = transactions.filter(t => t.user_id === userId);
+    }
+    if (type) {
+      transactions = transactions.filter(t => t.type === type);
+    }
+
     res.json({ total: transactions.length, transactions });
+  });
+
+  app.get("/api/v1/wallet/transactions/:txnId", (req: Request, res: Response) => {
+    const txn = seamlessWalletStore.getTransactionByTxnId(req.params.txnId);
+    if (!txn) {
+      return res.status(404).json({ error: "TRANSACTION_NOT_FOUND", message: `Transaction '${req.params.txnId}' was not found in audit ledger.` });
+    }
+    res.json(txn);
   });
 
   app.get("/api/v1/wallet/users", (req: Request, res: Response) => {
     const users = seamlessWalletStore.getAllUsers();
     res.json({ total: users.length, users });
+  });
+
+  app.get("/api/v1/wallet/users/:userId", (req: Request, res: Response) => {
+    const user = seamlessWalletStore.getUser(req.params.userId);
+    if (!user) {
+      return res.status(404).json({ error: "USER_NOT_FOUND", message: `User '${req.params.userId}' not found.` });
+    }
+    res.json(user);
   });
 
   app.post("/api/v1/wallet/create-user", (req: Request, res: Response) => {

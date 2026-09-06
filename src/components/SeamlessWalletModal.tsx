@@ -1254,7 +1254,7 @@ export const SeamlessWalletModal: React.FC<Props> = ({ isOpen, onClose, onBalanc
                     className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-purple-600/20 text-purple-300 hover:bg-purple-600/30 border border-purple-500/40 flex items-center gap-1.5 transition"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    Swagger OpenAPI JSON
+                    OpenAPI 3.0
                   </a>
 
                   <a
@@ -1264,7 +1264,17 @@ export const SeamlessWalletModal: React.FC<Props> = ({ isOpen, onClose, onBalanc
                     className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-amber-600/20 text-amber-300 hover:bg-amber-600/30 border border-amber-500/40 flex items-center gap-1.5 transition"
                   >
                     <Download className="w-3.5 h-3.5" />
-                    Postman Collection v2.1
+                    Postman Collection
+                  </a>
+
+                  <a
+                    href="/api/docs/postman-environment.json"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600/20 text-blue-300 hover:bg-blue-600/30 border border-blue-500/40 flex items-center gap-1.5 transition"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Postman Env
                   </a>
                 </div>
               </div>
