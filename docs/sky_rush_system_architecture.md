@@ -1,4 +1,4 @@
-# SYSTEM SPECIFICATION: SKY RUSH (MULTIPLIER CRASH GAME)
+# SYSTEM SPECIFICATION: SuperNova (MULTIPLIER CRASH GAME)
 ## Mathematical Blueprint & Real-Time Backend Algorithmic control
 **Document Version:** 1.0.0  
 **Target Currency:** Thai Baht (THB)  
@@ -9,7 +9,7 @@
 ## EXECUTIVE SUMMARY & STRUCTURAL INTEGRITY
 This specification describes the complete state control, hazard prevention mechanisms, and mathematical architecture for **SKY RUSH** (frequently referenced as the *Multiplier Crash Game*). 
 
-To prevent synchronization drift, client-side packet spoofing, and asymmetric room state execution, **SKY RUSH** mandates a **Server-Authoritative Unified State Model**. 
+To prevent synchronization drift, client-side packet spoofing, and asymmetric room state execution, **SuperNova** mandates a **Server-Authoritative Unified State Model**. 
 - A single global crash multiplier ($X_{crash}$) is computed server-side at $t = 0.00$ seconds.
 - Every connected client (real players and simulated ghost-pool bots) shares the exact same state machine timeline and $X_{crash}$ threshold.
 - Financial transactions, bet liability auditing, tax allocations, and jackpot sweeps are processed strictly in **Thai Baht (THB)**.
