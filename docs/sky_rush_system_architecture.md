@@ -7,7 +7,7 @@
 ---
 
 ## EXECUTIVE SUMMARY & STRUCTURAL INTEGRITY
-This specification describes the complete state control, hazard prevention mechanisms, and mathematical architecture for **SKY RUSH** (frequently referenced as the *Multiplier Crash Game*). 
+This specification describes the complete state control, hazard prevention mechanisms, and mathematical architecture for **SuperNova** (frequently referenced as the *Multiplier Crash Game*). 
 
 To prevent synchronization drift, client-side packet spoofing, and asymmetric room state execution, **SuperNova** mandates a **Server-Authoritative Unified State Model**. 
 - A single global crash multiplier ($X_{crash}$) is computed server-side at $t = 0.00$ seconds.
