@@ -1,9 +1,10 @@
 import React, { useState, memo } from "react";
 import { PlayerBet, RoundState, UserStats } from "../types";
-import { RefreshCw, UserCheck } from "lucide-react";
+import { RefreshCw, UserCheck, Trophy } from "lucide-react";
 import { GameTabIcon } from "./GameTabIcon";
-import { formatToStandardUser } from "../utils/userTransform";
+import { formatToStandardUser, maskBotUser } from "../utils/userTransform";
 import { getMultiplierColorTier } from "../utils/multiplierColor";
+import { getActiveTop3Leaderboard } from "../utils/topLeaderboardEngine";
 
 export interface TopBetRecord {
   id: string;
@@ -42,19 +43,10 @@ const BetsListComponent: React.FC<BetsListProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<"ALL" | "MY" | "TOP">("ALL");
 
-  // Fallback high scores with strictly standardized user_XXXXXXXXXXX naming
-  const defaultTopBets: TopBetRecord[] = [
-    { id: "top_1", name: "user_89401824901", multiplier: 154.20, amount: 2500, win: 385500, timestamp: "Just now", isBot: true },
-    { id: "top_2", name: "user_71829401842", multiplier: 88.45, amount: 4000, win: 353800, timestamp: "2m ago", isBot: true },
-    { id: "top_3", name: "user_49102849102", multiplier: 45.10, amount: 7500, win: 338250, timestamp: "5m ago", isBot: true },
-    { id: "top_4", name: "user_19401829481", multiplier: 32.12, amount: 10000, win: 321200, timestamp: "8m ago", isBot: true },
-    { id: "top_5", name: "user_62019481029", multiplier: 24.50, amount: 12500, win: 306250, timestamp: "11m ago", isBot: true },
-    { id: "top_6", name: "user_39401829471", multiplier: 18.22, amount: 15000, win: 273300, timestamp: "15m ago", isBot: true },
-    { id: "top_7", name: "user_50192849102", multiplier: 12.05, amount: 20000, win: 241000, timestamp: "18m ago", isBot: true },
-    { id: "top_8", name: "user_98102938471", multiplier: 9.80, amount: 25000, win: 245000, timestamp: "22m ago", isBot: true },
-  ];
-
-  const displayTopBets = topBetsHistory && topBetsHistory.length > 0 ? topBetsHistory : defaultTopBets;
+  // Top 3 high-roller leaderboard governed by the 12-Hour Rotation Engine
+  const rawTopBets = topBetsHistory && topBetsHistory.length > 0 ? topBetsHistory : getActiveTop3Leaderboard();
+  // Strictly enforce displaying ONLY TOP 3 positions (ranks 1, 2, and 3 only)
+  const displayTopBets = rawTopBets.slice(0, 3);
   const totalBetsVolume = playerBets.reduce((acc, p) => acc + p.amount, 0);
 
   return (
@@ -131,6 +123,8 @@ const BetsListComponent: React.FC<BetsListProps> = ({
                 playerBets.map((player, pIdx) => {
                   const standardizedName = formatToStandardUser(player.name);
                   const isRealUser = (player as any).isRealUser === true;
+                  // Mask the last 2 digits of bot accounts with "**" (e.g. user_894018249**)
+                  const displayName = isRealUser ? standardizedName : maskBotUser(standardizedName);
 
                   return (
                     <div
@@ -156,7 +150,7 @@ const BetsListComponent: React.FC<BetsListProps> = ({
                         </div>
                         <div className="flex flex-col min-w-0">
                           <span className={`font-mono text-[11px] font-bold truncate max-w-[110px] ${isRealUser ? "text-amber-300" : "text-slate-300"}`}>
-                            {standardizedName}
+                            {displayName}
                           </span>
                           {isRealUser && (
                             <span className="text-[8.5px] text-amber-400 font-sans font-semibold flex items-center gap-0.5">
@@ -287,61 +281,69 @@ const BetsListComponent: React.FC<BetsListProps> = ({
           </div>
         )}
 
-        {/* TOP TAB */}
+        {/* TOP TAB - Strictly Top 3 Bot Leaderboard with 12-Hour Rotation */}
         {activeTab === "TOP" && (
-          <div className="flex-1 flex flex-col min-h-0 gap-3">
+          <div className="flex-1 flex flex-col min-h-0 gap-2.5">
             <div className="text-[10px] text-slate-400 uppercase tracking-widest font-mono border-b border-[#481E26] pb-1.5 flex items-center justify-between">
-              <span>Top High-Stakes Winners</span>
+              <span className="flex items-center gap-1.5 text-amber-400 font-bold">
+                <Trophy className="w-3 h-3 text-amber-400" />
+                Top 3 High-Stakes
+              </span>
               <span>Multiplier / Payout</span>
             </div>
 
-            {/* List */}
-            <div className="flex-1 overflow-y-auto flex flex-col gap-1.5">
-              {displayTopBets.map((item, index) => {
+            {/* List - Strictly Top 3 only */}
+            <div className="flex-1 overflow-y-auto flex flex-col gap-2">
+              {displayTopBets.slice(0, 3).map((item, index) => {
                 const formattedName = formatToStandardUser(item.name);
                 const tier = getMultiplierColorTier(item.multiplier);
+
+                // Distinctive podium card styles for Rank 1, 2, and 3
+                const podiumStyle = index === 0
+                  ? "bg-gradient-to-r from-amber-950/40 via-[#240c13] to-[#1A090D] border-amber-500/50 shadow-md shadow-amber-950/20"
+                  : index === 1
+                  ? "bg-gradient-to-r from-slate-900/40 via-[#1e0a10] to-[#1A090D] border-slate-400/40"
+                  : "bg-gradient-to-r from-amber-950/20 via-[#1a080d] to-[#1A090D] border-amber-700/30";
+
+                const badgeBg = index === 0
+                  ? "bg-gradient-to-b from-amber-300 to-amber-500 text-slate-950 font-black shadow-sm"
+                  : index === 1
+                  ? "bg-gradient-to-b from-slate-200 to-slate-400 text-slate-950 font-black"
+                  : "bg-gradient-to-b from-amber-600 to-amber-800 text-white font-black";
 
                 return (
                   <div
                     key={item.id ? `${item.id}_${index}` : `top_item_${index}`}
-                    className="flex items-center justify-between bg-[#1A090D]/80 border border-[#481E26]/80 px-2.5 py-2 rounded-lg text-xs"
+                    className={`flex items-center justify-between border px-3 py-2.5 rounded-lg text-xs transition-all ${podiumStyle}`}
                     id={`top_leader_payout_${index}`}
                   >
-                    <div className="flex items-center gap-2 min-w-0">
-                      {/* Position circle */}
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      {/* Position badge */}
                       <span
-                        className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-black shrink-0 ${
-                          index === 0
-                            ? "bg-amber-400 text-slate-950 shadow-sm"
-                            : index === 1
-                            ? "bg-slate-300 text-slate-950"
-                            : index === 2
-                            ? "bg-amber-700 text-slate-100"
-                            : "bg-[#2E1218] text-slate-300 border border-[#52252e]/50"
-                        }`}
+                        className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] shrink-0 ${badgeBg}`}
                       >
                         {index + 1}
                       </span>
                       <div className="flex flex-col min-w-0">
-                        <span className="font-mono font-bold text-slate-200 text-[11px] truncate max-w-[120px]">
+                        <span className="font-mono font-bold text-slate-100 text-[11px] truncate max-w-[125px]">
                           {formattedName}
                         </span>
-                        <span className="text-[9px] text-slate-400 font-mono">
-                          Bet: {item.amount.toLocaleString()}
+                        <span className="text-[9.5px] text-slate-400 font-mono">
+                          Bet: ฿{item.amount.toLocaleString()}
                         </span>
                       </div>
                     </div>
 
-                    {/* Multipliers with calibrated colors */}
+                    {/* Multiplier (100x - 400x) & Win Payout */}
                     <div className="flex flex-col items-end shrink-0">
                       <span
                         style={{ color: tier.color }}
-                        className="font-black font-mono text-[11px]"
+                        className="font-black font-mono text-[12px] tracking-tight drop-shadow-sm"
                       >
                         x{item.multiplier.toFixed(2)}
                       </span>
-                      <span className="text-[10.5px] text-amber-300 font-mono font-bold">
-                        +{item.win.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+                      <span className="text-[10.5px] text-emerald-400 font-mono font-bold">
+                        +฿{item.win.toLocaleString(undefined, { maximumFractionDigits: 0 })}
                       </span>
                     </div>
                   </div>

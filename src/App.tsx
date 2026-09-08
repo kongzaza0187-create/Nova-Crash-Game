@@ -14,6 +14,7 @@ import { SuperNovaEngine, BetSlip, GameRoomState, MULTIPLIER_DISTRIBUTION_MATRIX
 import { seamlessWalletClient } from "./lib/seamlessWalletClient";
 import { generateRandomBotPool, formatToStandardUser } from "./utils/userTransform";
 import { getMultiplierColorTier } from "./utils/multiplierColor";
+import { getActiveTop3Leaderboard } from "./utils/topLeaderboardEngine";
 import { 
   HelpCircle, 
   Volume2, 
@@ -156,17 +157,24 @@ export default function App() {
   // Active wallet balance (Used by UI and betting engine)
   const balance = walletMode === "REAL" ? realBalance : demoBalance;
 
-  // Real-time dynamic Top winners leaderboard state
-  const [topBetsHistory, setTopBetsHistory] = useState<TopBetRecord[]>([
-    { id: "top_init_1", name: "user_89401824901", multiplier: 154.20, amount: 2500, win: 385500, timestamp: "Just now", isBot: true },
-    { id: "top_init_2", name: "user_71829401842", multiplier: 88.45, amount: 4000, win: 353800, timestamp: "2m ago", isBot: true },
-    { id: "top_init_3", name: "user_49102849102", multiplier: 45.10, amount: 7500, win: 338250, timestamp: "5m ago", isBot: true },
-    { id: "top_init_4", name: "user_19401829481", multiplier: 32.12, amount: 10000, win: 321200, timestamp: "8m ago", isBot: true },
-    { id: "top_init_5", name: "user_62019481029", multiplier: 24.50, amount: 12500, win: 306250, timestamp: "11m ago", isBot: true },
-    { id: "top_init_6", name: "user_39401829471", multiplier: 18.22, amount: 15000, win: 273300, timestamp: "15m ago", isBot: true },
-    { id: "top_init_7", name: "user_50192849102", multiplier: 12.05, amount: 20000, win: 241000, timestamp: "18m ago", isBot: true },
-    { id: "top_init_8", name: "user_98102938471", multiplier: 9.80, amount: 25000, win: 245000, timestamp: "22m ago", isBot: true },
-  ]);
+  // Real-time dynamic Top 3 winners leaderboard state (strictly Top 3 governed by 12-hour rotation)
+  const [topBetsHistory, setTopBetsHistory] = useState<TopBetRecord[]>(() => getActiveTop3Leaderboard());
+
+  // Periodically synchronize Top 3 leaderboard across 12-hour transition windows (12:01 / 00:01)
+  useEffect(() => {
+    const syncTopLeaderboard = () => {
+      const activeRecords = getActiveTop3Leaderboard();
+      setTopBetsHistory((prev) => {
+        if (prev.length !== 3 || prev[0]?.id !== activeRecords[0]?.id) {
+          return activeRecords;
+        }
+        return prev;
+      });
+    };
+    // Check every 20 seconds for epoch boundary transition
+    const interval = setInterval(syncTopLeaderboard, 20000);
+    return () => clearInterval(interval);
+  }, []);
 
   // Synchronize real wallet with Master Franchise API
   const syncRealWallet = async (userId: string = realUserId) => {
@@ -1330,40 +1338,6 @@ export default function App() {
           return player;
         })
       );
-
-      // Collect high-multiplier bot winners from this round to dynamically update the TOP tab
-      setPlayerBets((prev) => {
-        const topWinnersThisRound = prev
-          .filter((p) => p.isCashedOut && (p.cashOutMultiplier || 0) >= 8.0)
-          .map((p, idx) => {
-            const mult = p.cashOutMultiplier || 1.0;
-            const winAmount = parseFloat((p.amount * mult).toFixed(2));
-            return {
-              id: `top_${p.id}_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`,
-              name: p.name,
-              multiplier: mult,
-              amount: p.amount,
-              win: winAmount,
-              timestamp: "Just now",
-              isBot: !(p as any).isRealUser,
-            };
-          });
-
-        if (topWinnersThisRound.length > 0) {
-          setTopBetsHistory((oldTop) => {
-            const map = new Map<string, TopBetRecord>();
-            for (const item of [...topWinnersThisRound, ...oldTop]) {
-              if (!map.has(item.id)) {
-                map.set(item.id, item);
-              }
-            }
-            const combined = Array.from(map.values());
-            const sorted = combined.sort((a, b) => b.win - a.win);
-            return sorted.slice(0, 20);
-          });
-        }
-        return prev;
-      });
 
       // Evaluate if player lost any committed bets this round
       let userLostThisRound = false;

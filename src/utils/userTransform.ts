@@ -96,6 +96,53 @@ export const AVATAR_COLORS = [
 
 export const AVATAR_SEEDS = ["A", "B", "K", "Y", "P", "S", "M", "T", "G", "R", "W", "X", "Z", "H", "F", "1", "7", "9", "8", "3"];
 
+/**
+ * Masks the last 2 digits of a bot user identifier with `**`
+ * e.g., `user_89401824901` -> `user_894018249**`
+ */
+export function maskBotUser(name: string): string {
+  if (!name) return "user_*********";
+  if (name.endsWith("**")) return name;
+  if (name.length <= 2) return "**";
+  return `${name.slice(0, -2)}**`;
+}
+
+/**
+ * Generates natural, realistic, non-round human-like bet amounts for bots
+ * e.g. 1,050, 2,001, 3,550, 450, 780, 1,250, 2,005, 3,020, etc.
+ */
+export function generateRealisticBotBet(maxCap: number = 8000): number {
+  const baseTiers = [
+    50, 100, 150, 200, 300, 400, 500, 700, 800, 1000, 1200, 1500, 1800, 2000, 2500, 3000, 3500, 4000, 5000, 6000, 7000, 8000
+  ];
+  
+  const base = baseTiers[Math.floor(Math.random() * baseTiers.length)]!;
+  const roll = Math.random();
+  let amount = base;
+
+  if (roll < 0.38) {
+    // Style A: Non-round increments with +50 (e.g. 1,050, 3,550, 2,050, 450, 750, 1,250)
+    const extra = (Math.floor(Math.random() * 3) * 100) + 50; // 50, 150, or 250
+    amount = base + extra;
+  } else if (roll < 0.65) {
+    // Style B: Odd units / loose change with 1, 5, 2 (e.g. 2,001, 1,001, 505, 3,001, 501, 1,505)
+    const oddUnits = [1, 1, 2, 3, 5, 5, 7, 10, 11];
+    const unit = oddUnits[Math.floor(Math.random() * oddUnits.length)]!;
+    amount = base + unit;
+  } else if (roll < 0.88) {
+    // Style C: Realistic non-zero tens (e.g. 420, 780, 1,120, 2,340, 3,180)
+    const tens = (Math.floor(Math.random() * 8) + 1) * 10; // 10, 20, 30, ... 80
+    amount = base + tens;
+  } else {
+    // Style D: Standard natural amount
+    amount = base;
+  }
+
+  // Ensure amount is strictly within bounds [20, maxCap]
+  amount = Math.max(20, Math.min(maxCap, Math.floor(amount)));
+  return amount;
+}
+
 export interface BotPoolConfig {
   minBots?: number;
   maxBots?: number;
@@ -125,11 +172,6 @@ export function generateRandomBotPool(config: BotPoolConfig = {}) {
 
   const bots = [];
 
-  // Weighted bet amounts from min 20 up to max 8,000 (8K)
-  const betAmounts = [
-    20, 50, 100, 150, 200, 250, 300, 400, 500, 800, 1000, 1500, 2000, 2500, 3000, 5000, 6000, 8000
-  ];
-
   for (let i = 0; i < count; i++) {
     // Generate unique 11-digit string that never collides with any real user or another bot
     let num11 = generate11DigitString();
@@ -140,10 +182,9 @@ export function generateRandomBotPool(config: BotPoolConfig = {}) {
 
     const userName = `user_${num11}`;
     
-    // Pick realistic bet amount capped at 8,000 (8K) max, min 20
-    let amount = betAmounts[Math.floor(Math.random() * betAmounts.length)]!;
-    if (amount > 8000) amount = 8000;
-    if (amount < 20) amount = 20;
+    // Pick realistic non-round bet amount (e.g. 1,050, 2,001, 3,550) capped at maxBetAmount
+    const maxCap = config.maxBetAmount ?? 8000;
+    const amount = generateRealisticBotBet(maxCap);
 
     // Realistic target cashout multipliers
     // 40% quick conservative exit (1.10x - 1.80x)

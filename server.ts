@@ -1517,7 +1517,11 @@ async function runSecurityFullstackServer() {
         stateObj.rolled = true;
         const rollSuccessful = Math.random() < 0.97;
         stateObj.triggered = rollSuccessful;
-        console.log(`[GLOBAL 49X SYSTEM] 🎯 TARGET HIT on Global Round ${backendRoundCounter}! Range: [${stateObj.minRange}-${stateObj.maxRange}] | Series: ${stateObj.series} | 97% Roll: ${rollSuccessful ? "SUCCESS 🚀" : "FAILED ❌"}`);
+        if (rollSuccessful) {
+          console.log(`[GLOBAL 49X SYSTEM] 🎯 TARGET HIT on Global Round ${backendRoundCounter}! Range: [${stateObj.minRange}-${stateObj.maxRange}] | Series: ${stateObj.series} | Status: ACTIVATED 🚀`);
+        } else {
+          console.log(`[GLOBAL 49X SYSTEM] 🎯 Target window on Global Round ${backendRoundCounter} [${stateObj.minRange}-${stateObj.maxRange}] | Status: Standby Variance Bypass`);
+        }
       }
       if (stateObj.triggered) {
         isSpecial49xRound = true;
@@ -1701,7 +1705,10 @@ async function runSecurityFullstackServer() {
       }
     }
 
-    if (!isFakeBotJackpotRound) {
+    if (isSpecial49xRound) {
+      targetCrashPoint = 49.00;
+      console.log(`[GAME ENGINE] 🚀 GLOBAL 49X OVERRIDE: Multiplier set to ${targetCrashPoint}x on Round ${backendRoundCounter}`);
+    } else if (!isFakeBotJackpotRound) {
       // Determine target crash point strictly from the Continuous Distributed RNG Matrix
       const rawMatrixCrashPoint = getExact8TierDistributionCrashPoint();
       targetCrashPoint = rawMatrixCrashPoint;
